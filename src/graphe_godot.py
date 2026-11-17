@@ -38,7 +38,6 @@ from graphe_racine import RACINE, SORTIE
 
 # shortcut: res:// part de godot/, comme chez Grid Zero ; un .gd ailleurs casse - chercher project.godot au besoin.
 GODOT = RACINE / "godot"
-GODOT_EXE = GODOT / "Godot_v4.7.2-stable_win64_console.exe"
 PREFIXE_COMMANDE = "simulation_server_cmd_"  # graphe_python.id_de_commande
 
 MOTS_CLES = {"if", "elif", "while", "for", "match", "return", "and", "or", "not", "in", "is", "as", "func",
@@ -171,7 +170,7 @@ class Extraction:
         for s in self.scripts.values():
             for nom in s.fonctions:
                 self.par_nom[nom].append(s)
-        # Sans GDScript, pas de Godot a lancer (son chemin reglable : T-0005).
+        # Sans GDScript, pas de Godot a lancer.
         self.moteur_methodes, self.moteur_noms = _api_du_moteur(api) if self.scripts else (set(), set())
         self.commandes = _commandes_du_serveur()
         self.noeuds: list[dict] = []
@@ -318,11 +317,22 @@ def _api_du_moteur(api: dict | None) -> tuple[set[str], set[str]]:
     Godot exporte (--dump-extension-api)."""
     garde = SORTIE / "extension_api.json"
     if api is None and not garde.exists():
-        SORTIE.mkdir(exist_ok=True)
+        # Cherche apres le cache : un arbre fige peut recevoir l'API sans Godot.
+        godot = graphe_racine.executable("godot", "godot")
+        if godot is None:
+            return set(), set()  # rien en cache : la cle reglee servira a la prochaine construction
         with tempfile.TemporaryDirectory() as dossier:
-            subprocess.run([str(GODOT_EXE), "--headless", "--dump-extension-api"], cwd=dossier,
-                           capture_output=True, timeout=180, check=False)
-            garde.write_bytes((Path(dossier) / "extension_api.json").read_bytes())
+            try:
+                subprocess.run([str(godot), "--headless", "--dump-extension-api"], cwd=dossier,
+                               capture_output=True, timeout=180, check=False)
+                brut = (Path(dossier) / "extension_api.json").read_bytes()
+                api = json.loads(brut)  # un JSON casse n'entre pas au cache : il casserait chaque construction
+            except (OSError, ValueError, subprocess.SubprocessError) as e:
+                print(f"graphe : {godot} ([godot] executable) n'a pas donne l'API du moteur ({e}) :"
+                      " ses appels restent non resolus", file=sys.stderr)
+                return set(), set()
+        SORTIE.mkdir(exist_ok=True)
+        garde.write_bytes(brut)
     if api is None:
         api = json.loads(garde.read_bytes())
     methodes, noms = set(), set()

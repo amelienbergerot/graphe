@@ -7,12 +7,18 @@ fige), et aux tests de l'outil.
 Les fichiers : ceux que git suit, plus les non suivis non ignores, moins ceux
 que `exclure` (graphe.toml, a la racine, facultatif) designe. Chacun va au
 lecteur de son extension ; un fichier qu'aucun lecteur ne prend est ignore.
+
+Un programme externe qu'un lecteur lance (T-0005) : la cle `executable` de la
+section du lecteur (`[godot]`), relative a la racine ; sinon le PATH ; sinon
+rien, avec un avertissement qui nomme la cle.
 """
 
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
+import sys
 import tomllib
 from pathlib import Path, PurePosixPath
 
@@ -54,3 +60,17 @@ def fichiers(suffixe: str, racine: Path = RACINE) -> list[Path]:
     # Des Path tries, comme l'ancien rglob : l'ordre de lecture ne change pas.
     return sorted(racine / rel for rel in set(r.stdout.split("\0"))
                   if rel.endswith(suffixe) and not _exclu(rel, motifs) and (racine / rel).is_file())
+
+
+def executable(section: str, nom: str, racine: Path = RACINE) -> Path | None:
+    """Le programme `nom` d'un lecteur : `[section] executable` du graphe.toml, sinon le PATH, sinon None."""
+    donne = configuration(racine).get(section, {}).get("executable")
+    if donne:
+        if (chemin := racine / donne).is_file():  # un chemin absolu reste absolu
+            return chemin
+        print(f"graphe : {chemin} introuvable ([{section}] executable, {CONFIGURATION})", file=sys.stderr)
+    if trouve := shutil.which(nom):
+        return Path(trouve)
+    print(f"graphe : {nom} introuvable, ni par [{section}] executable dans {CONFIGURATION}, ni dans le PATH :"
+          f" le lecteur continue sans lui", file=sys.stderr)
+    return None
