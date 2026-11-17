@@ -26,6 +26,10 @@ _À éviter_ : plugin, greffon
 Ce qu'un lecteur ou une extension locale rend au graphe : des nœuds, des liens et, s'il y a lieu, des sites de couverture.
 _À éviter_ : résultat, sortie, extraction
 
+**Reprise** [takeover] :
+Ce qu'une extension qui contribue avec les lecteurs rend pour qu'un de ses nœuds prenne les liens de certaines lignes à un nœud d'un lecteur, comme une commande prend ceux de sa branche à la fonction qui aiguille.
+_À éviter_ : déplacement, réattribution
+
 **Document** :
 Un fichier Markdown du projet hôte, qui cite des nœuds et d'autres documents.
 _À éviter_ : ticket (un ticket est un document parmi d'autres)

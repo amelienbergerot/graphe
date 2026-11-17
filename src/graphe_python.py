@@ -8,10 +8,6 @@ Classe(...)`), une iteration sur un conteneur type, un retour deduit
 fonctions est relie par le nom seul (INFERRED) ; porte par plusieurs, il
 reste non relie et compte comme ambigu.
 
-Les ordres du client (simulation/server.py) : chaque branche
-`if cmd == "x":` devient un noeud de commande, qui porte les appels de sa
-branche - le client envoie a la commande, pas a tout handle_command.
-
 `graphe verifier` lit le classement de chaque appel dans les sites de sa
 contribution (`contribuer`).
 """
@@ -28,8 +24,6 @@ from pathlib import Path
 import graphe_racine
 from graphe_racine import RACINE
 
-SERVEUR = "simulation/server.py"
-PREFIXE_COMMANDE = "simulation_server_cmd_"
 BUILTINS = set(dir(builtins))
 # Les methodes des conteneurs que l'on sait typer : ce qu'elles rendent.
 VERS_ELEMENT = {"get", "pop", "setdefault", "__getitem__"}
@@ -42,10 +36,6 @@ def fichiers() -> list[Path]:
 
 def _id(texte: str) -> str:
     return re.sub(r"\W", "_", texte).lower()
-
-
-def id_de_commande(cmd: str) -> str:
-    return PREFIXE_COMMANDE + _id(cmd)
 
 
 @dataclass(eq=False)
@@ -115,13 +105,11 @@ class Lecture:
         for f in self.fonctions:
             self.par_nom[f.nom].append(f)
         self.noms_de_classes = {c.nom for c in self.classes}
-        self.commandes = self._commandes()
         self.noeuds: list[dict] = []
         self.liens: list[dict] = []
         self.sites: list[dict] = []
         self._memo: dict = {}
         self._en_cours: set = set()
-        self._commandes_vues: set[str] = set()
         self._emettre()
 
     # ---------- lecture des definitions
@@ -301,17 +289,6 @@ class Lecture:
             yield n
             if not isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
                 pile.extend(ast.iter_child_nodes(n))
-
-    def _commandes(self) -> set[str]:
-        m = self.modules.get(_nom_du_module(SERVEUR))
-        if m is None:
-            return set()
-        for noeud in m.arbre.body:
-            if isinstance(noeud, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "COMMANDES"
-                                                     for t in noeud.targets):
-                return {c.value for c in ast.walk(noeud.value) if isinstance(c, ast.Constant)
-                        and isinstance(c.value, str)}
-        return set()
 
     # ---------- les types
 
@@ -702,14 +679,6 @@ class Lecture:
                 if p is not None:
                     self._types(p.annotation, f.id, f, f.module)
             self._types(f.noeud.returns, f.id, f, f.module)
-        ids = {n["id"] for n in self.noeuds}
-        for cmd in sorted(self.commandes):
-            if id_de_commande(cmd) not in ids:
-                # Une commande sans branche a elle : traitee par handle_command en bloc.
-                hc = f"{_id(SERVEUR.removesuffix('.py'))}_handle_command"
-                self._noeud(id_de_commande(cmd), f'"{cmd}" (commande)', "commande", SERVEUR, 1, f"cmd:{cmd}")
-                self._lien(hc, id_de_commande(cmd), "dispatches", SERVEUR, 1, contexte=cmd)
-                ids.add(id_de_commande(cmd))
 
     def _parent_id(self, c: Classe) -> str:
         parent = c.qualnom.rsplit(".", 1)[0]
@@ -721,39 +690,12 @@ class Lecture:
                 return f.id
         return c.module.id
 
-    def _commandes_du_test(self, test: ast.expr) -> list[str]:
-        if not isinstance(test, ast.Compare) or len(test.ops) != 1:
-            return []
-        droite = test.comparators[0]
-        if isinstance(test.ops[0], ast.Eq) and isinstance(droite, ast.Constant):
-            valeurs = [droite.value]
-        elif isinstance(test.ops[0], ast.In) and isinstance(droite, (ast.Tuple, ast.Set, ast.List)):
-            valeurs = [e.value for e in droite.elts if isinstance(e, ast.Constant)]
-        else:
-            return []
-        return [v for v in valeurs if isinstance(v, str) and v in self.commandes]
-
     def _parcourir(self, noeuds: list, proprietaire: str, f: Fonction | None, m: Module) -> None:
         pile = [(n, proprietaire) for n in reversed(noeuds)]
         appeles = set()
         while pile:
             n, qui = pile.pop()
             if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                continue
-            if isinstance(n, ast.If) and m.rel == SERVEUR and (cmds := self._commandes_du_test(n.test)):
-                for cmd in cmds:
-                    cid = id_de_commande(cmd)
-                    if cid not in self._commandes_vues:
-                        self._commandes_vues.add(cid)
-                        self._noeud(cid, f'"{cmd}" (commande)', "commande", m.rel, n.lineno, f"cmd:{cmd}")
-                    self._lien(qui, cid, "dispatches", m.rel, n.lineno, contexte=cmd)
-                # Une branche a plusieurs commandes : la premiere la porte, les autres y menent.
-                corps_de = id_de_commande(cmds[0])
-                for autre in cmds[1:]:
-                    self._lien(id_de_commande(autre), corps_de, "dispatches", m.rel, n.lineno, contexte="meme branche")
-                pile.extend((x, qui) for x in reversed(n.orelse))
-                pile.extend((x, corps_de) for x in reversed(n.body))
-                pile.append((n.test, qui))
                 continue
             if isinstance(n, ast.AnnAssign):
                 self._types(n.annotation, qui, f, m)

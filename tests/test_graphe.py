@@ -144,17 +144,6 @@ def test_un_objet_hors_du_depot_ne_prend_pas_nos_noms(lecture):
     assert site["verdict"] == "externe"
 
 
-def test_chaque_commande_porte_les_appels_de_sa_branche(lecture):
-    assert (f"{S}handle_command", graphe_python.id_de_commande("pas")) in _liens(lecture, "dispatches")
-    assert (graphe_python.id_de_commande("pas"), f"{M}moteur_pas") in _liens(lecture)
-    assert (f"{S}handle_command", f"{M}moteur_pas") not in _liens(lecture)
-    # une branche a deux commandes : la premiere la porte, l'autre y mene
-    assert (graphe_python.id_de_commande("liste"), f"{M}moteur_fabrique") in _liens(lecture)
-    assert (graphe_python.id_de_commande("relister"), graphe_python.id_de_commande("liste")) in _liens(lecture, "dispatches")
-    # une commande sans branche a elle a quand meme son noeud
-    assert graphe_python.id_de_commande("rien") in {n["id"] for n in lecture.noeuds}
-
-
 def test_trouver_un_noeud_par_son_nom(lecture):
     import networkx as nx
     g = nx.DiGraph()

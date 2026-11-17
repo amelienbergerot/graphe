@@ -4,9 +4,9 @@ Les lecteurs et les extensions locales n'ont qu'une interface : une fonction `co
 
 ## L'assemblage
 
-1. Les lecteurs (`python`, `godot`, `php`) contribuent. Leurs nœuds entrent ensemble, triés par l'id.
+1. Les lecteurs (`python`, `godot`, `php`) contribuent, puis les extensions déclarées `avec_les_lecteurs`. Leurs nœuds entrent ensemble, triés par l'id, après les reprises.
 2. Le cœur enrichit le graphe : étendues, commentaires, textes affichés, variables de module, documents, etc.
-3. Les extensions locales contribuent une à une, dans l'ordre où `graphe.toml` les déclare. Chacune voit le graphe que les précédentes ont laissé.
+3. Les autres extensions locales contribuent une à une, dans l'ordre où `graphe.toml` les déclare. Chacune voit le graphe que les précédentes ont laissé.
 
 Un lien dont un bout manque au graphe ne crée pas de nœud. Il est compté comme **pendant** : `graphe verifier` échoue alors, et `construire` affiche les premiers.
 
@@ -17,8 +17,11 @@ Dans le `graphe.toml` de l'hôte, une table par extension, dans l'ordre d'assemb
 ```toml
 [[extensions]]
 chemin = "tools/graphe_grid_zero.py"   # relatif à la racine de l'hôte
+avec_les_lecteurs = true              # facultatif : contribuer avec les lecteurs, avant le cœur
 # les autres clés de la table : la configuration de l'extension (projet.configuration)
 ```
+
+Une extension `avec_les_lecteurs` contribue comme un lecteur : elle voit le graphe vide, et ses nœuds passent par le cœur, qui leur donne une fin, un commentaire et, pour un corps, ses lignes. C'est le cas d'un corps découpé dans un autre, comme la branche d'une commande dans la fonction qui aiguille. Elle seule peut rendre des reprises.
 
 Le fichier est un module Python qui définit `contribuer(projet)`. Une extension déclarée mais introuvable arrête la construction, avec un message qui donne son chemin. C'est le cas aussi quand le module n'a pas de `contribuer`.
 
@@ -41,7 +44,7 @@ Un **lien assemblé** a un seul exemplaire par paire de nœuds : `source`, `targ
 C'est un dictionnaire. Chaque clé est facultative.
 
 ```python
-{"noeuds": [...], "liens": [...], "sites": [...]}
+{"noeuds": [...], "liens": [...], "sites": [...], "reprises": [...]}
 ```
 
 ### Un nœud
@@ -71,6 +74,16 @@ Tous les champs sont obligatoires.
 | `context` | Un mot sur le lien (l'alias d'un import, le nom d'un ordre), ou `""`. |
 
 Deux liens entre les mêmes nœuds n'en font qu'un, qui garde toutes leurs relations et tous leurs lieux.
+
+### Une reprise
+
+Seulement pour une extension `avec_les_lecteurs`. Les liens qui partent de `de` depuis les lignes `lignes` de `source_file` partent désormais de `vers`. Une reprise ne touche que les liens des lecteurs, avant l'assemblage. Les reprises s'appliquent dans l'ordre : une reprise voit les précédentes. Pour une branche dans une branche, on rend donc celle du dehors d'abord.
+
+| Champ | Ce que c'est |
+|---|---|
+| `de`, `vers` | Le nœud qui perd les liens, celui qui les prend. |
+| `source_file` | Le fichier des lignes, comme dans un lien. |
+| `lignes` | `[début, fin]`, bornes comprises. |
 
 ### Un site de couverture
 

@@ -24,7 +24,9 @@ sont des noeuds (le lecteur Python).
 Le contrat (T-0007, docs/contribution.md) : lecteurs et extensions locales
 rendent une contribution par `contribuer(projet)`. L'assemblage passe les
 lecteurs, puis le coeur (graphe_enrichir), puis les extensions declarees par
-`[[extensions]]` dans graphe.toml, dans leur ordre.
+`[[extensions]]` dans graphe.toml, dans leur ordre. Une extension
+`avec_les_lecteurs` (T-0008) entre avec les lecteurs, avant le coeur, et peut
+reprendre leurs liens.
 
 Les fichiers lus (T-0004, graphe_racine.py) : ceux que git suit, plus les
 non suivis non ignores, chacun au lecteur de son extension ; `exclure`, dans
@@ -178,8 +180,25 @@ def _inserer(graphe: nx.DiGraph, apports: list[tuple[str, dict]], pendants: list
                                 contextes=[e["context"]] if e["context"] else [])
 
 
+def _reprendre(apports: list[tuple[str, dict]]) -> None:
+    """Les reprises, dans leur ordre : les liens qui partent de `de` depuis les lignes `lignes` (bornes comprises)
+    de `source_file` partent de `vers`. Une reprise suivante voit les precedentes (une branche dans une branche).
+    Seuls les liens des lecteurs sont repris : une extension rend les siens deja a leur place."""
+    liens = [e for qui, c in apports if qui in LECTEURS for e in c.get("liens", [])]
+    for qui, c in apports:
+        for r in c.get("reprises", []):
+            if manque := [k for k in ("de", "vers", "source_file", "lignes") if k not in r]:
+                raise RuntimeError(f"{qui} : une reprise n'a pas {', '.join(manque)}")
+            debut, fin = r["lignes"]
+            for e in liens:
+                ligne = int(str(e.get("source_location", "")).lstrip("L") or 0)
+                if e.get("source") == r["de"] and e.get("source_file") == r["source_file"] and debut <= ligne <= fin:
+                    e["source"] = r["vers"]
+
+
 def assembler(verifier: bool = False) -> tuple[nx.DiGraph, dict, list[dict], dict[str, list[dict]]]:
-    """Les lecteurs, puis le coeur, puis les extensions locales dans l'ordre de graphe.toml : le graphe oriente,
+    """Les lecteurs (et les extensions `avec_les_lecteurs`), puis le coeur, puis les autres extensions locales
+    dans l'ordre de graphe.toml : le graphe oriente,
     la couverture, les liens pendants et les sites de chaque contribution."""
     configuration = graphe_racine.configuration()
     graphe = nx.DiGraph()
@@ -187,21 +206,25 @@ def assembler(verifier: bool = False) -> tuple[nx.DiGraph, dict, list[dict], dic
     # Les lecteurs ensemble : leurs noeuds entrent tries tous a la fois, comme avant le contrat (T-0007).
     lecteurs = [(nom, contribuer(Projet(configuration.get(nom, {}), graphe, verifier)))
                 for nom, contribuer in LECTEURS.items()]
+    # T-0008 : une extension `avec_les_lecteurs` entre avec eux, avant le coeur, et peut reprendre leurs liens.
+    avec, apres = [], []
+    for declaration in _extensions_declarees():
+        (avec if declaration.get("avec_les_lecteurs") else apres).append(declaration)
+    lecteurs += [(d.get("chemin", ""), _extension(d)(Projet(d, graphe, verifier))) for d in avec]
+    _reprendre(lecteurs)
     _inserer(graphe, lecteurs, pendants)
     graphe_enrichir.enrichir(graphe, RACINE)
     apports = list(lecteurs)
-    for declaration in _extensions_declarees():
+    for declaration in apres:
         apport = (declaration.get("chemin", ""), _extension(declaration)(Projet(declaration, graphe, verifier)))
+        if "reprises" in apport[1]:
+            raise RuntimeError(f"{apport[0]} : des reprises sans avec_les_lecteurs = true ({CONFIGURATION})")
         _inserer(graphe, [apport], pendants)
         apports.append(apport)
     sites = {qui: c["sites"] for qui, c in apports if "sites" in c}
     couverture = {qui: dict(Counter(s["verdict"] for s in liste if "verdict" in s).most_common())
                   for qui, liste in sites.items()}
     couverture["pendants"] = len(pendants)
-    # shortcut: le coeur compte une alerte du lecteur GDScript (cle de graphe.json, test de reference), a
-    # reprendre quand l'ordre inconnu passe dans l'extension de Grid Zero (T-0008).
-    couverture["ordres_inconnus"] = sum(s.get("alerte") == graphe_godot.ORDRE_INCONNU
-                                        for liste in sites.values() for s in liste)
     return _trie(graphe), couverture, pendants, sites
 
 

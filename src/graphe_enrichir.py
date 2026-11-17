@@ -197,8 +197,8 @@ def enrichir(graphe: nx.DiGraph, racine: Path) -> None:
                 corps[n] = (rel, debut, fin)
 
     # Chaque ligne a son proprietaire : le plus petit corps qui la contient -
-    # la branche d'une commande plutot que handle_command qui l'englobe (le
-    # lecteur Python fait de meme pour les appels). La ligne de tete n'est
+    # la branche d'une commande plutot que handle_command qui l'englobe (ses
+    # appels aussi : les reprises d'une extension, T-0008). La ligne de tete n'est
     # pas un usage.
     proprietaires: dict[str, dict[int, str]] = defaultdict(dict)
     for n, (rel, debut, fin) in sorted(corps.items(), key=lambda c: c[1][2] - c[1][1], reverse=True):

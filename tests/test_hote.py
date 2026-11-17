@@ -13,6 +13,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from conftest import GRID_ZERO, grid_zero
+
 APPELANT = "from outils import aider\n\n\ndef travailler():\n    return aider()\n"
 APPELE = "def aider():\n    return 1\n"
 
@@ -215,3 +217,64 @@ def test_verifier_se_nourrit_des_sites_d_une_extension(tmp_path: Path):
     assert _graphe(hote, "construire").returncode == 0
     couverture = json.loads((hote / "graphe" / "graphe.json").read_bytes())["couverture"]
     assert couverture["ext/regles_du_temoin.py"] == {"lu": 1} and "php" not in couverture
+
+
+# T-0008 : une extension qui contribue avec les lecteurs, avant le coeur, et reprend les liens de lignes.
+AIGUILLAGE = 'from outils import aider\n\n\ndef aiguiller(ordre):\n    if ordre == "aide":\n        return aider()\n    return 0\n'
+BRANCHE = '''
+def contribuer(projet):
+    assert projet.graphe["noeuds"] == {}  # comme un lecteur : rien d'assemble encore
+    return {
+        "noeuds": [{"id": "branche_aide", "label": "aide", "sorte": "commande", "source_file": "aiguillage.py",
+                    "source_location": "L5", "nom": "aide"}],
+        "reprises": [{"de": "aiguillage_aiguiller", "vers": "branche_aide", "source_file": "aiguillage.py",
+                      "lignes": [6, 6]}],
+    }
+'''
+
+
+def test_une_extension_avec_les_lecteurs_reprend_les_liens_de_ses_lignes(tmp_path: Path):
+    hote = _hote(tmp_path, {"outils.py": APPELE, "aiguillage.py": AIGUILLAGE, "ext/branches.py": BRANCHE,
+                            "graphe.toml": '[[extensions]]\nchemin = "ext/branches.py"\navec_les_lecteurs = true\n'})
+    r = _graphe(hote, "construire")
+    assert r.returncode == 0, r.stderr
+    donnees = json.loads((hote / "graphe" / "graphe.json").read_bytes())
+    liens = {(e["source"], e["target"]) for e in donnees["liens"]}
+    assert ("branche_aide", "outils_aider") in liens
+    assert ("aiguillage_aiguiller", "outils_aider") not in liens
+    branche = next(n for n in donnees["noeuds"] if n["id"] == "branche_aide")
+    assert branche["fin"] == 6  # un corps pour le coeur, qui l'a vu
+
+
+# T-0008 : les commandes du serveur de Grid Zero, par son extension locale (tools/graphe_grid_zero.py).
+CLIENT = 'extends Node\n\n\nfunc envoyer():\n\t_poster({"cmd": "pas"})\n\t_poster({"cmd": "invente"})\n' \
+         '\t# _poster({"cmd": "en_commentaire"})\n\n\nfunc _poster(m):\n\tpass\n'
+EXTENSION_GRID_ZERO = '[[extensions]]\nchemin = "tools/graphe_grid_zero.py"\navec_les_lecteurs = true\n'
+
+
+@grid_zero
+def test_l_extension_de_grid_zero_relie_les_commandes_et_signale_un_ordre_inconnu(tmp_path: Path):
+    from test_graphe import FLOTTE, MOTEUR, SERVEUR
+    hote = _hote(tmp_path, {
+        "simulation/moteur.py": MOTEUR, "simulation/flotte.py": FLOTTE, "simulation/server.py": SERVEUR,
+        "godot/client.gd": CLIENT, "graphe.toml": EXTENSION_GRID_ZERO,
+        "tools/graphe_grid_zero.py": (GRID_ZERO / "tools" / "graphe_grid_zero.py").read_text(encoding="utf-8"),
+    }, suivi="simulation")
+    r = _graphe(hote, "construire", env=_sans_godot())
+    assert r.returncode == 0, r.stderr
+    donnees = json.loads((hote / "graphe" / "graphe.json").read_bytes())
+    liens = {(e["source"], e["target"]): e["relations"] for e in donnees["liens"]}
+    s, m, cmd = "simulation_server_", "simulation_moteur_moteur_", "simulation_server_cmd_"
+    assert liens[(f"{s}handle_command", f"{cmd}pas")] == ["dispatches"]
+    assert "calls" in liens[(f"{cmd}pas", f"{m}pas")]  # la commande porte les appels de sa branche
+    assert (f"{s}handle_command", f"{m}pas") not in liens
+    # une branche a deux commandes : la premiere la porte, l'autre y mene
+    assert "calls" in liens[(f"{cmd}liste", f"{m}fabrique")]
+    assert liens[(f"{cmd}relister", f"{cmd}liste")] == ["dispatches"]
+    # une commande sans branche a elle a quand meme son noeud
+    assert f"{cmd}rien" in {n["id"] for n in donnees["noeuds"]}
+    assert liens[("godot_client_envoyer", f"{cmd}pas")] == ["sends"]
+    r = _graphe(hote, "verifier", env=_sans_godot())
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "godot/client.gd:6 invente (ordre inconnu du serveur)" in r.stdout
+    assert "en_commentaire" not in r.stdout

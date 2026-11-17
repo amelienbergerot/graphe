@@ -9,8 +9,6 @@ Ce que l'extraction lit, par motifs et non par une grammaire :
 - une variable typee par X ou faite par `X.new()` : ses appels vont a X ;
 - `X.f(...)`, `f(...)`, `self.f(...)` ; une fonction passee en valeur (un
   gestionnaire de signal) ; `call_deferred("f")` ;
-- `{"cmd": "..."}` : un ordre au serveur, relie au noeud de sa commande
-  (graphe_python.id_de_commande : la branche de handle_command qui la traite).
 
 `graphe verifier` recompte les appels avec un autre lecteur (le tokenize de
 Python, `contribuer`) et classe chacun : notre code, le moteur (d'apres l'API que Godot
@@ -36,7 +34,6 @@ from graphe_racine import RACINE, SORTIE
 
 # shortcut: res:// part de godot/, comme chez Grid Zero ; un .gd ailleurs casse - chercher project.godot au besoin.
 GODOT = RACINE / "godot"
-PREFIXE_COMMANDE = "simulation_server_cmd_"  # graphe_python.id_de_commande
 
 MOTS_CLES = {"if", "elif", "while", "for", "match", "return", "and", "or", "not", "in", "is", "as", "func",
              "await", "var", "const", "signal", "static", "class", "extends", "breakpoint", "pass", "else"}
@@ -45,8 +42,6 @@ DU_LANGAGE = {"preload", "load", "assert", "char", "len", "range", "print_debug"
               "inst_to_dict", "dict_to_inst", "is_instance_of", "type_exists", "convert", "Color8", "ord",
               "super", "_init"}
 APPELS_PAR_NOM = re.compile(r"""\b(?:call_deferred|callv?|has_method|Callable\(\s*self\s*,)\s*\(?\s*"(\w+)\"""")
-ORDRE = re.compile(r'"cmd"\s*:\s*"(\w+)"')
-ORDRE_INCONNU = "ordre inconnu du serveur"
 
 
 def scripts() -> list[Path]:
@@ -172,11 +167,9 @@ class Extraction:
                 self.par_nom[nom].append(s)
         # Sans GDScript, pas de Godot a lancer.
         self.moteur_methodes, self.moteur_noms = _api_du_moteur(api) if self.scripts else (set(), set())
-        self.commandes = _commandes_du_serveur()
         self.noeuds: list[dict] = []
         self.liens: list[dict] = []
         self.sites: list[dict] = []
-        self.ordres_inconnus: list[tuple[str, int, str]] = []
         for s in self.scripts.values():
             self._noeuds(s)
         for s in self.scripts.values():
@@ -256,14 +249,6 @@ class Extraction:
             if s.masque[m.start()] == s.texte[m.start()] and m.group(1) in s.fonctions:
                 ligne = s.ligne_de(m.start())
                 self._lien(s, self._contexte(s, ligne), f"{s.id}_{m.group(1).lower()}", "indirect_call", ligne)
-        for m in ORDRE.finditer(s.texte):
-            if s.masque[m.start()] != '"':
-                continue
-            ligne = s.ligne_de(m.start())
-            if m.group(1) not in self.commandes:
-                self.ordres_inconnus.append((_rel(s.chemin), ligne, m.group(1)))
-            self._lien(s, self._contexte(s, ligne), PREFIXE_COMMANDE + m.group(1).lower(), "sends", ligne,
-                       contexte=m.group(1))
 
     def _resoudre(self, s: Script, nom: str, recepteur: str, ligne: int, apres: int) -> dict:
         source = self._contexte(s, ligne)
@@ -340,15 +325,6 @@ def _api_du_moteur(api: dict | None) -> tuple[set[str], set[str]]:
     return methodes, noms
 
 
-def _commandes_du_serveur() -> set[str]:
-    serveur = RACINE / "simulation" / "server.py"
-    if not serveur.is_file():  # un autre hote que Grid Zero (son extension locale : T-0008)
-        return set()
-    texte = serveur.read_bytes().decode("utf-8")
-    bloc = re.search(r"COMMANDES = frozenset\(\{(.*?)\}\)", texte, re.S).group(1)
-    return set(re.findall(r'"(\w+)"', bloc))
-
-
 # ---------- verifier
 
 def _appels_par_tokenize(chemin: Path) -> Counter:
@@ -391,8 +367,6 @@ def contribuer(projet) -> dict:
         if s["verdict"] == "inconnu" and s["nom"] in extraction.par_nom:
             site["alerte"] = "non relie au nom d'une de nos fonctions"
         sites.append(site)
-    for fichier, ligne, ordre in extraction.ordres_inconnus:
-        sites.append({"fichier": fichier, "ligne": ligne, "nom": ordre, "texte": ordre, "alerte": ORDRE_INCONNU})
     if projet.verifier:
         lus = Counter((_rel(site["script"].chemin), site["ligne"], site["nom"]) for site in extraction.sites)
         recomptes = Counter()
@@ -402,6 +376,4 @@ def contribuer(projet) -> dict:
         # Un appel en trop n'a jamais fait echouer verifier : seuls les manques sont des alertes.
         for (fichier, ligne, nom), n in sorted((recomptes - lus).items()):
             sites += [{"fichier": fichier, "ligne": ligne, "nom": nom, "texte": nom, "alerte": "manque a la lecture"}] * n
-    # Un ordre au serveur garde son lien sans noeud de commande : il est compte pendant (comme avant T-0007).
-    return {"noeuds": extraction.noeuds, "sites": sites,
-            "liens": [e for e in extraction.liens if e["target"] in ids or e["relation"] == "sends"]}
+    return {"noeuds": extraction.noeuds, "sites": sites, "liens": [e for e in extraction.liens if e["target"] in ids]}
