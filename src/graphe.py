@@ -1,25 +1,30 @@
-"""Le graphe du code de Grid Zero : la simulation Python et le client Godot.
+"""Le graphe du code d'un projet hote : qui appelle quoi, qui cite quoi.
 
-    python tools/graphe.py construire [--calme]      graphe/ : graphe.json, RAPPORT.md, graphe.html
-    python tools/graphe.py verifier                  la couverture de chaque contribution
-    python tools/graphe.py chemin A B [--sans-sens]  le plus court chemin de A a B
-    python tools/graphe.py expliquer X [--tout] [--source]   ce que X appelle, ce qui l'appelle (et son code)
-    python tools/graphe.py appelants X [--profondeur N]
-    python tools/graphe.py chercher MOTIF            par le nom, puis les textes affiches et les commentaires
-    python tools/graphe.py installer [--retirer]     les crochets git qui le reconstruisent
+    graphe construire [--calme]      graphe/ : graphe.json, RAPPORT.md, graphe.html
+    graphe verifier                  la couverture de chaque contribution
+    graphe chemin A B [--sans-sens]  le plus court chemin de A a B
+    graphe expliquer X [--tout] [--source]   ce que X appelle, ce qui l'appelle (et son code)
+    graphe appelants X [--profondeur N]
+    graphe chercher MOTIF            par le nom, puis les textes affiches et les commentaires
+    graphe installer [--retirer]     les crochets git qui le reconstruisent
 
-Un noeud se designe par son id, par son nom (`set_storage_dispatch`,
-`ScenarioRunner.tick`), par `fichier::nom` (`scenario.py::tick`) ou, cote
-GDScript, par la constante qui precharge son script (`Progress.record`).
+Un noeud se designe par son id, par son nom (`aider`, `Classe.methode`),
+par `fichier::nom` (`outils.py::aider`) ou, cote GDScript, par la constante
+qui precharge son script (`Script.fonction`).
 
-Les lecteurs : tools/graphe_python.py (l'ast, les appels resolus par les
-types), tools/graphe_godot.py (le GDScript, par motifs) et
-tools/graphe_php.py (le service en ligne, ses fonctions et ses actions).
-tools/graphe_enrichir.py lit ensuite le texte : la fin de chaque fonction
-et de chaque classe, ses textes affiches, son commentaire, les variables de
-module et qui les lit, les cles de l'etat que le client lit, et les tickets
-(tickets/T-*.md) - qui les cite, ce qu'ils nomment. Les champs d'une classe
-sont des noeuds (le lecteur Python).
+Les lecteurs : graphe_python.py (l'ast, les appels resolus par les types),
+graphe_godot.py (le GDScript, par motifs) et graphe_php.py (ses fonctions et
+les actions d'un `switch ($action)`). Le coeur, graphe_enrichir.py, lit
+ensuite le texte : la fin de chaque fonction et de chaque classe, ses textes
+affiches (le motif `texte_affiche` de graphe.toml), son commentaire, les
+variables de module et qui les lit, et les tickets (tickets/T-*.md) - qui
+les cite, ce qu'ils nomment. Les champs d'une classe sont des noeuds (le
+lecteur Python).
+
+Les communautes (`[communautes]` de graphe.toml, T-0009) : `a_part` donne
+a des sortes hors du code leur propre communaute (sorte -> nom), apres les
+tickets et les valeurs ; `sans_prefixe` retire des prefixes du nom d'une
+communaute.
 
 Le contrat (T-0007, docs/contribution.md) : lecteurs et extensions locales
 rendent une contribution par `contribuer(projet)`. L'assemblage passe les
@@ -66,23 +71,28 @@ from graphe_racine import CONFIGURATION, RACINE, SORTIE
 
 JSON = SORTIE / "graphe.json"
 CROCHETS = ("post-commit", "post-merge", "post-checkout", "post-rewrite")
-DEBUT_BLOC = "# >>> graphe du code"  # l'ancien bloc, pose par tools/graphe.py, commence pareil
+DEBUT_BLOC = "# >>> graphe du code"  # l'ancien bloc, pose par le relais de l'hote, commence pareil
 FIN_BLOC = "# <<< graphe du code"
 # Ce qui fait passer de l'appelant a l'appele.
 APPELS = {"calls", "uses", "references", "indirect_call", "sends", "dispatches", "lit", "ecrit", "valeur"}
 # T-0354 : des noeuds qui ne sont pas du code, chacun leur communaute - un
 # ticket ou une valeur relie des fichiers que rien d'autre ne relie, et
-# fondrait des communautes sans rapport.
-A_PART = {"ticket": "tickets", "valeur": "valeurs", "conseil": "conseils", "iteration": "journal"}
+# fondrait des communautes sans rapport. L'hote en ajoute (`[communautes] a_part`).
+A_PART = {"ticket": "tickets", "valeur": "valeurs"}
 POIDS_HORS_CODE = 4
+
+
+def _communautes() -> tuple[dict[str, str], list[str]]:
+    """`[communautes]` de graphe.toml : les sortes a part (sorte -> nom), et les prefixes retires des noms."""
+    table = graphe_racine.configuration().get("communautes", {})
+    return {**A_PART, **table.get("a_part", {})}, table.get("sans_prefixe", [])
 
 
 # ---------- construire
 
 def _sources() -> list[Path]:
-    return [p for p in graphe_python.fichiers() + graphe_godot.scripts() + graphe_php.fichiers()
-            + sorted((RACINE / "tickets").glob("T-*.md")) + sorted((RACINE / "scenarios").glob("*/scenario.toml"))
-            + [RACINE / "docs" / "moonshot" / "journal.md", RACINE / CONFIGURATION]
+    """T-0009 : tous les fichiers de l'hote, pas seulement ceux des lecteurs (une extension lit ce qu'elle veut)."""
+    return [p for p in graphe_racine.fichiers("") + [RACINE / CONFIGURATION]
             + [RACINE / e.get("chemin", "") for e in _extensions_declarees()] if p.is_file()]
 
 
@@ -221,6 +231,8 @@ def assembler(verifier: bool = False) -> tuple[nx.DiGraph, dict, list[dict], dic
             raise RuntimeError(f"{apport[0]} : des reprises sans avec_les_lecteurs = true ({CONFIGURATION})")
         _inserer(graphe, [apport], pendants)
         apports.append(apport)
+    # shortcut: un fichier declare deux fois qui rend des sites deux fois ne garde que les derniers ; a fusionner
+    # si une extension en a besoin des deux cotes.
     sites = {qui: c["sites"] for qui, c in apports if "sites" in c}
     couverture = {qui: dict(Counter(s["verdict"] for s in liste if "verdict" in s).most_common())
                   for qui, liste in sites.items()}
@@ -244,8 +256,9 @@ def _trie(graphe: nx.DiGraph) -> nx.DiGraph:
 
 
 def communautes(graphe: nx.DiGraph) -> tuple[dict[str, int], dict[int, str]]:
+    a_part, prefixes = _communautes()
     non_oriente = nx.Graph()
-    non_oriente.add_nodes_from(n for n in graphe.nodes if graphe.nodes[n]["sorte"] not in A_PART)
+    non_oriente.add_nodes_from(n for n in graphe.nodes if graphe.nodes[n]["sorte"] not in a_part)
     for s, c, d in graphe.edges(data=True):
         if s != c and s in non_oriente and c in non_oriente:
             poids = non_oriente[s][c]["poids"] if non_oriente.has_edge(s, c) else 0
@@ -258,22 +271,22 @@ def communautes(graphe: nx.DiGraph) -> tuple[dict[str, int], dict[int, str]]:
             de[n] = i
         fichiers = Counter(graphe.nodes[n]["source_file"] for n in sorted(groupe))  # egalites : par l'id
         (premier, nombre), *suite = fichiers.most_common(2)
-        nom = _court(premier)
+        nom = _court(premier, prefixes)
         if suite and suite[0][1] * 3 >= nombre:
-            nom += " + " + _court(suite[0][0])
+            nom += " + " + _court(suite[0][0], prefixes)
         vus[nom] += 1
         noms[i] = nom if vus[nom] == 1 else f"{nom} ({vus[nom]})"
-    for sorte, nom in A_PART.items():
-        a_part = [n for n, d in graphe.nodes(data=True) if d["sorte"] == sorte]
-        if a_part:
+    for sorte, nom in a_part.items():
+        membres = [n for n, d in graphe.nodes(data=True) if d["sorte"] == sorte]
+        if membres:
             i = len(noms)
             noms[i] = nom
-            de.update(dict.fromkeys(a_part, i))
+            de.update(dict.fromkeys(membres, i))
     return de, noms
 
 
-def _court(fichier: str) -> str:
-    for prefixe in ("simulation/", "godot/"):
+def _court(fichier: str, prefixes: list[str]) -> str:
+    for prefixe in prefixes:
         fichier = fichier.removeprefix(prefixe)
     return fichier.rsplit(".", 1)[0]
 
@@ -358,14 +371,14 @@ def rapport(graphe: nx.DiGraph, donnees: dict, de: dict, noms: dict) -> str:
     lignes = [
         "# Le graphe du code", "",
         f"Construit le {donnees['construit']} (commit {donnees['commit']}, arbre de travail compris) "
-        "par `python tools/graphe.py construire`.", "",
+        "par `graphe construire`.", "",
         f"- {graphe.number_of_nodes()} nœuds : " + ", ".join(f"{n} {s}" for s, n in sortes.most_common()),
         f"- {graphe.number_of_edges()} liens, {len(noms)} communautés, {c['pendants']} lien(s) pendant(s)",
         f"- Appels Python classés : {c['python']}",
         f"- Appels GDScript classés : {c['godot']}",
         "", "`notre` : relié à coup sûr ; `notre?` : relié par le nom seul (INFERRED) ; `ambigu` : un nom que "
         "portent plusieurs de nos fonctions, sur un récepteur non typé - non relié ; `externe`, `moteur` : "
-        "hors du dépôt. Le détail : `python tools/graphe.py verifier`.", "",
+        "hors du dépôt. Le détail : `graphe verifier`.", "",
         "## Les plus reliés", "",
     ]
     def reels(liens) -> int:  # sans la contenance (fichier, classe -> fonction)
@@ -377,15 +390,15 @@ def rapport(graphe: nx.DiGraph, donnees: dict, de: dict, noms: dict) -> str:
     for n in centraux:
         lignes.append(f"- `{graphe.nodes[n]['label']}` - {entrants[n]} entrants, "
                       f"{sortants[n]} sortants ({_lieu(graphe, n)})")
-    lignes += ["", "## Du client au serveur", "",
-               "Chaque ordre du client relié à la branche de `handle_command` qui le traite.", ""]
     commandes = sorted(n for n in graphe.nodes if graphe.nodes[n]["sorte"] == "commande")
+    if commandes:
+        lignes += ["", "## Les commandes", "", "Chaque commande : qui l'envoie, ce qu'elle appelle.", ""]
     for n in commandes:
         envoyeurs = sorted({graphe.nodes[s]["label"] for s in graphe.predecessors(n)
                             if "sends" in graphe[s][n]["relations"]})
         appeles = sorted({graphe.nodes[x]["label"] for x in graphe.successors(n)})
-        lignes.append(f"- `{graphe.nodes[n]['nom'].removeprefix('cmd:')}` : envoyé par "
-                      f"{', '.join(envoyeurs) or 'aucun script du client'} ; appelle "
+        lignes.append(f"- `{graphe.nodes[n]['label']}` : envoyé par "
+                      f"{', '.join(envoyeurs) or 'personne'} ; appelle "
                       f"{', '.join(appeles[:8]) or '-'}{' …' if len(appeles) > 8 else ''}")
     imports = nx.DiGraph()
     for s, cible, d in graphe.edges(data=True):
@@ -411,8 +424,7 @@ def rapport(graphe: nx.DiGraph, donnees: dict, de: dict, noms: dict) -> str:
                "## Ce que le graphe ne voit pas", "",
                "- les appels dynamiques : `getattr`, un rappel rangé dans une variable, un récepteur que rien "
                "ne type (les `ambigu`) ;",
-               "- les tests, build/, web/, les scénarios .toml, les shaders, la documentation ;",
-               "- le JavaScript de tools/ (drift_references.mjs).", ""]
+               "- les fichiers qu'aucun lecteur ne prend, et ceux que `exclure` retire (graphe.toml).", ""]
     return "\n".join(lignes)
 
 
@@ -532,12 +544,12 @@ def _nu(label: str) -> str:
 
 def _prechargements(racine: Path = RACINE) -> dict[str, set[str]]:
     """Les constantes qui prechargent un script GDScript, et ce script :
-    `const Progress = preload("res://settings/progress.gd")` -> godot/settings/progress.gd."""
+    `const Outils = preload("res://menu/outils.gd")` -> godot/menu/outils.gd (graphe_godot.GODOT)."""
     motif = re.compile(r'^const\s+(\w+)\s*=\s*preload\("res://([^"]+\.gd)"\)', re.M)
     alias: dict[str, set[str]] = defaultdict(set)
     for chemin in graphe_godot.scripts():
         for nom, cible in motif.findall(chemin.read_bytes().decode("utf-8", "replace")):
-            alias[nom].add("godot/" + cible)
+            alias[nom].add(graphe_godot.res(cible))
     return alias
 
 
@@ -552,7 +564,7 @@ def trouver(graphe: nx.DiGraph, texte: str) -> list[str]:
         if nom in (d["nom"], _nu(d["label"]), d["label"]) or d["nom"].endswith("." + nom):
             trouves.append(n)
     if not trouves and not fichier and "." in nom:
-        # `Progress.record` : Progress precharge godot/settings/progress.gd.
+        # `Outils.aider` : Outils precharge godot/menu/outils.gd.
         tete, _, membre = nom.partition(".")
         scripts = _prechargements().get(tete, set())
         trouves = [n for n, d in graphe.nodes(data=True)
@@ -565,7 +577,7 @@ def _un(graphe: nx.DiGraph, texte: str) -> str | None:
     if len(trouves) == 1:
         return trouves[0]
     if not trouves:
-        print(f"aucun noeud pour {texte!r} - essayer : python tools/graphe.py chercher {texte}")
+        print(f"aucun noeud pour {texte!r} - essayer : graphe chercher {texte}")
     else:
         print(f"{texte!r} designe {len(trouves)} noeuds ; preciser par l'id ou par fichier::nom :")
         for n in trouves:
@@ -582,11 +594,12 @@ def chemin(graphe: nx.DiGraph, a: str, b: str, sans_sens: bool) -> int:
     if source is None or cible is None:
         return 2
     vu = graphe.to_undirected(as_view=True) if sans_sens else graphe
+    a_part, _ = _communautes()
 
     def poids(x: str, y: str, _d: dict) -> int:
         # T-0354 : sans le sens, une valeur ou un ticket relie tout ce qui
         # l'ecrit ; il ne sert que faute de chemin par le code.
-        hors_code = graphe.nodes[x]["sorte"] in A_PART or graphe.nodes[y]["sorte"] in A_PART
+        hors_code = graphe.nodes[x]["sorte"] in a_part or graphe.nodes[y]["sorte"] in a_part
         return POIDS_HORS_CODE if sans_sens and hors_code else 1
 
     try:

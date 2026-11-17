@@ -1,16 +1,14 @@
-"""Le PHP du site (web/, T-0359 : tout l'arbre) dans le graphe du code.
+"""Le PHP de l'hote dans le graphe du code.
 
 Un lecteur sommaire, par motifs, comme celui du GDScript :
-- un noeud par fichier, un par fonction (`function gz_x(`) ;
+- un noeud par fichier, un par fonction (`function lire(`) ;
 - dans un point d'entree a actions (`switch ($action)`), un noeud par
-  `case 'x':` - sorte « action », comme les commandes du serveur du jeu ;
-  deux `case` a la suite partagent un corps : le premier mene au second, qui
-  le porte ;
+  `case 'x':` - sorte « action » ; deux `case` a la suite partagent un
+  corps : le premier mene au second, qui le porte ;
 - les appels entre nos fonctions, par leur nom.
 
-Les envois du client vers ces actions (`{"action": "liste"}`) sont relies
-par tools/graphe_enrichir.py, qui lit le corps des fonctions GDScript.
-`tests.php` reste dehors, par le graphe.toml de Grid Zero (T-0004).
+Ce qui envoie a ces actions, depuis un autre langage, revient a une
+extension locale de l'hote (T-0009).
 """
 
 from __future__ import annotations

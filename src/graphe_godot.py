@@ -1,7 +1,7 @@
 """Le graphe du code, cote client : les scripts GDScript de l'hote (res:// : godot/).
 
 Chaque script .gd de l'hote devient des noeuds et des liens, que
-tools/graphe.py fond avec ceux du Python (tools/graphe_python.py).
+graphe.py fond avec ceux des autres lecteurs.
 
 Ce que l'extraction lit, par motifs et non par une grammaire :
 - un fichier, ses fonctions (`func`), ses signaux ;
@@ -32,7 +32,8 @@ from pathlib import Path
 import graphe_racine
 from graphe_racine import RACINE, SORTIE
 
-# shortcut: res:// part de godot/, comme chez Grid Zero ; un .gd ailleurs casse - chercher project.godot au besoin.
+# shortcut: res:// part de godot/, comme chez le premier hote ; un .gd ailleurs casse - chercher project.godot au
+# besoin.
 GODOT = RACINE / "godot"
 
 MOTS_CLES = {"if", "elif", "while", "for", "match", "return", "and", "or", "not", "in", "is", "as", "func",
@@ -54,6 +55,11 @@ def _id(chemin: Path) -> str:
 
 def _rel(chemin: Path) -> str:
     return chemin.relative_to(RACINE).as_posix()
+
+
+def res(cible: str) -> str:
+    """Le fichier de l'hote derriere `res://cible` (`menu/outils.gd` -> `godot/menu/outils.gd`)."""
+    return _rel(GODOT / cible)
 
 
 def masquer(texte: str) -> tuple[str, list[tuple[int, str]]]:

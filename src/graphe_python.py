@@ -227,7 +227,7 @@ class Lecture:
             if isinstance(noeud, (ast.Import, ast.ImportFrom)):
                 for local, imp in self._entrees_d_import(f.module, noeud).items():
                     f.locaux[local].append((imp, "import", f, (noeud.lineno, None)))
-                    if local in globaux:  # le chargement differe de server.py
+                    if local in globaux:  # un module charge plus tard, par `global` dans une fonction
                         f.module.imports[local] = imp
             elif isinstance(noeud, (ast.Assign, ast.AnnAssign)):
                 lieu = (noeud.lineno, None)
@@ -295,7 +295,9 @@ class Lecture:
     def _module(self, nom: str) -> Module | None:
         if nom in self.modules:
             return self.modules[nom]
-        return self.modules.get(f"tools.{nom}")  # les outils s'importent entre eux depuis tools/
+        # shortcut: les scripts de tools/ s'importent entre eux sans paquet, comme chez le premier hote ; une cle
+        # de graphe.toml (des racines d'import) si un autre hote range ses modules autrement.
+        return self.modules.get(f"tools.{nom}")
 
     def _du_module(self, m: Module, nom: str):
         if nom in m.fonctions:
@@ -748,7 +750,7 @@ class Lecture:
         return id_ + "_champ" if nom in c.methodes or nom in self.noms_de_classes else id_
 
     def _champ(self, n: ast.Attribute, qui: str, f: Fonction | None, m: Module, relation: str) -> None:
-        """`etat.demand_mw` : lire ou ecrire le champ d'une de nos classes,
+        """`etat.demande` : lire ou ecrire le champ d'une de nos classes,
         quand le type du recepteur est connu - le premier porteur dans l'ordre
         des bases."""
         recepteur = self.type_de(n.value, f, m)

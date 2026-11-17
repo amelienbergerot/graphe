@@ -1,7 +1,7 @@
 """La racine du projet hote (T-0003) et ses fichiers (T-0004).
 
 La racine : GRAPHE_RACINE, sinon le depot git du repertoire courant, sinon ce
-repertoire. GRAPHE_RACINE sert au test de reference de Grid Zero (son arbre
+repertoire. GRAPHE_RACINE sert au test de reference d'un hote (son arbre
 fige), et aux tests de l'outil.
 
 Les fichiers : ceux que git suit, plus les non suivis non ignores, moins ceux
@@ -11,6 +11,10 @@ lecteur de son extension ; un fichier qu'aucun lecteur ne prend est ignore.
 Un programme externe qu'un lecteur lance (T-0005) : la cle `executable` de la
 section du lecteur (`[godot]`), relative a la racine ; sinon le PATH ; sinon
 rien, avec un avertissement qui nomme la cle.
+
+Les autres cles de graphe.toml (T-0009) : `texte_affiche`, le motif de
+l'appel qui affiche un texte (graphe_enrichir) ; `[communautes]`, `a_part` et
+`sans_prefixe` (graphe.py) ; `[[extensions]]` (docs/contribution.md).
 """
 
 from __future__ import annotations

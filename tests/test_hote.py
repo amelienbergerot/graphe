@@ -278,3 +278,80 @@ def test_l_extension_de_grid_zero_relie_les_commandes_et_signale_un_ordre_inconn
     assert r.returncode == 1, r.stdout + r.stderr
     assert "godot/client.gd:6 invente (ordre inconnu du serveur)" in r.stdout
     assert "en_commentaire" not in r.stdout
+
+
+# T-0009 : le motif de l'appel qui affiche un texte vient de l'hote ; `chercher` trouve ses textes.
+AFFICHEUR = 'def accueillir():\n    return dire("Bienvenue au port")\n'
+
+
+def test_un_hote_avec_son_motif_de_texte_affiche_trouve_ses_textes(tmp_path: Path):
+    hote = _hote(tmp_path, {"outils.py": AFFICHEUR})
+    r = _graphe(hote, "chercher", "bienvenue")
+    assert r.returncode == 1, r.stdout  # sans motif, pas de texte affiche
+    (hote / "graphe.toml").write_text(r"""texte_affiche = '\bdire\("([^"]*)"'""", encoding="utf-8")
+    r = _graphe(hote, "chercher", "bienvenue")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "outils_accueillir" in r.stdout and "affiche « Bienvenue au port »" in r.stdout
+
+
+def test_un_motif_de_texte_sans_groupe_arrete_la_construction(tmp_path: Path):
+    hote = _hote(tmp_path, {"outils.py": AFFICHEUR, "graphe.toml": "texte_affiche = 'dire'\n"})
+    r = _graphe(hote, "construire")
+    assert r.returncode == 1 and "texte_affiche" in r.stderr and "Traceback" not in r.stderr, r.stderr
+
+
+# T-0009 : l'etat, les actions, les conseils et le journal de Grid Zero, par son extension apres le coeur.
+ETAT = '''from dataclasses import dataclass
+
+
+@dataclass
+class EtatDeJeu:
+    raison_du_jour: str = ""
+
+
+def construire(x) -> EtatDeJeu:
+    return EtatDeJeu(raison_du_jour=x)
+'''
+LECTURE = 'func texte(state: Dictionary) -> String:\n\tif state.get("raison_du_jour"):\n' \
+          '\t\t_poster({"action": "liste"})\n\treturn I18n.t("le réglage tient, sans rien")\n\n\n' \
+          'func _poster(m):\n\tpass\n'
+PHP_ACTIONS = "<?php\nswitch ($action) {\n    case 'liste':\n        break;\n}\n"
+GRID_ZERO_TOML = r'''texte_affiche = '\bI18n\.tn?\(\s*"((?:[^"\\]|\\.)*)"'
+
+[communautes]
+a_part = { conseil = "conseils", iteration = "journal" }
+
+[[extensions]]
+chemin = "tools/graphe_grid_zero.py"
+avec_les_lecteurs = true
+
+[[extensions]]
+chemin = "tools/graphe_grid_zero.py"
+'''
+
+
+@grid_zero
+def test_l_extension_de_grid_zero_relie_l_etat_les_actions_les_conseils_et_le_journal(tmp_path: Path):
+    hote = _hote(tmp_path, {
+        "simulation/game/etat_de_jeu.py": ETAT, "godot/lecture.gd": LECTURE, "web/api.php": PHP_ACTIONS,
+        "scenarios/lecon/scenario.toml": "[[hints]]\ntick = 4\ntext = \"Quand la fréquence dit « le réglage "
+                                         "tient … », attendez.\"\n",
+        "tickets/T-0998-essai.md": "---\nid: T-0998\ntitle: Essai\n---\n",
+        "tickets/T-0999-essai.md": "---\nid: T-0999\ntitle: Essai\n---\n",
+        "docs/moonshot/journal.md": "# Journal\n\n## Itération 7 - un essai (T-0998 à T-0999, 2026-11-05)\n",
+        "graphe.toml": GRID_ZERO_TOML,
+        "tools/graphe_grid_zero.py": (GRID_ZERO / "tools" / "graphe_grid_zero.py").read_text(encoding="utf-8"),
+    }, suivi="simulation")
+    r = _graphe(hote, "construire", env=_sans_godot())
+    assert r.returncode == 0, r.stderr
+    donnees = json.loads((hote / "graphe" / "graphe.json").read_bytes())
+    liens = {(e["source"], e["target"]): e["relations"] for e in donnees["liens"]}
+    f, champ = "simulation_game_etat_de_jeu_", "simulation_game_etat_de_jeu_etatdejeu_raison_du_jour"
+    assert "ecrit" in liens[(f"{f}construire", champ)]  # par mot-cle, au constructeur de l'etat
+    assert "lit" in liens[("godot_lecture_texte", champ)]  # par sa cle
+    assert liens[("godot_lecture_texte", "web_api_action_liste")] == ["sends"]
+    assert "cite" in liens[("conseil_lecon_0", "godot_lecture_texte")]
+    assert {c for s, c in liens if s == "iteration_7"} == {"ticket_t_0998", "ticket_t_0999"}
+    noms, de = donnees["communautes"], {n["id"]: n["communaute"] for n in donnees["noeuds"]}
+    assert noms[str(de["iteration_7"])] == "journal" and noms[str(de["conseil_lecon_0"])] == "conseils"
+    assert set(donnees["couverture"]) == {"python", "godot", "pendants"}  # pas de serveur : pas de sites

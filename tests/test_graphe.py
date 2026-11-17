@@ -223,8 +223,10 @@ def test_enrichir_relie_les_variables_et_trouve_par_le_texte(tmp_path: Path):
         def avancer():
             global compte
             compte += LIMITE
-            return I18n.t("Réseau stable")
+            return tr("Réseau stable")
     ''').encode("utf-8"))
+    # T-0009 : le motif de l'appel qui affiche un texte vient de l'hote.
+    (tmp_path / "graphe.toml").write_text("texte_affiche = '\\btr\\(\"([^\"]*)\"'\n", encoding="utf-8")
     lu = graphe_python.Lecture([chemin], racine=tmp_path)
     g = nx.DiGraph()
     for n in lu.noeuds:
@@ -239,62 +241,38 @@ def test_enrichir_relie_les_variables_et_trouve_par_le_texte(tmp_path: Path):
     assert [n for n, _ in graphe.recherche(g, "def avancer")] == [f"{f}avancer"]
 
 
-def test_valeurs_mots_cles_conseils_et_journal(tmp_path: Path):
-    """T-0354 : une valeur ecrite des deux cotes, un champ passe au
-    constructeur, un conseil qui cite un texte de l'ecran, une iteration du
-    journal et ses tickets."""
+def test_une_valeur_ecrite_des_deux_cotes(tmp_path: Path):
+    """T-0354 : une valeur ecrite en Python et en GDScript devient un noeud, dans sa communaute."""
     import networkx as nx
 
     import graphe_enrichir
-    for d in ("simulation/game", "godot", "tickets", "scenarios/lecon", "docs/moonshot"):
+    for d in ("serveur", "godot"):
         (tmp_path / d).mkdir(parents=True)
-    (tmp_path / "simulation" / "game" / "etat_de_jeu.py").write_bytes(textwrap.dedent('''\
-        from dataclasses import dataclass
-
-
-        @dataclass
-        class EtatDeJeu:
-            raison_du_jour: str = ""
-
-
-        def construire(x) -> EtatDeJeu:
+    (tmp_path / "serveur" / "etat.py").write_bytes(textwrap.dedent('''\
+        def construire(x):
             if x:
-                return EtatDeJeu(raison_du_jour="coupee")
-            raison_du_jour = "voisin"
-            return raison_du_jour
+                return {"raison": "coupee"}
+            raison = "voisin"
+            return raison
     ''').encode("utf-8"))
     (tmp_path / "godot" / "lecture.gd").write_bytes(textwrap.dedent('''\
         func texte(raison: String) -> String:
         \tif raison == "coupee":
-        \t\treturn I18n.t("le réglage tient, sans rien")
+        \t\treturn "ok"
         \treturn ""
     ''').encode("utf-8"))
-    (tmp_path / "scenarios" / "lecon" / "scenario.toml").write_bytes(
-        "[[hints]]\ntick = 4\ntext = \"Quand la fréquence dit « le réglage tient … », attendez.\"\n".encode())
-    for numero in ("0998", "0999"):
-        (tmp_path / "tickets" / f"T-{numero}-essai.md").write_bytes(
-            f"---\nid: T-{numero}\ntitle: Essai\n---\n".encode())
-    (tmp_path / "docs" / "moonshot" / "journal.md").write_bytes(
-        "# Journal\n\n## Itération 7 - un essai (T-0998 à T-0999, 2026-11-05)\n\nRien.\n".encode())
-    lu = graphe_python.Lecture(sorted((tmp_path / "simulation").rglob("*.py")), racine=tmp_path)
+    lu = graphe_python.Lecture(sorted((tmp_path / "serveur").rglob("*.py")), racine=tmp_path)
     g = nx.DiGraph()
     for n in lu.noeuds:
         g.add_node(n["id"], **n)
-    for e in lu.liens:
-        g.add_edge(e["source"], e["target"], relations={e["relation"]}, confiance=e["confidence"],
-                   lieux=[e["source_file"]], contextes=[])
     g.add_node("godot_lecture_texte", id="godot_lecture_texte", label="texte()", sorte="fonction",
                source_file="godot/lecture.gd", source_location="L1", nom="texte")
     graphe_enrichir.enrichir(g, tmp_path)
-    f = "simulation_game_etat_de_jeu_"
-    assert {s for s, _ in g.in_edges("valeur_coupee")} == {f"{f}construire", "godot_lecture_texte"}
+    assert {s for s, _ in g.in_edges("valeur_coupee")} == {"serveur_etat_construire", "godot_lecture_texte"}
     assert "valeur_voisin" not in g  # ecrite d'un seul cote
-    assert "ecrit" in g[f"{f}construire"][f"{f}etatdejeu_raison_du_jour"]["relations"]
-    assert "cite" in g["conseil_lecon_0"]["godot_lecture_texte"]["relations"]
-    assert {c for _, c in g.out_edges("iteration_7")} == {"ticket_t_0998", "ticket_t_0999"}
     assert [n for n, _ in graphe.recherche(g, "coupee")] == ["valeur_coupee"]
     de, noms = graphe.communautes(g)
-    assert noms[de["valeur_coupee"]] == "valeurs" and noms[de["iteration_7"]] == "journal"
+    assert noms[de["valeur_coupee"]] == "valeurs"
 
 
 def test_champs_alias_d_import_et_tickets(tmp_path: Path):
