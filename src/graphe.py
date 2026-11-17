@@ -19,13 +19,16 @@ tools/graphe_enrichir.py lit ensuite le texte : la fin de chaque fonction
 et de chaque classe, ses textes affiches, son commentaire, les variables de
 module et qui les lit, les cles de l'etat que le client lit, et les tickets
 (tickets/T-*.md) - qui les cite, ce qu'ils nomment. Les champs d'une classe
-sont des noeuds (le lecteur Python). Les tests et build/ sont laisses
-dehors.
+sont des noeuds (le lecteur Python).
+
+Les fichiers lus (T-0004, graphe_racine.py) : ceux que git suit, plus les
+non suivis non ignores, chacun au lecteur de son extension ; `exclure`, dans
+un graphe.toml facultatif a la racine de l'hote, en retire des dossiers.
 
 La mise a jour : `installer` pose des crochets git (post-commit, post-merge,
 post-checkout, post-rewrite) qui reconstruisent le graphe en arriere-plan ;
 et une requete sur un graphe plus ancien que le code le reconstruit
-d'abord. Le graphe lit l'arbre de travail : les fichiers non suivis y sont.
+d'abord.
 """
 
 from __future__ import annotations
@@ -47,9 +50,8 @@ import graphe_enrichir
 import graphe_godot
 import graphe_php
 import graphe_python
-from graphe_racine import RACINE
+from graphe_racine import CONFIGURATION, RACINE, SORTIE
 
-SORTIE = RACINE / "graphe"
 JSON = SORTIE / "graphe.json"
 CROCHETS = ("post-commit", "post-merge", "post-checkout", "post-rewrite")
 DEBUT_BLOC = "# >>> graphe du code (python tools/graphe.py installer)"
@@ -66,9 +68,9 @@ POIDS_HORS_CODE = 4
 # ---------- construire
 
 def _sources() -> list[Path]:
-    return (graphe_python.fichiers() + graphe_godot.scripts() + graphe_php.fichiers()
+    return [p for p in graphe_python.fichiers() + graphe_godot.scripts() + graphe_php.fichiers()
             + sorted((RACINE / "tickets").glob("T-*.md")) + sorted((RACINE / "scenarios").glob("*/scenario.toml"))
-            + [RACINE / "docs" / "moonshot" / "journal.md"])
+            + [RACINE / "docs" / "moonshot" / "journal.md", RACINE / CONFIGURATION] if p.is_file()]
 
 
 def _commit() -> str | None:
@@ -402,7 +404,7 @@ const ancre=()=>{const n=N.find(n=>n.id===decodeURIComponent(location.hash.slice
 
 def charger(tel_quel: bool = False) -> nx.DiGraph:
     """Le graphe ; reconstruit d'abord s'il est plus ancien que le code."""
-    if not JSON.exists() or (not tel_quel and max(p.stat().st_mtime for p in _sources()) > JSON.stat().st_mtime):
+    if not JSON.exists() or (not tel_quel and max((p.stat().st_mtime for p in _sources()), default=0) > JSON.stat().st_mtime):
         print("(le graphe est plus ancien que le code : reconstruction)", file=sys.stderr)
         construire(calme=True)
     donnees = json.loads(JSON.read_bytes())

@@ -10,7 +10,7 @@ Un lecteur sommaire, par motifs, comme celui du GDScript :
 
 Les envois du client vers ces actions (`{"action": "liste"}`) sont relies
 par tools/graphe_enrichir.py, qui lit le corps des fonctions GDScript.
-`tests.php` reste dehors, comme les tests ailleurs.
+`tests.php` reste dehors, par le graphe.toml de Grid Zero (T-0004).
 """
 
 from __future__ import annotations
@@ -19,9 +19,8 @@ import re
 from pathlib import Path
 
 from graphe_enrichir import etendue, lignes_sans_commentaires
+import graphe_racine
 from graphe_racine import RACINE
-
-DEHORS = {"tests.php"}
 
 FONCTION = re.compile(r"^function\s+(\w+)\s*\(")
 ACTION = re.compile(r"^\s*case\s+'(\w+)'\s*:\s*$")
@@ -29,7 +28,7 @@ APPEL = re.compile(r"\b(\w+)\s*\(")
 
 
 def fichiers(racine: Path = RACINE) -> list[Path]:
-    return sorted(p for p in (racine / "web").rglob("*.php") if p.name not in DEHORS)
+    return graphe_racine.fichiers(".php", racine)
 
 
 def _id(chemin: Path, racine: Path) -> str:

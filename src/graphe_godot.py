@@ -1,6 +1,6 @@
-"""Le graphe du code, cote client : les scripts GDScript de godot/.
+"""Le graphe du code, cote client : les scripts GDScript de l'hote (res:// : godot/).
 
-Chaque script .gd (hors godot/tests) devient des noeuds et des liens, que
+Chaque script .gd de l'hote devient des noeuds et des liens, que
 tools/graphe.py fond avec ceux du Python (tools/graphe_python.py).
 
     python tools/graphe_godot.py verifier     ce que l'extraction couvre des appels du client
@@ -33,10 +33,11 @@ import tokenize
 from collections import Counter, defaultdict
 from pathlib import Path
 
-from graphe_racine import RACINE
+import graphe_racine
+from graphe_racine import RACINE, SORTIE
 
+# shortcut: res:// part de godot/, comme chez Grid Zero ; un .gd ailleurs casse - chercher project.godot au besoin.
 GODOT = RACINE / "godot"
-SORTIE = RACINE / "graphe"
 GODOT_EXE = GODOT / "Godot_v4.7.2-stable_win64_console.exe"
 PREFIXE_COMMANDE = "simulation_server_cmd_"  # graphe_python.id_de_commande
 
@@ -51,8 +52,7 @@ ORDRE = re.compile(r'"cmd"\s*:\s*"(\w+)"')
 
 
 def scripts() -> list[Path]:
-    return sorted(p for p in GODOT.rglob("*.gd")
-                  if not {"tests", ".godot", "addons"} & set(p.relative_to(GODOT).parts))
+    return graphe_racine.fichiers(".gd")
 
 
 def _id(chemin: Path) -> str:
@@ -171,7 +171,8 @@ class Extraction:
         for s in self.scripts.values():
             for nom in s.fonctions:
                 self.par_nom[nom].append(s)
-        self.moteur_methodes, self.moteur_noms = _api_du_moteur(api)
+        # Sans GDScript, pas de Godot a lancer (son chemin reglable : T-0005).
+        self.moteur_methodes, self.moteur_noms = _api_du_moteur(api) if self.scripts else (set(), set())
         self.commandes = _commandes_du_serveur()
         self.noeuds: list[dict] = []
         self.liens: list[dict] = []
@@ -335,7 +336,10 @@ def _api_du_moteur(api: dict | None) -> tuple[set[str], set[str]]:
 
 
 def _commandes_du_serveur() -> set[str]:
-    texte = (RACINE / "simulation" / "server.py").read_bytes().decode("utf-8")
+    serveur = RACINE / "simulation" / "server.py"
+    if not serveur.is_file():  # un autre hote que Grid Zero (son extension locale : T-0008)
+        return set()
+    texte = serveur.read_bytes().decode("utf-8")
     bloc = re.search(r"COMMANDES = frozenset\(\{(.*?)\}\)", texte, re.S).group(1)
     return set(re.findall(r'"(\w+)"', bloc))
 

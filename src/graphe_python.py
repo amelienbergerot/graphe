@@ -25,10 +25,9 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import graphe_racine
 from graphe_racine import RACINE
 
-DOSSIERS = ("simulation", "tools")
-DEHORS = {"tests", "__pycache__"}
 SERVEUR = "simulation/server.py"
 PREFIXE_COMMANDE = "simulation_server_cmd_"
 BUILTINS = set(dir(builtins))
@@ -38,8 +37,7 @@ VERS_CONTENEUR = {"values", "copy", "keys"}
 
 
 def fichiers() -> list[Path]:
-    return sorted(p for d in DOSSIERS for p in (RACINE / d).rglob("*.py")
-                  if not DEHORS & set(p.relative_to(RACINE).parts))
+    return graphe_racine.fichiers(".py")
 
 
 def _id(texte: str) -> str:
