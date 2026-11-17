@@ -166,19 +166,6 @@ def test_trouver_un_noeud_par_son_nom(lecture):
     assert graphe.trouver(g, "inexistant") == []
 
 
-def test_les_crochets_gardent_ce_qui_y_etait(tmp_path: Path):
-    deja = tmp_path / "post-commit"
-    deja.write_bytes(b"#!/bin/sh\necho avant\n")
-    graphe.installer(dossier=tmp_path)
-    graphe.installer(dossier=tmp_path)  # deux fois : un seul bloc
-    texte = deja.read_bytes().decode()
-    assert texte.count(graphe.DEBUT_BLOC) == 1 and "echo avant" in texte and "construire --calme" in texte
-    assert (tmp_path / "post-merge").exists()
-    graphe.installer(retirer=True, dossier=tmp_path)
-    assert deja.read_bytes().decode().strip() == "#!/bin/sh\necho avant"
-    assert not (tmp_path / "post-merge").exists()
-
-
 PHP = """<?php
 // Le point d'entree.
 function gz_lire($x) {

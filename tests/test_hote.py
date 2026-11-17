@@ -1,4 +1,4 @@
-"""T-0004 : la commande `graphe` sur un mini-projet hote temoin.
+"""T-0004, T-0005, T-0006 : la commande `graphe` sur un mini-projet hote temoin.
 
 Les fichiers lus sont ceux que git suit, plus les non suivis non ignores,
 chacun au lecteur de son extension ; `graphe.toml` exclut des dossiers.
@@ -96,3 +96,56 @@ def test_avec_la_cle_les_appels_au_moteur_sont_resolus(tmp_path: Path):
     assert r.returncode == 0, r.stderr
     assert "introuvable" not in r.stderr
     assert _moteur(hote) >= 1
+
+
+# T-0006 : le graphe est perime si un fichier de l'hote ou de l'outil est plus recent que lui.
+OUTIL = Path(__file__).resolve().parents[1] / "src"
+RECONSTRUCTION = "reconstruction"
+
+
+def test_un_graphe_plus_ancien_que_l_outil_se_reconstruit(tmp_path: Path):
+    hote = _hote(tmp_path, {"outils.py": APPELE, "travail.py": APPELANT})
+    assert _graphe(hote, "construire").returncode == 0
+    # L'outil plus recent que le graphe, sans toucher ses fichiers : l'hote et le graphe vieillis.
+    for f in ("outils.py", "travail.py"):
+        os.utime(hote / f, (0, 0))
+    json_ = hote / "graphe" / "graphe.json"
+    outil = max(p.stat().st_mtime for p in OUTIL.glob("graphe*.py"))
+    os.utime(json_, (outil + 3600, outil + 3600))  # temoin : plus recent que tout, rien a reconstruire
+    r = _graphe(hote, "expliquer", "aider")
+    assert r.returncode == 0 and RECONSTRUCTION not in r.stderr, r.stderr
+    os.utime(json_, (outil - 1, outil - 1))
+    r = _graphe(hote, "expliquer", "aider")
+    assert r.returncode == 0 and RECONSTRUCTION in r.stderr, r.stderr
+
+
+def _crochets(hote: Path) -> dict[str, bytes]:
+    dossier = hote / ".git" / "hooks"
+    return {p.name: p.read_bytes() for p in dossier.glob("post-*") if p.suffix != ".sample"}
+
+
+def test_installer_pose_les_crochets_et_ignore_la_sortie_une_seule_fois(tmp_path: Path):
+    hote = _hote(tmp_path, {"outils.py": APPELE, ".gitignore": ".venv/"})  # sans fin de ligne
+    (hote / ".git" / "hooks" / "post-commit").write_bytes(b"#!/bin/sh\necho avant\n")
+    avant = _crochets(hote)
+    for _ in range(2):
+        assert _graphe(hote, "installer").returncode == 0
+    crochets = _crochets(hote)
+    assert set(crochets) == {"post-commit", "post-merge", "post-checkout", "post-rewrite"}
+    for texte in crochets.values():
+        assert texte.count(b"graphe construire --calme") == 1 and b"tools/graphe.py" not in texte
+    assert crochets["post-commit"].startswith(b"#!/bin/sh\necho avant\n")
+    assert (hote / ".gitignore").read_text(encoding="utf-8") == ".venv/\n/graphe/\n"
+    assert _graphe(hote, "installer", "--retirer").returncode == 0
+    assert _crochets(hote) == avant
+
+
+def test_installer_reconnait_la_sortie_deja_ignoree(tmp_path: Path):
+    hote = _hote(tmp_path, {"outils.py": APPELE, ".gitignore": "# le graphe\ngraphe/*\n"})
+    assert _graphe(hote, "installer").returncode == 0
+    assert (hote / ".gitignore").read_text(encoding="utf-8") == "# le graphe\ngraphe/*\n"
+    # Un crochet passe en CRLF par un editeur : son bloc est reconnu, pas double.
+    crochet = hote / ".git" / "hooks" / "post-merge"
+    crochet.write_bytes(crochet.read_bytes().replace(b"\n", b"\r\n"))
+    assert _graphe(hote, "installer").returncode == 0
+    assert crochet.read_bytes().count(b"graphe construire --calme") == 1

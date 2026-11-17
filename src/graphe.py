@@ -25,10 +25,11 @@ Les fichiers lus (T-0004, graphe_racine.py) : ceux que git suit, plus les
 non suivis non ignores, chacun au lecteur de son extension ; `exclure`, dans
 un graphe.toml facultatif a la racine de l'hote, en retire des dossiers.
 
-La mise a jour : `installer` pose des crochets git (post-commit, post-merge,
-post-checkout, post-rewrite) qui reconstruisent le graphe en arriere-plan ;
-et une requete sur un graphe plus ancien que le code le reconstruit
-d'abord.
+La mise a jour (T-0006) : `installer` pose des crochets git (post-commit,
+post-merge, post-checkout, post-rewrite) qui reconstruisent le graphe en
+arriere-plan par la commande globale `graphe`, et ajoute la sortie au
+.gitignore de l'hote ; une requete sur un graphe plus ancien que le code de
+l'hote ou que l'outil le reconstruit d'abord.
 """
 
 from __future__ import annotations
@@ -54,7 +55,7 @@ from graphe_racine import CONFIGURATION, RACINE, SORTIE
 
 JSON = SORTIE / "graphe.json"
 CROCHETS = ("post-commit", "post-merge", "post-checkout", "post-rewrite")
-DEBUT_BLOC = "# >>> graphe du code (python tools/graphe.py installer)"
+DEBUT_BLOC = "# >>> graphe du code"  # l'ancien bloc, pose par tools/graphe.py, commence pareil
 FIN_BLOC = "# <<< graphe du code"
 # Ce qui fait passer de l'appelant a l'appele.
 APPELS = {"calls", "uses", "references", "indirect_call", "sends", "dispatches", "lit", "ecrit", "valeur"}
@@ -71,6 +72,11 @@ def _sources() -> list[Path]:
     return [p for p in graphe_python.fichiers() + graphe_godot.scripts() + graphe_php.fichiers()
             + sorted((RACINE / "tickets").glob("T-*.md")) + sorted((RACINE / "scenarios").glob("*/scenario.toml"))
             + [RACINE / "docs" / "moonshot" / "journal.md", RACINE / CONFIGURATION] if p.is_file()]
+
+
+def _outil() -> list[Path]:
+    """Les fichiers de l'outil (T-0006) : un lecteur corrige perime le graphe de chaque hote."""
+    return sorted(Path(__file__).parent.glob("graphe*.py"))
 
 
 def _commit() -> str | None:
@@ -403,9 +409,10 @@ const ancre=()=>{const n=N.find(n=>n.id===decodeURIComponent(location.hash.slice
 # ---------- les requetes
 
 def charger(tel_quel: bool = False) -> nx.DiGraph:
-    """Le graphe ; reconstruit d'abord s'il est plus ancien que le code."""
-    if not JSON.exists() or (not tel_quel and max((p.stat().st_mtime for p in _sources()), default=0) > JSON.stat().st_mtime):
-        print("(le graphe est plus ancien que le code : reconstruction)", file=sys.stderr)
+    """Le graphe ; reconstruit d'abord s'il est plus ancien que le code de l'hote ou que l'outil."""
+    if not JSON.exists() or (not tel_quel and max((p.stat().st_mtime for p in _sources() + _outil()), default=0)
+                             > JSON.stat().st_mtime):
+        print("(le graphe est plus ancien que le code ou que l'outil : reconstruction)", file=sys.stderr)
         construire(calme=True)
     donnees = json.loads(JSON.read_bytes())
     graphe = nx.DiGraph(communautes=donnees["communautes"])
@@ -613,27 +620,40 @@ def _dossier_des_crochets() -> Path:
 
 
 def _sans_bloc(texte: str) -> str:
-    if DEBUT_BLOC not in texte:
+    """Le crochet tel qu'avant `installer`, a l'octet pres : le bloc est un ajout exact."""
+    debut = texte.find("\n" + DEBUT_BLOC)
+    fin = texte.find(FIN_BLOC, debut)
+    if debut < 0 or fin < 0:
         return texte
-    avant, _, reste = texte.partition(DEBUT_BLOC)
-    _, _, apres = reste.partition(FIN_BLOC)
-    return avant.rstrip("\n") + "\n" + apres.lstrip("\n")
+    # La fin de ligne du bloc, LF ou CRLF (un editeur a pu convertir le crochet) : un bloc reconnu n'est jamais double.
+    return texte[:debut] + texte[fin + len(FIN_BLOC):].removeprefix("\r").removeprefix("\n")
 
 
-def installer(retirer: bool = False, dossier: Path | None = None) -> int:
+def _ignorer_la_sortie() -> None:
+    """Ajoute la sortie au .gitignore de l'hote, sauf si git l'ignore deja (sous quelque forme que ce soit)."""
+    if subprocess.run(["git", "check-ignore", "-q", f"{SORTIE.name}/"], cwd=RACINE).returncode == 0:
+        return
+    chemin = RACINE / ".gitignore"
+    texte = chemin.read_bytes() if chemin.exists() else b""  # en octets : un .gitignore hors UTF-8 reste intact
+    chemin.write_bytes(texte + (b"\n" if texte and not texte.endswith(b"\n") else b"") + f"/{SORTIE.name}/\n".encode())
+    print(f"  .gitignore : /{SORTIE.name}/ ajoute")
+
+
+def installer(retirer: bool = False) -> int:
     """Pose (ou retire) le bloc qui reconstruit le graphe dans chaque
     crochet ; un crochet deja la garde ce qu'il faisait."""
-    dossier = dossier or _dossier_des_crochets()
+    dossier = _dossier_des_crochets()
     dossier.mkdir(parents=True, exist_ok=True)
-    python = Path(sys.executable).as_posix()
-    bloc = (f'{DEBUT_BLOC}\n"{python}" "$(git rev-parse --show-toplevel)/tools/graphe.py" construire --calme '
-            f'>/dev/null 2>&1 &\n{FIN_BLOC}\n')
+    # shortcut: `graphe` doit etre dans le PATH du shell de git, sinon le crochet echoue en silence (la requete
+    # suivante reconstruit quand meme) ; un chemin absolu si un client git n'herite pas du PATH.
+    bloc = f"\n{DEBUT_BLOC} (graphe installer)\ngraphe construire --calme >/dev/null 2>&1 &\n{FIN_BLOC}\n"
     for nom in CROCHETS:
         chemin = dossier / nom
-        texte = chemin.read_bytes().decode("utf-8") if chemin.exists() else "#!/bin/sh\n"
-        texte = _sans_bloc(texte)
+        texte = _sans_bloc(chemin.read_bytes().decode("utf-8") if chemin.exists() else "#!/bin/sh\n")
         if not retirer:
-            texte = texte.rstrip("\n") + "\n" + bloc
+            texte += bloc
+        # shortcut: un crochet de l'hote reduit a `#!/bin/sh` est efface comme ceux qu'installer a crees ; a
+        # distinguer si un hote en garde un.
         if retirer and texte.strip() in ("", "#!/bin/sh"):
             chemin.unlink(missing_ok=True)
             print(f"  {nom} : retire")
@@ -641,6 +661,8 @@ def installer(retirer: bool = False, dossier: Path | None = None) -> int:
         chemin.write_bytes(texte.encode("utf-8"))
         chemin.chmod(0o755)
         print(f"  {nom} : {'bloc retire' if retirer else 'pose'} ({chemin})")
+    if not retirer:
+        _ignorer_la_sortie()
     return 0
 
 
