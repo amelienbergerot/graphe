@@ -1,0 +1,33 @@
+[project]
+name = "graphe"
+version = "0.1.0"
+description = "Le graphe du code d'un projet hote : qui appelle quoi, qui cite quoi."
+# scipy (la disposition des grands graphes) n'existe pas encore pour 3.15.
+requires-python = "==3.14.*"
+# Figees : les communautes (Louvain) et les positions du test de reference de Grid Zero en dependent.
+dependencies = ["networkx==3.6.1", "numpy==2.4.4", "scipy==1.18.1"]
+
+[project.scripts]
+graphe = "graphe:main"
+
+[dependency-groups]
+dev = ["pytest==9.1.1"]
+
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+py-modules = ["graphe", "graphe_racine", "graphe_python", "graphe_godot", "graphe_php", "graphe_enrichir"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+# Les regles de Grid Zero, d'ou vient le code.
+[tool.ruff]
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "B", "UP"]
+ignore = ["E741"]
