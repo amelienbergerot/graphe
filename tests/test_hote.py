@@ -149,3 +149,69 @@ def test_installer_reconnait_la_sortie_deja_ignoree(tmp_path: Path):
     crochet.write_bytes(crochet.read_bytes().replace(b"\n", b"\r\n"))
     assert _graphe(hote, "installer").returncode == 0
     assert crochet.read_bytes().count(b"graphe construire --calme") == 1
+
+
+# T-0007 : une extension locale, declaree par graphe.toml, contribue comme un lecteur.
+EXTENSION = '''
+def contribuer(projet):
+    noeuds = projet.graphe["noeuds"]
+    if "outils_aider" not in noeuds:  # le graphe deja assemble, lecteurs et coeur compris
+        return {"noeuds": [], "liens": []}
+    noeuds["outils_aider"]["label"] = "abime"  # lecture seule : sans effet sur le graphe
+    return {
+        "noeuds": [
+            {"id": "regle_politesse", "label": "politesse", "sorte": "regle", "source_file": "regles.txt",
+             "source_location": "L1", "nom": "politesse"},
+            {"id": "outils_aider", "textes": [projet.configuration["salut"]]},  # fusionne dans le noeud du lecteur
+        ],
+        "liens": [{"source": "regle_politesse", "target": "outils_aider", "relation": "exige",
+                   "confidence": "EXTRACTED", "source_file": "regles.txt", "source_location": "L1", "context": ""}],
+    }
+'''
+AVEC_EXTENSION = '[[extensions]]\nchemin = "ext/regles_du_temoin.py"\nsalut = "Bonjour"\n'
+
+
+def test_une_extension_locale_ajoute_un_noeud_et_enrichit_un_noeud_existant(tmp_path: Path):
+    hote = _hote(tmp_path, {"outils.py": APPELE, "travail.py": APPELANT, "ext/regles_du_temoin.py": EXTENSION,
+                            "graphe.toml": AVEC_EXTENSION})
+    r = _graphe(hote, "construire")
+    assert r.returncode == 0, r.stderr
+    r = _graphe(hote, "expliquer", "aider")
+    assert r.returncode == 0, r.stderr
+    assert "aider()" in r.stdout and "abime" not in r.stdout
+    assert "affiche : Bonjour" in r.stdout
+    assert "exige (1)" in r.stdout and "politesse (regles.txt:1)" in r.stdout
+    assert "travailler" in r.stdout  # ce que le lecteur avait lie reste
+    r = _graphe(hote, "expliquer", "politesse")
+    assert r.returncode == 0 and "[regle]" in r.stdout, r.stdout
+
+
+def test_une_extension_introuvable_arrete_la_construction_et_se_nomme(tmp_path: Path):
+    hote = _hote(tmp_path, {"outils.py": APPELE, "graphe.toml": AVEC_EXTENSION})
+    r = _graphe(hote, "construire")
+    assert r.returncode != 0
+    assert "ext/regles_du_temoin.py" in r.stderr and "Traceback" not in r.stderr
+    assert not (hote / "graphe" / "graphe.json").exists()
+
+
+def test_un_noeud_nouveau_sans_ses_champs_arrete_la_construction(tmp_path: Path):
+    hote = _hote(tmp_path, {"outils.py": APPELE, "graphe.toml": AVEC_EXTENSION,
+                            "ext/regles_du_temoin.py": 'def contribuer(projet):\n'
+                                                '    return {"noeuds": [{"id": "orphelin", "label": "x"}]}\n'})
+    r = _graphe(hote, "construire")
+    assert r.returncode != 0
+    assert "ext/regles_du_temoin.py" in r.stderr and "orphelin" in r.stderr and "nom" in r.stderr
+
+
+def test_verifier_se_nourrit_des_sites_d_une_extension(tmp_path: Path):
+    sites = '[{"verdict": "lu", "fichier": "regles.txt", "ligne": 1, "nom": "a", "texte": "a"},' \
+            ' {"fichier": "regles.txt", "ligne": 2, "nom": "b", "texte": "b", "alerte": "regle orpheline"}]'
+    hote = _hote(tmp_path, {"outils.py": APPELE, "graphe.toml": AVEC_EXTENSION,
+                            "ext/regles_du_temoin.py": f"def contribuer(projet):\n    return {{'sites': {sites}}}\n"})
+    r = _graphe(hote, "verifier")
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "== ext/regles_du_temoin.py : 1 sites classes {'lu': 1}" in r.stdout
+    assert "regles.txt:2 b (regle orpheline)" in r.stdout
+    assert _graphe(hote, "construire").returncode == 0
+    couverture = json.loads((hote / "graphe" / "graphe.json").read_bytes())["couverture"]
+    assert couverture["ext/regles_du_temoin.py"] == {"lu": 1} and "php" not in couverture

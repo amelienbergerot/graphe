@@ -12,7 +12,8 @@ Les ordres du client (simulation/server.py) : chaque branche
 `if cmd == "x":` devient un noeud de commande, qui porte les appels de sa
 branche - le client envoie a la commande, pas a tout handle_command.
 
-    python tools/graphe_python.py verifier   le classement de chaque appel
+`graphe verifier` lit le classement de chaque appel dans les sites de sa
+contribution (`contribuer`).
 """
 
 from __future__ import annotations
@@ -20,8 +21,7 @@ from __future__ import annotations
 import ast
 import builtins
 import re
-import sys
-from collections import Counter, defaultdict
+from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -887,33 +887,20 @@ class Lecture:
             f = f.parent
         return False
 
-    def graphe(self) -> dict:
-        return {"nodes": self.noeuds, "edges": self.liens}
 
-
-def verifier(lecture: Lecture | None = None) -> int:
-    lecture = lecture or Lecture()
-    total = sum(1 for m in lecture.modules.values() for n in ast.walk(m.arbre) if isinstance(n, ast.Call))
-    verdicts = Counter(s["verdict"] for s in lecture.sites)
-    print(f"{len(lecture.modules)} modules, {total} appels dans l'ast, {len(lecture.sites)} classes")
-    print("  classement :", dict(verdicts.most_common()))
+def contribuer(projet) -> dict:
+    """La contribution du lecteur Python (docs/contribution.md) : un site par appel, et ses alertes."""
+    lecture = Lecture(projet.fichiers(".py"), projet.racine)
     nos_noms = set(lecture.par_nom) | lecture.noms_de_classes
-    oublis = [s for s in lecture.sites if s["verdict"] in ("inconnu", "externe?", "absent") and s["nom"] in nos_noms]
-    print(f"  non relies au nom d'une de nos fonctions : {len(oublis)}")
-    for s in oublis[:60]:
-        print(f"    {s['rel']}:{s['ligne']} {s['expr']} ({s['verdict']})")
-    ambigus = [s for s in lecture.sites if s["verdict"] == "ambigu"]
-    print(f"  ambigus (recepteur non type, nom porte par plusieurs) : {len(ambigus)}",
-          dict(Counter(s["nom"] for s in ambigus).most_common(25)))
-    devines = Counter(s["nom"] for s in lecture.sites if s["verdict"] == "notre?")
-    print(f"  relies par le nom seul : {sum(devines.values())}", dict(devines.most_common(25)))
-    inconnus = Counter(s["expr"] for s in lecture.sites if s["verdict"] == "inconnu" and s["nom"] not in nos_noms)
-    print(f"  autres inconnus : {sum(inconnus.values())}", dict(inconnus.most_common(20)))
-    return 1 if total != len(lecture.sites) or oublis else 0
-
-
-if __name__ == "__main__":
-    if sys.argv[1:2] == ["verifier"]:
-        sys.exit(verifier())
-    print(__doc__)
-    sys.exit(2)
+    sites = []
+    for s in lecture.sites:
+        site = {"verdict": s["verdict"], "fichier": s["rel"], "ligne": s["ligne"], "nom": s["nom"], "texte": s["expr"]}
+        if s["verdict"] in ("inconnu", "externe?", "absent") and s["nom"] in nos_noms:
+            site["alerte"] = "non relie au nom d'une de nos fonctions"
+        sites.append(site)
+    if projet.verifier:
+        total = sum(1 for m in lecture.modules.values() for n in ast.walk(m.arbre) if isinstance(n, ast.Call))
+        if total != len(lecture.sites):
+            sites.append({"fichier": "", "ligne": 0, "nom": "", "alerte": "appels de l'ast non classes",
+                          "texte": f"{total} appels dans l'ast, {len(lecture.sites)} classes"})
+    return {"noeuds": lecture.noeuds, "liens": lecture.liens, "sites": sites}

@@ -1,7 +1,7 @@
 """Le graphe du code de Grid Zero : la simulation Python et le client Godot.
 
     python tools/graphe.py construire [--calme]      graphe/ : graphe.json, RAPPORT.md, graphe.html
-    python tools/graphe.py verifier                  la couverture des deux lecteurs
+    python tools/graphe.py verifier                  la couverture de chaque contribution
     python tools/graphe.py chemin A B [--sans-sens]  le plus court chemin de A a B
     python tools/graphe.py expliquer X [--tout] [--source]   ce que X appelle, ce qui l'appelle (et son code)
     python tools/graphe.py appelants X [--profondeur N]
@@ -21,6 +21,11 @@ module et qui les lit, les cles de l'etat que le client lit, et les tickets
 (tickets/T-*.md) - qui les cite, ce qu'ils nomment. Les champs d'une classe
 sont des noeuds (le lecteur Python).
 
+Le contrat (T-0007, docs/contribution.md) : lecteurs et extensions locales
+rendent une contribution par `contribuer(projet)`. L'assemblage passe les
+lecteurs, puis le coeur (graphe_enrichir), puis les extensions declarees par
+`[[extensions]]` dans graphe.toml, dans leur ordre.
+
 Les fichiers lus (T-0004, graphe_racine.py) : ceux que git suit, plus les
 non suivis non ignores, chacun au lecteur de son extension ; `exclure`, dans
 un graphe.toml facultatif a la racine de l'hote, en retire des dossiers.
@@ -34,6 +39,8 @@ l'hote ou que l'outil le reconstruit d'abord.
 
 from __future__ import annotations
 
+import copy
+import importlib.util
 import json
 import math
 import os
@@ -43,6 +50,7 @@ import sys
 import tempfile
 import time
 from collections import Counter, defaultdict
+from functools import cached_property
 from pathlib import Path
 
 import networkx as nx
@@ -51,6 +59,7 @@ import graphe_enrichir
 import graphe_godot
 import graphe_php
 import graphe_python
+import graphe_racine
 from graphe_racine import CONFIGURATION, RACINE, SORTIE
 
 JSON = SORTIE / "graphe.json"
@@ -71,7 +80,8 @@ POIDS_HORS_CODE = 4
 def _sources() -> list[Path]:
     return [p for p in graphe_python.fichiers() + graphe_godot.scripts() + graphe_php.fichiers()
             + sorted((RACINE / "tickets").glob("T-*.md")) + sorted((RACINE / "scenarios").glob("*/scenario.toml"))
-            + [RACINE / "docs" / "moonshot" / "journal.md", RACINE / CONFIGURATION] if p.is_file()]
+            + [RACINE / "docs" / "moonshot" / "journal.md", RACINE / CONFIGURATION]
+            + [RACINE / e.get("chemin", "") for e in _extensions_declarees()] if p.is_file()]
 
 
 def _outil() -> list[Path]:
@@ -88,41 +98,111 @@ def _commit() -> str | None:
         return None
 
 
-def assembler():
-    """Les deux lectures fondues en un graphe oriente ; un lien par paire de
-    noeuds, qui garde ses relations et ses lieux."""
-    python = graphe_python.Lecture()
-    godot = graphe_godot.Extraction()
-    php = graphe_php.Lecture()
-    noeuds = python.noeuds + godot.noeuds + php.noeuds
-    liens = python.liens + godot.graphe()["edges"] + php.liens
-    graphe = nx.DiGraph()
-    for n in sorted(noeuds, key=lambda n: n["id"]):
+# Chaque lecteur sous le nom de sa section de graphe.toml : la cle de sa configuration et de sa couverture.
+LECTEURS = {"python": graphe_python.contribuer, "godot": graphe_godot.contribuer, "php": graphe_php.contribuer}
+CHAMPS_DU_NOEUD = ("id", "label", "sorte", "source_file", "source_location", "nom")
+CHAMPS_DU_LIEN = ("source", "target", "relation", "confidence", "source_file", "source_location", "context")
+
+
+class Projet:
+    """Ce que recoit `contribuer(projet)` : la racine, les fichiers de l'hote, la section de configuration de
+    celui qui contribue et le graphe deja assemble, copie a la lecture (docs/contribution.md)."""
+
+    def __init__(self, configuration: dict, graphe: nx.DiGraph, verifier: bool) -> None:
+        self.racine = RACINE
+        self.configuration = configuration
+        self.verifier = verifier
+        self._graphe = graphe
+
+    def fichiers(self, suffixe: str) -> list[Path]:
+        return graphe_racine.fichiers(suffixe, self.racine)
+
+    @cached_property
+    def graphe(self) -> dict:
+        return {"noeuds": {n: copy.deepcopy(d) for n, d in self._graphe.nodes(data=True)},
+                "liens": [{"source": s, "target": c, **copy.deepcopy({**d, "relations": sorted(d["relations"])})}
+                          for s, c, d in self._graphe.edges(data=True)]}
+
+
+def _extensions_declarees() -> list[dict]:
+    return graphe_racine.configuration().get("extensions", [])
+
+
+def _extension(declaration: dict):
+    """La fonction `contribuer` d'une extension locale ; une extension introuvable arrete la construction."""
+    chemin = declaration.get("chemin", "")
+    fichier = RACINE / chemin
+    if not chemin or not fichier.is_file():
+        raise RuntimeError(f"extension locale {chemin!r} introuvable ([[extensions]] chemin, {CONFIGURATION})")
+    spec = importlib.util.spec_from_file_location(f"graphe_extension_{fichier.stem}", fichier)
+    if spec is None:
+        raise RuntimeError(f"extension locale {chemin} : pas un module Python")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module  # une dataclass de l'extension cherche son module ici
+    spec.loader.exec_module(module)
+    if not callable(getattr(module, "contribuer", None)):
+        raise RuntimeError(f"extension locale {chemin} : pas de fonction contribuer(projet)")
+    return module.contribuer
+
+
+def _inserer(graphe: nx.DiGraph, apports: list[tuple[str, dict]], pendants: list[dict]) -> None:
+    """Les contributions dans le graphe : les noeuds tries par l'id (un id deja la fusionne ses attributs), puis
+    les liens ; un lien par paire de noeuds, qui garde ses relations et ses lieux."""
+    noeuds = sorted(((qui, n) for qui, c in apports for n in c.get("noeuds", [])), key=lambda p: str(p[1].get("id")))
+    for qui, n in noeuds:
+        requis = ("id",) if n.get("id") in graphe else CHAMPS_DU_NOEUD
+        if manque := [k for k in requis if k not in n]:
+            raise RuntimeError(f"{qui} : le noeud {n.get('id')!r} n'a pas {', '.join(manque)}")
         graphe.add_node(n["id"], **n)
-    pendants = []
-    for e in liens:
-        s, c = e["source"], e["target"]
-        if s not in graphe or c not in graphe:
-            pendants.append(e)
-            continue
-        lieu = f"{e['source_file']}:{e['source_location'].lstrip('L')}"
-        if graphe.has_edge(s, c):
-            d = graphe[s][c]
-            d["relations"].add(e["relation"])
-            if lieu not in d["lieux"]:
-                d["lieux"].append(lieu)
-            if e["confidence"] == "EXTRACTED":
-                d["confiance"] = "EXTRACTED"
-            if e["context"] and e["context"] not in d["contextes"]:
-                d["contextes"].append(e["context"])
-        else:
-            graphe.add_edge(s, c, relations={e["relation"]}, confiance=e["confidence"], lieux=[lieu],
-                            contextes=[e["context"]] if e["context"] else [])
-    couverture = {"python": dict(Counter(s["verdict"] for s in python.sites).most_common()),
-                  "godot": dict(Counter(s["verdict"] for s in godot.sites).most_common()),
-                  "pendants": len(pendants), "ordres_inconnus": len(godot.ordres_inconnus)}
+    for qui, c in apports:
+        for e in c.get("liens", []):
+            if manque := [k for k in CHAMPS_DU_LIEN if k not in e]:
+                raise RuntimeError(f"{qui} : le lien {e.get('source')!r} -> {e.get('target')!r} n'a pas "
+                                   f"{', '.join(manque)}")
+            s, cible = e["source"], e["target"]
+            if s not in graphe or cible not in graphe:
+                pendants.append(e)
+                continue
+            lieu = f"{e['source_file']}:{e['source_location'].lstrip('L')}"
+            if graphe.has_edge(s, cible):
+                d = graphe[s][cible]
+                d["relations"].add(e["relation"])
+                if lieu not in d["lieux"]:
+                    d["lieux"].append(lieu)
+                if e["confidence"] == "EXTRACTED":
+                    d["confiance"] = "EXTRACTED"
+                if e["context"] and e["context"] not in d["contextes"]:
+                    d["contextes"].append(e["context"])
+            else:
+                graphe.add_edge(s, cible, relations={e["relation"]}, confiance=e["confidence"], lieux=[lieu],
+                                contextes=[e["context"]] if e["context"] else [])
+
+
+def assembler(verifier: bool = False) -> tuple[nx.DiGraph, dict, list[dict], dict[str, list[dict]]]:
+    """Les lecteurs, puis le coeur, puis les extensions locales dans l'ordre de graphe.toml : le graphe oriente,
+    la couverture, les liens pendants et les sites de chaque contribution."""
+    configuration = graphe_racine.configuration()
+    graphe = nx.DiGraph()
+    pendants: list[dict] = []
+    # Les lecteurs ensemble : leurs noeuds entrent tries tous a la fois, comme avant le contrat (T-0007).
+    lecteurs = [(nom, contribuer(Projet(configuration.get(nom, {}), graphe, verifier)))
+                for nom, contribuer in LECTEURS.items()]
+    _inserer(graphe, lecteurs, pendants)
     graphe_enrichir.enrichir(graphe, RACINE)
-    return _trie(graphe), couverture, pendants
+    apports = list(lecteurs)
+    for declaration in _extensions_declarees():
+        apport = (declaration.get("chemin", ""), _extension(declaration)(Projet(declaration, graphe, verifier)))
+        _inserer(graphe, [apport], pendants)
+        apports.append(apport)
+    sites = {qui: c["sites"] for qui, c in apports if "sites" in c}
+    couverture = {qui: dict(Counter(s["verdict"] for s in liste if "verdict" in s).most_common())
+                  for qui, liste in sites.items()}
+    couverture["pendants"] = len(pendants)
+    # shortcut: le coeur compte une alerte du lecteur GDScript (cle de graphe.json, test de reference), a
+    # reprendre quand l'ordre inconnu passe dans l'extension de Grid Zero (T-0008).
+    couverture["ordres_inconnus"] = sum(s.get("alerte") == graphe_godot.ORDRE_INCONNU
+                                        for liste in sites.values() for s in liste)
+    return _trie(graphe), couverture, pendants, sites
 
 
 def _cle_lieu(lieu: str) -> tuple[str, int]:
@@ -220,7 +300,7 @@ def _ecrire(chemin: Path, texte: str) -> None:
 def construire(calme: bool = False) -> int:
     debut = time.monotonic()
     SORTIE.mkdir(exist_ok=True)
-    graphe, couverture, pendants = assembler()
+    graphe, couverture, pendants, _ = assembler()
     de, noms = communautes(graphe)
     positions = disposer(graphe, de)
     donnees = {
@@ -599,15 +679,26 @@ def chercher(graphe: nx.DiGraph, motif: str) -> int:
 
 
 def verifier() -> int:
-    print("== Python")
-    python = graphe_python.verifier()
-    print("\n== GDScript")
-    godot = graphe_godot.verifier()
-    _, couverture, pendants = assembler()
-    print(f"\n== Graphe : {len(pendants)} lien(s) pendant(s)")
+    """La couverture de chaque contribution, lue dans ses sites : le classement des appels, les noms les plus
+    frequents de chaque verdict, puis les alertes ; un echec s'il y a une alerte ou un lien pendant."""
+    _, _, pendants, sites = assembler(verifier=True)
+    alertes = 0
+    for qui, liste in sites.items():
+        verdicts = Counter(s["verdict"] for s in liste if "verdict" in s)
+        print(f"== {qui} : {sum(verdicts.values())} sites classes {dict(verdicts.most_common())}")
+        for verdict, n in verdicts.most_common():
+            noms = Counter(s["texte"] for s in liste if s.get("verdict") == verdict)
+            print(f"  {verdict} ({n}) : {dict(noms.most_common(12))}")
+        a_signaler = [s for s in liste if "alerte" in s]
+        alertes += len(a_signaler)
+        print(f"  alertes : {len(a_signaler)}")
+        for s in a_signaler[:60]:
+            print(f"    {s['fichier']}:{s['ligne']} {s['texte']} ({s['alerte']})")
+        print()
+    print(f"== Graphe : {len(pendants)} lien(s) pendant(s)")
     for e in pendants[:20]:
         print("  ", e["source"], "->", e["target"], e["relation"], e["source_file"], e["source_location"])
-    return 1 if python or godot or pendants else 0
+    return 1 if alertes or pendants else 0
 
 
 # ---------- les crochets git
@@ -681,8 +772,11 @@ def main(arguments: list[str] | None = None) -> int:
     if commande == "construire":
         try:
             return construire(calme="--calme" in reste)
-        except Exception:
+        except Exception as e:
             if "--calme" not in reste:
+                if isinstance(e, RuntimeError):  # une extension introuvable, un noeud incomplet : le message suffit
+                    print(f"graphe : {e}", file=sys.stderr)
+                    return 1
                 raise
             import traceback  # noqa: PLC0415 - le chemin d'erreur seul
             SORTIE.mkdir(exist_ok=True)

@@ -363,7 +363,7 @@ def test_champs_alias_d_import_et_tickets(tmp_path: Path):
 def test_le_godot_resout_ses_prechargements():
     """Sur le vrai depot : `Charte.ACCENT` lu par le prechargement,
     `Progress.record` trouve par lui, un envoi du client mene a son action."""
-    g, _, _ = graphe.assembler()
+    g, *_ = graphe.assembler()
     accent = next(n for n, d in g.nodes(data=True) if d["source_file"] == "godot/menu/charte.gd" and d["nom"] == "ACCENT")
     assert sum("lit" in g[s][accent]["relations"] and g[s][accent]["confiance"] == "EXTRACTED"
                for s in g.predecessors(accent)) >= 10
@@ -381,8 +381,8 @@ def test_le_godot_resout_ses_prechargements():
 
 @grid_zero
 def test_le_graphe_ne_change_pas_d_une_construction_a_l_autre():
-    g1, _, _ = graphe.assembler()
-    g2, _, _ = graphe.assembler()
+    g1, *_ = graphe.assembler()
+    g2, *_ = graphe.assembler()
     assert sorted(g1.edges) == sorted(g2.edges)
     assert graphe.communautes(g1) == graphe.communautes(g2)
 

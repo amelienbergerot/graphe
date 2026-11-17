@@ -3,8 +3,6 @@
 Chaque script .gd de l'hote devient des noeuds et des liens, que
 tools/graphe.py fond avec ceux du Python (tools/graphe_python.py).
 
-    python tools/graphe_godot.py verifier     ce que l'extraction couvre des appels du client
-
 Ce que l'extraction lit, par motifs et non par une grammaire :
 - un fichier, ses fonctions (`func`), ses signaux ;
 - `const X = preload("res://...")` : X designe ce fichier ;
@@ -14,8 +12,8 @@ Ce que l'extraction lit, par motifs et non par une grammaire :
 - `{"cmd": "..."}` : un ordre au serveur, relie au noeud de sa commande
   (graphe_python.id_de_commande : la branche de handle_command qui la traite).
 
-`verifier` recompte les appels avec un autre lecteur (le tokenize de
-Python) et classe chacun : notre code, le moteur (d'apres l'API que Godot
+`graphe verifier` recompte les appels avec un autre lecteur (le tokenize de
+Python, `contribuer`) et classe chacun : notre code, le moteur (d'apres l'API que Godot
 exporte), une fonction anonyme, ambigu ou inconnu. Un appel non relie qui
 porte le nom d'une de nos fonctions est un oubli de l'extraction.
 """
@@ -48,6 +46,7 @@ DU_LANGAGE = {"preload", "load", "assert", "char", "len", "range", "print_debug"
               "super", "_init"}
 APPELS_PAR_NOM = re.compile(r"""\b(?:call_deferred|callv?|has_method|Callable\(\s*self\s*,)\s*\(?\s*"(\w+)\"""")
 ORDRE = re.compile(r'"cmd"\s*:\s*"(\w+)"')
+ORDRE_INCONNU = "ordre inconnu du serveur"
 
 
 def scripts() -> list[Path]:
@@ -164,8 +163,9 @@ class Script:
 
 
 class Extraction:
-    def __init__(self, api: dict | None = None) -> None:
-        self.scripts = {f"res://{s.relative_to(GODOT).as_posix()}": Script(s) for s in scripts()}
+    def __init__(self, api: dict | None = None, chemins: list[Path] | None = None) -> None:
+        self.scripts = {f"res://{s.relative_to(GODOT).as_posix()}": Script(s)
+                        for s in (scripts() if chemins is None else chemins)}
         self.par_nom: dict[str, list[Script]] = defaultdict(list)
         for s in self.scripts.values():
             for nom in s.fonctions:
@@ -306,11 +306,6 @@ class Extraction:
             return {"verdict": "ambigu" if notres else "moteur"}
         return {"verdict": "inconnu"}
 
-    def graphe(self) -> dict:
-        ids = {n["id"] for n in self.noeuds}
-        return {"nodes": self.noeuds,
-                "edges": [e for e in self.liens if e["target"] in ids or e["relation"] == "sends"]}
-
 
 def _api_du_moteur(api: dict | None) -> tuple[set[str], set[str]]:
     """Les methodes et les noms (classes, fonctions globales) de l'API que
@@ -381,52 +376,32 @@ def _appels_par_tokenize(chemin: Path) -> Counter:
     return sites
 
 
-def verifier() -> int:
-    extraction = Extraction()
-    lus = Counter((_rel(site["script"].chemin), site["ligne"], site["nom"]) for site in extraction.sites)
-    recomptes = Counter()
-    for s in extraction.scripts.values():
-        for (ligne, nom), n in _appels_par_tokenize(s.chemin).items():
-            recomptes[(_rel(s.chemin), ligne, nom)] += n
-    manques = recomptes - lus
-    en_trop = lus - recomptes
-    print(f"{len(extraction.scripts)} scripts, {sum(recomptes.values())} appels recomptes par tokenize, "
-          f"{sum(lus.values())} lus par l'extraction")
-    print(f"  manques par l'extraction : {sum(manques.values())} ; en trop : {sum(en_trop.values())}")
-    for cle in sorted(manques)[:20]:
-        print("    manque", *cle)
-    for cle in sorted(en_trop)[:20]:
-        print("    en trop", *cle)
-    verdicts = Counter(site["verdict"] for site in extraction.sites)
-    print("  classement :", dict(verdicts.most_common()))
-    oublis = [site for site in extraction.sites if site["verdict"] == "inconnu" and site["nom"] in extraction.par_nom]
-    ambigus = [site for site in extraction.sites if site["verdict"] == "ambigu"]
-    print(f"  appels non relies qui portent le nom d'une de nos fonctions : {len(oublis)} ; "
-          f"ambigus (nom chez nous et dans le moteur, recepteur non type) : {len(ambigus)}")
-    for site in oublis + ambigus:
-        print(f"    {_rel(site['script'].chemin)}:{site['ligne']} {site['recepteur'] or '-'}.{site['nom']} "
-              f"({site['verdict']})")
-    # Le contre-controle : un appel range au moteur qui porte le nom d'une de
-    # nos fonctions sur un recepteur que l'extraction ne sait pas typer.
-    douteux = [s for s in extraction.sites if s["verdict"] == "moteur" and s["nom"] in extraction.par_nom
-               and s["recepteur"] and extraction._script_de(s["script"], s["recepteur"]) is None]
-    print(f"  ranges au moteur, au nom d'une de nos fonctions : {len(douteux)}",
-          dict(Counter(f"{s['recepteur']}.{s['nom']}" for s in douteux).most_common(40)))
-    devines = [s for s in extraction.sites if s["verdict"] == "notre?"]
-    print(f"  relies par le nom seul (recepteur non type, nom unique chez nous) : {len(devines)}")
-    for site in devines:
-        print(f"    {_rel(site['script'].chemin)}:{site['ligne']} {site['recepteur']}.{site['nom']}")
-    inconnus = Counter(f"{site['recepteur'] or '-'}.{site['nom']}" for site in extraction.sites
-                       if site["verdict"] == "inconnu" and site["nom"] not in extraction.par_nom)
-    print(f"  autres inconnus : {sum(inconnus.values())}", dict(inconnus.most_common(30)))
-    print(f"  ordres au serveur : {sum(1 for e in extraction.liens if e['relation'] == 'sends')}, "
-          f"inconnus du serveur : {extraction.ordres_inconnus}")
-    return 1 if manques or oublis or extraction.ordres_inconnus else 0
+def contribuer(projet) -> dict:
+    """La contribution du lecteur GDScript (docs/contribution.md) : un site par appel, et ses alertes.
 
-
-if __name__ == "__main__":
-    commande = sys.argv[1:2]
-    if commande == ["verifier"]:
-        sys.exit(verifier())
-    print(__doc__)
-    sys.exit(2)
+    Sous `graphe verifier`, les appels sont recomptes par un autre lecteur (le tokenize de Python) : un appel
+    manque ou en trop est une alerte.
+    """
+    extraction = Extraction(chemins=projet.fichiers(".gd"))
+    ids = {n["id"] for n in extraction.noeuds}
+    sites = []
+    for s in extraction.sites:
+        site = {"verdict": s["verdict"], "fichier": _rel(s["script"].chemin), "ligne": s["ligne"], "nom": s["nom"],
+                "texte": f"{s['recepteur'] or '-'}.{s['nom']}"}
+        if s["verdict"] == "inconnu" and s["nom"] in extraction.par_nom:
+            site["alerte"] = "non relie au nom d'une de nos fonctions"
+        sites.append(site)
+    for fichier, ligne, ordre in extraction.ordres_inconnus:
+        sites.append({"fichier": fichier, "ligne": ligne, "nom": ordre, "texte": ordre, "alerte": ORDRE_INCONNU})
+    if projet.verifier:
+        lus = Counter((_rel(site["script"].chemin), site["ligne"], site["nom"]) for site in extraction.sites)
+        recomptes = Counter()
+        for s in extraction.scripts.values():
+            for (ligne, nom), n in _appels_par_tokenize(s.chemin).items():
+                recomptes[(_rel(s.chemin), ligne, nom)] += n
+        # Un appel en trop n'a jamais fait echouer verifier : seuls les manques sont des alertes.
+        for (fichier, ligne, nom), n in sorted((recomptes - lus).items()):
+            sites += [{"fichier": fichier, "ligne": ligne, "nom": nom, "texte": nom, "alerte": "manque a la lecture"}] * n
+    # Un ordre au serveur garde son lien sans noeud de commande : il est compte pendant (comme avant T-0007).
+    return {"noeuds": extraction.noeuds, "sites": sites,
+            "liens": [e for e in extraction.liens if e["target"] in ids or e["relation"] == "sends"]}

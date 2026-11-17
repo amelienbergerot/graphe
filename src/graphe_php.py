@@ -35,6 +35,12 @@ def _id(chemin: Path, racine: Path) -> str:
     return re.sub(r"\W", "_", chemin.relative_to(racine).with_suffix("").as_posix()).lower()
 
 
+def contribuer(projet) -> dict:
+    """La contribution du lecteur PHP (docs/contribution.md) : ni appels classes, ni sites."""
+    lecture = Lecture(projet.fichiers(".php"), projet.racine)
+    return {"noeuds": lecture.noeuds, "liens": lecture.liens}
+
+
 def id_d_action(fichier_id: str, action: str) -> str:
     return f"{fichier_id}_action_{action.lower()}"
 
