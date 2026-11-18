@@ -20,3 +20,4 @@ BACKLOG.md (dpe, 4cast): a page object (`return { async saisir(id, v) {...} }`, 
 - **dpe**: `ours` 2425 -> 2658, `member` 2140 -> 1907, `ours?`, `ambiguous` 0. **4cast**: `ours?` 31 -> 0, `ours` 627 -> 658 (`faux = new FauxAmont()`). Grid Zero: nothing more than T-0019's coverage.
 - `tests/test_graphe.py`: `b = new Builder(); b.build()` was INFERRED, the test said so; now EXTRACTED.
 
+- **After the review**: the criterion's "INFERRED when the name is unique" is not kept: an untyped receiver (a parameter `p`) gets no link, by the measure above. `ouvrir.click()`, a property of the function itself, is no longer taken for the method of the object it returns. A name bound by `require(...)` at the top of a module is not hidden by T-0019's module variables (CommonJS is still not followed).

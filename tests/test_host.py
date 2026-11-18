@@ -664,3 +664,17 @@ def test_the_svelte_markup_reader_holds_on_awaits_line_breaks_and_unknown_tags(t
     assert "  calls (1)\n    src/Fiche.svelte\n" in r.stdout, r.stdout
     r = _run(host, "explain", "charger")
     assert "  calls (1)\n    src/Fiche.svelte\n" in r.stdout, r.stdout
+
+
+def test_a_required_name_is_not_hidden_and_a_function_is_not_its_returned_object(tmp_path: Path):
+    """After the review of T-0019 and T-0020: `const { aider } = require('./x.js')` stays a name of ours, and
+    `ouvrir.click()` (a property of the function) is not the method of the object it returns."""
+    host = _host(tmp_path, {
+        "x.js": "function aider() {\n  return 1\n}\nmodule.exports = { aider }\n",
+        "y.js": "const { aider } = require('./x.js')\n\nfunction y() {\n  return aider()\n}\n",
+        "page.mjs": "export function ouvrir() {\n  return { click() {} }\n}\n\nexport function f() {\n  ouvrir.click()\n}\n",
+    }, tracked=".")
+    r = _run(host, "explain", "aider")
+    assert "y.js: y:3" in r.stdout, r.stdout + r.stderr
+    r = _run(host, "explain", "ouvrir.click")
+    assert "what calls it:\n  contains (1)" in r.stdout and "calls (" not in r.stdout.split("what calls it:")[1], r.stdout

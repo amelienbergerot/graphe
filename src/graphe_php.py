@@ -75,6 +75,8 @@ class Reader:
                 previous = nid if a and end == i else ""
                 bodies.append((nid, rel, i, lines_without_comments(lines[i:end])))
                 covered.update(range(i, end + 1))
+            # shortcut: the HTML outside `<?php ... ?>` is read too, so `aide(` in a page's text calls aide(); to keep
+            # the PHP blocks only if a host shows such a false call.
             top = [text for k, text in enumerate(lines, start=1) if k not in covered]
             bodies.append((fid, rel, 1, lines_without_comments(top)))
         for nid, rel, i, body_lines in bodies:

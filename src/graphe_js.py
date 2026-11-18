@@ -166,6 +166,16 @@ def _returned_object(function):
     return None
 
 
+def _required(root) -> set[str]:
+    """The names a module's top binds by `require(...)` (`const { aider } = require('./x.js')`): names of ours
+    perhaps, by the name, that the module's own variables (T-0019) must not hide. shortcut: CommonJS is not followed
+    (Reader); to read `require` if a host needs it."""
+    return {name for d in root.named_children if d.type in ("lexical_declaration", "variable_declaration")
+            for v in d.named_children if v.type == "variable_declarator"
+            and (value := v.child_by_field_name("value")) is not None and value.type == "call_expression"
+            and _text(_callee(value)) == "require" for name in _names(v.child_by_field_name("name"))}
+
+
 def _callee(call):
     """What a call or a `new` calls."""
     return call.child_by_field_name("constructor" if call.type == "new_expression" else "function")
@@ -237,6 +247,7 @@ class Reader:
         self.by_name: dict[str, list[str]] = defaultdict(list)  # top-level function or class name -> ids
         self.class_methods: dict[str, dict[str, str]] = {}  # class id -> method name -> id
         self.bases: dict[str, tuple[Module, str]] = {}  # class id -> (its module, the name it extends)
+        self.returning: set[str] = set()  # the functions whose methods are those of the object they return
         for m in self.modules.values():
             self._node(m.id, posixpath.basename(m.rel), "file", m.rel, 1, m.rel)
             for top in m.tree.root_node.named_children:
@@ -334,6 +345,7 @@ class Reader:
         if not is_class:
             if (returned := _returned_object(node)) is not None:  # T-0020: dpe's page objects
                 self._members(m, nid, name, returned)
+                self.returning.add(nid)
             return name
         heritage = next((c for c in node.named_children if c.type == "class_heritage"), None)
         base = heritage.named_children[0] if heritage is not None and heritage.named_children else None
@@ -422,7 +434,8 @@ class Reader:
         # T-0019: the module's own variables (a Svelte prop, `let { onouvrir } = $props()`) hide like a function's;
         # its definitions and imports stay bindings.
         root = m.tree.root_node
-        stack = [(root, m.id, None, frozenset(_declared(root) - m.bindings.keys()), self._typed(m, root))]
+        hidden = _declared(root) - m.bindings.keys() - _required(root)
+        stack = [(root, m.id, None, frozenset(hidden), self._typed(m, root))]
         while stack:
             node, owner, cls, hidden, types = stack.pop()
             owner, cls = m.owners.get((node.start_byte, node.end_byte), (owner, cls))
@@ -516,7 +529,7 @@ class Reader:
                     target = target if isinstance(target, str) else None
                 elif isinstance(holder, Package):
                     verdict = "external"
-                elif holder:  # a class: `Class.m()`; anything else is an object, its methods by the name
+                elif holder and holder not in self.returning:  # `Class.m()`, `objet.m()`; not `f.m()` (T-0020)
                     target = self._method(holder, name)
             elif known and _text(receiver) in GLOBALS:
                 verdict = "global"

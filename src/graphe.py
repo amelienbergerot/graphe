@@ -5,17 +5,20 @@
     graphe path A B [--undirected]   the shortest path from A to B
     graphe explain X [--all] [--source]   what X calls, what calls X (and its code)
     graphe callers X [--depth N]
+                                     both say how many calls of X's name no
+                                     reader could attribute: grep those
     graphe search PATTERN            by name, then by displayed texts and comments
     graphe install [--remove]        the git hooks that rebuild it
 
 A node is designated by its id, its name (`help`, `Class.method`),
-`file::name` (`tools.py::help`) or, in GDScript, by the constant that
-preloads its script (`Script.function`).
+`file::name` (`tools.py::help`), a file by its path, or, in GDScript, by the
+constant that preloads its script (`Script.function`).
 
 The readers: graphe_python.py (the ast, calls resolved by types),
-graphe_godot.py (GDScript, by patterns), graphe_php.py (its functions and
-the actions of a `switch ($action)`) and graphe_js.py (`.js`, `.mjs`, `.ts`, the
-script and markup of `.svelte`, by tree-sitter: calls resolved by the name and by the imports). The core, graphe_core.py, then
+graphe_godot.py (GDScript, by patterns), graphe_php.py (its functions, the
+actions of a `switch ($action)`, the calls of the file's top) and graphe_js.py
+(`.js`, `.mjs`, `.ts`, the script and markup of `.svelte`, by tree-sitter: calls
+resolved by the imports, by `new C()` or `f()` assigned, else by the name). The core, graphe_core.py, then
 reads the text: the end of each function and class, the texts it displays
 (the `displayed_text` pattern of graphe.toml), its comment, module variables
 and who reads them, and the documents (the host's Markdown, `[documents]` of
@@ -371,7 +374,7 @@ def _write(path: Path, text: str) -> None:
 
 
 # T-0025: the verdicts of a call no link leads from: a name of ours, perhaps, but the reader could not tell which.
-UNATTRIBUTED = {"ambiguous", "unknown", "absent", "attribute", "dynamic", "member", "external?"}
+UNATTRIBUTED = {"ambiguous", "unknown", "absent", "attribute", "member", "external?"}  # `dynamic` has no name
 
 
 def _unattributed(graph: nx.DiGraph, sites: dict[str, list[dict]]) -> dict[str, int]:
