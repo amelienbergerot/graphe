@@ -143,6 +143,24 @@ def test_a_module_variable_computed_from_itself_ends(tmp_path: Path):
     graphe_python.Reader([path], root=tmp_path)
 
 
+def test_the_cache_gives_the_same_reading_and_reads_an_edited_file_again(reader, tmp_path: Path):
+    """T-0026: each file's parse and definitions come from the cache; the resolution is redone in full."""
+    paths = sorted((tmp_path / "simulation").glob("*.py"))
+    def read(cache):
+        r = graphe_python.Reader(paths, root=tmp_path, cache=cache)
+        return r.nodes, r.links, r.sites
+    cache = tmp_path / "cache"
+    assert read(cache) == read(None)
+    assert any(cache.iterdir())
+    assert read(cache) == read(None)  # warm
+    fleet = tmp_path / "simulation" / "flotte.py"
+    fleet.write_text(fleet.read_text(encoding="utf-8") + "\n\ndef remplir(flotte: Flotte) -> None:\n"
+                     "    flotte.pousser()\n", encoding="utf-8")
+    edited = read(cache)
+    assert edited == read(None)
+    assert f"{F}remplir" in {n["id"] for n in edited[0]}
+
+
 def test_an_object_outside_the_repository_does_not_take_our_names(reader):
     """m.start() on a re.Match: a name that Flotte.start bears, on a
     receiver that comes from elsewhere - no link, not even by the name."""

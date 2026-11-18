@@ -132,6 +132,21 @@ def test_a_graph_older_than_the_tool_is_rebuilt(tmp_path: Path):
     assert r.returncode == 0 and REBUILDING in r.stderr, r.stderr
 
 
+def _graph(host: Path) -> dict:
+    data = json.loads((host / "graphe" / "graphe.json").read_bytes())
+    return {k: v for k, v in data.items() if k not in ("built", "built_s")}
+
+
+def test_a_build_on_the_cache_gives_the_same_graph(tmp_path: Path):
+    # T-0026: the second build reads each Python file's definitions from graphe/, not from its source.
+    host = _host(tmp_path, {"outils.py": CALLEE, "travail.py": CALLER})
+    assert _run(host, "build").returncode == 0
+    first = _graph(host)
+    assert any((host / "graphe").rglob("*.pickle"))
+    assert _run(host, "build").returncode == 0
+    assert _graph(host) == first
+
+
 def _hooks(host: Path) -> dict[str, bytes]:
     folder = host / ".git" / "hooks"
     return {p.name: p.read_bytes() for p in folder.glob("post-*") if p.suffix != ".sample"}

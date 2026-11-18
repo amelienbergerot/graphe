@@ -10,12 +10,19 @@ unlinked and counts as `ambiguous`.
 
 `graphe check` reads the classification of each call in the sites of its
 contribution (`contribute`).
+
+T-0026: each file's parse and definitions are kept in graphe/cache, keyed by
+this file, the Python version, the path and the content; the resolution
+across modules is redone at each build.
 """
 
 from __future__ import annotations
 
 import ast
 import builtins
+import hashlib
+import os
+import pickle
 import re
 import sys
 from collections import defaultdict
@@ -82,6 +89,32 @@ class Module:
     variables: dict[str, list] = field(default_factory=lambda: defaultdict(list))
 
 
+def _store(entry: Path, value: tuple) -> None:
+    """Writes alongside then replaces: a build that reads at the same time never sees half an entry."""
+    temporary = entry.with_suffix(f".{os.getpid()}.tmp")
+    try:
+        data = pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL)
+        entry.parent.mkdir(parents=True, exist_ok=True)
+        temporary.write_bytes(data)
+        os.replace(temporary, entry)
+    # shortcut: a tree too deep for pickle is read again at each build; raise the recursion limit if one is slow.
+    except RecursionError:
+        pass
+    except OSError:  # the entry open by another build (Windows), a full disk: the cache is only a gain
+        temporary.unlink(missing_ok=True)
+
+
+def _load(entry: Path | None) -> tuple | None:
+    """A module's definitions from the cache, or None. The cache is the host's (graphe/), like its extensions,
+    which graphe runs too."""
+    if entry is None:
+        return None
+    try:
+        return pickle.loads(entry.read_bytes())
+    except Exception:  # absent, unreadable, or written by another build at this instant
+        return None
+
+
 def _module_name(rel: str) -> str:
     name = rel.removesuffix(".py").replace("/", ".")
     return name.removesuffix(".__init__")
@@ -90,22 +123,50 @@ def _module_name(rel: str) -> str:
 class Reader:
     """All our modules read, and each call classified."""
 
-    def __init__(self, paths: list[Path] | None = None, root: Path = ROOT) -> None:
+    def __init__(self, paths: list[Path] | None = None, root: Path = ROOT, cache: Path | None = None) -> None:
         self.root = root
         self.modules: dict[str, Module] = {}
+        # T-0026: a module's definitions, read from its file alone: module name -> (module, its classes and
+        # functions in reading order, or None if to read, the cache file)
+        read: dict[str, tuple] = {}
+        tool = hashlib.sha256(Path(__file__).read_bytes() + sys.version.encode()).digest()
         for path in paths if paths is not None else files():
             rel = path.relative_to(root).as_posix()
-            try:
-                tree = ast.parse(path.read_bytes(), filename=rel)
-            except (SyntaxError, ValueError) as e:  # ValueError: a null byte
-                print(f"graphe: {rel} does not parse, skipped ({e})", file=sys.stderr)
-                continue
-            m = Module(_id(rel.removesuffix(".py")), _module_name(rel), rel, tree)
+            content = path.read_bytes()
+            entry = cache / f"{hashlib.sha256(tool + rel.encode() + b'\0' + content).hexdigest()[:32]}.pickle" \
+                if cache else None
+            if cached := _load(entry):
+                m, classes, functions = cached
+            else:
+                try:
+                    tree = ast.parse(content, filename=rel)
+                except (SyntaxError, ValueError) as e:  # ValueError: a null byte
+                    print(f"graphe: {rel} does not parse, skipped ({e})", file=sys.stderr)
+                    continue
+                m, classes, functions = Module(_id(rel.removesuffix(".py")), _module_name(rel), rel, tree), None, None
             self.modules[m.name] = m
+            read[m.name] = (m, classes, functions, entry)
         self.functions: list[Function] = []
         self.classes: list[Class] = []
         for m in self.modules.values():
-            self._read_module(m)
+            _, classes, functions, entry = read[m.name]
+            if classes is None:
+                first_class, first_function = len(self.classes), len(self.functions)
+                self._read_module(m)
+                classes, functions = self.classes[first_class:], self.functions[first_function:]
+                if entry is not None:
+                    _store(entry, (m, classes, functions))
+            else:
+                self.classes += classes
+                self.functions += functions
+        if cache is not None and cache.is_dir():  # the entries of files gone or changed
+            used = {e.name for *_, e in read.values()}
+            for p in cache.glob("*.pickle"):
+                if p.name not in used:
+                    try:
+                        p.unlink(missing_ok=True)
+                    except OSError:  # open by another build (Windows)
+                        pass
         self.by_name: dict[str, list[Function]] = defaultdict(list)
         for f in self.functions:
             self.by_name[f.name].append(f)
@@ -838,7 +899,7 @@ class Reader:
 
 def contribute(project) -> dict:
     """The Python reader's contribution (docs/contribution.md): a site per call, and its alerts."""
-    reader = Reader(project.files(".py"), project.root)
+    reader = Reader(project.files(".py"), project.root, project.root / graphe_root.OUTPUT.name / "cache")
     our_names = set(reader.by_name) | reader.class_names
     sites = []
     for s in reader.sites:

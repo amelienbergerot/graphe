@@ -40,7 +40,7 @@ def root() -> Path:
 
 
 ROOT = root()
-OUTPUT = ROOT / "graphe"  # the output: never read
+OUTPUT = ROOT / "graphe"  # the output: never read as a host file (its cache/ serves the Python reader)
 CONFIGURATION = "graphe.toml"
 
 

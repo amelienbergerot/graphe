@@ -15,8 +15,8 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   one edit not yet committed is enough to make the graph stale. The Python
   reader takes most of it now. A rebuild of only the files that changed
   (or a query that answers from the old graph and says so) would avoid it.
-  T-0026: 45 s now; the levers left (incremental build, layout outside
-  the queries) wait for the user's decision.
+  T-0026: 45 s, then a cache of each Python file's definitions (about
+  4.6 s less); the layout outside the queries is the lever left.
 
 ## Settled
 
