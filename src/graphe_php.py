@@ -5,7 +5,8 @@ A rough reader, by patterns, like the GDScript one:
 - in an entry point with actions (`switch ($action)`), a node per
   `case 'x':` - kind « action »; two `case` in a row share a body: the
   first leads to the second, which bears it;
-- the calls between our functions, by their name.
+- the calls between our functions, by their name; those outside any body (a router at the top of the file,
+  T-0023) are the file's.
 
 What sends to these actions, from another language, falls to a local
 extension of the host (T-0009).
@@ -55,6 +56,7 @@ class Reader:
             lines = path.read_bytes().decode("utf-8", "replace").splitlines()
             self._node(fid, path.name, "file", rel, 1, rel)
             previous = ""  # an action without a body, which leads to the next one
+            covered: set[int] = set()  # the lines of the bodies, signatures included
             for i, line in enumerate(lines, start=1):
                 f, a = FUNCTION.match(line), ACTION.match(line)
                 if not (f or a):
@@ -72,6 +74,9 @@ class Reader:
                 end = extent(lines, i)
                 previous = nid if a and end == i else ""
                 bodies.append((nid, rel, i, lines_without_comments(lines[i:end])))
+                covered.update(range(i, end + 1))
+            top = [text for k, text in enumerate(lines, start=1) if k not in covered]
+            bodies.append((fid, rel, 1, lines_without_comments(top)))
         for nid, rel, i, body_lines in bodies:
             seen = set()
             for text in body_lines:

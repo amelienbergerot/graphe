@@ -15,7 +15,7 @@ preloads its script (`Script.function`).
 The readers: graphe_python.py (the ast, calls resolved by types),
 graphe_godot.py (GDScript, by patterns), graphe_php.py (its functions and
 the actions of a `switch ($action)`) and graphe_js.py (`.js`, `.mjs`, `.ts`, the
-`<script>` of `.svelte`, by tree-sitter: calls resolved by the name and by the imports). The core, graphe_core.py, then
+script and markup of `.svelte`, by tree-sitter: calls resolved by the name and by the imports). The core, graphe_core.py, then
 reads the text: the end of each function and class, the texts it displays
 (the `displayed_text` pattern of graphe.toml), its comment, module variables
 and who reads them, and the documents (the host's Markdown, `[documents]` of

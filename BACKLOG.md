@@ -26,11 +26,6 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   the core's backticks take `name` and `name()` only, so `explain
   ndviRecent` names no issue. 4 such citations in 4cast. Taking any
   `(...)` would change Grid Zero's links (its snapshot).
-- **A PHP file's top-level calls belong to nothing.** [T-0023] (4cast, 2026-11-18,
-  T-0015) `api/index.php` routes at the top of the file (`route_zones($db,
-  ...)`, `match` on `$chemin`): the PHP reader reads calls only in bodies, so
-  `explain route_zones` shows no caller. The JS reader gives them to the
-  file node; the PHP reader could do the same.
 - **On a large repository, a stale query waits for a whole build.** [T-0026] (Django,
   sample host, 2026-11-18, T-0016) 2943 Python files: 48 s per build, and
   one edit not yet committed is enough to make the graph stale. The Python
@@ -48,6 +43,11 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
 
 Settled by tickets (2026-11-18):
 
+- **A PHP file's top-level calls belong to nothing.** [T-0023] (4cast, 2026-11-18,
+  T-0015) `api/index.php` routes at the top of the file (`route_zones($db,
+  ...)`, `match` on `$chemin`): the PHP reader reads calls only in bodies, so
+  `explain route_zones` shows no caller. The JS reader gives them to the
+  file node; the PHP reader could do the same.
 - **The calls in a Svelte component's markup are not read.** [T-0022] (4cast,
   2026-11-18, T-0015) Only the `<script>` goes to the grammar; the markup is
   blanked out. About 213 calls in the markup of 17 components

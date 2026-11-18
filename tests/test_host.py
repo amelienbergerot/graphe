@@ -613,3 +613,15 @@ def test_the_calls_in_a_svelte_markup_belong_to_the_component(tmp_path: Path):
         assert r.returncode == 0 and "  calls (1)\n    src/Carte.svelte\n" in r.stdout, (name, r.stdout, r.stderr)
     r = _run(host, "explain", "fermer")  # a handler passed by its name
     assert "  references (1)\n    src/Carte.svelte\n" in r.stdout, r.stdout
+
+
+def test_a_php_file_calls_from_its_top_level(tmp_path: Path):
+    """T-0023: 4cast's `api/index.php` routes at the top of the file (`route_zones($db, ...)`)."""
+    host = _host(tmp_path, {
+        "api/index.php": "<?php\n$db = ouvrir();\nroute_zones($db);\n\nfunction route_zones($db)\n{\n"
+                         "    return aide();\n}\n\nfunction aide()\n{\n    return 1;\n}\n\nfunction ouvrir()\n{\n    return 2;\n}\n",
+    }, tracked=".")
+    r = _run(host, "explain", "route_zones")
+    assert r.returncode == 0 and "  calls (1)\n    api/index.php\n" in r.stdout, r.stdout + r.stderr
+    r = _run(host, "explain", "aide")  # a body's call stays its own
+    assert "  calls (1)\n    api/index.php: route_zones:5\n" in r.stdout, r.stdout
