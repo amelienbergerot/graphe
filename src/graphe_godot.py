@@ -10,8 +10,8 @@ Ce que l'extraction lit, par motifs et non par une grammaire :
 - `X.f(...)`, `f(...)`, `self.f(...)` ; une fonction passee en valeur (un
   gestionnaire de signal) ; `call_deferred("f")` ;
 
-`graphe verifier` recompte les appels avec un autre lecteur (le tokenize de
-Python, `contribuer`) et classe chacun : notre code, le moteur (d'apres l'API que Godot
+`graphe check` recompte les appels avec un autre lecteur (le tokenize de
+Python, `contribute`) et classe chacun : notre code, le moteur (d'apres l'API que Godot
 exporte), une fonction anonyme, ambigu ou inconnu. Un appel non relie qui
 porte le nom d'une de nos fonctions est un oubli de l'extraction.
 """
@@ -182,8 +182,8 @@ class Extraction:
             self._appels(s)
 
     def _noeud(self, s: Script, id_: str, label: str, ligne: int, sorte: str, nom: str) -> None:
-        self.noeuds.append({"id": id_, "label": label, "sorte": sorte, "source_file": _rel(s.chemin),
-                            "source_location": f"L{ligne}", "nom": nom})
+        self.noeuds.append({"id": id_, "label": label, "kind": sorte, "source_file": _rel(s.chemin),
+                            "source_location": f"L{ligne}", "name": nom})
 
     def _lien(self, s: Script, source: str, cible: str, relation: str, ligne: int, sur: bool = True,
               contexte: str = "") -> None:
@@ -192,9 +192,9 @@ class Extraction:
                            "source_file": _rel(s.chemin), "source_location": f"L{ligne}"})
 
     def _noeuds(self, s: Script) -> None:
-        self._noeud(s, s.id, s.chemin.name, 1, "fichier", _rel(s.chemin))
+        self._noeud(s, s.id, s.chemin.name, 1, "file", _rel(s.chemin))
         for nom, ligne in s.fonctions.items():
-            self._noeud(s, f"{s.id}_{nom.lower()}", f"{nom}()", ligne, "fonction", nom)
+            self._noeud(s, f"{s.id}_{nom.lower()}", f"{nom}()", ligne, "function", nom)
             self._lien(s, s.id, f"{s.id}_{nom.lower()}", "contains", ligne)
         for nom, ligne in s.signaux.items():
             self._noeud(s, f"{s.id}_signal_{nom.lower()}", f"{nom} (signal)", ligne, "signal", nom)
@@ -261,41 +261,41 @@ class Extraction:
         if not recepteur:
             if nom in s.fonctions:
                 self._lien(s, source, f"{s.id}_{nom.lower()}", "calls", ligne)
-                return {"verdict": "notre"}
+                return {"verdict": "ours"}
             if nom in DU_LANGAGE or nom in self.moteur_noms or nom in self.moteur_methodes:
-                return {"verdict": "moteur"}
-            return {"verdict": "inconnu"}
+                return {"verdict": "engine"}
+            return {"verdict": "unknown"}
         cible = self._script_de(s, recepteur)
         if cible is not None:
             if nom in cible.fonctions:
                 self._lien(s, source, f"{cible.id}_{nom.lower()}", "calls", ligne)
-                return {"verdict": "notre"}
+                return {"verdict": "ours"}
             if nom == "new":
                 self._lien(s, source, cible.id, "uses", ligne, contexte="new")
-                return {"verdict": "notre"}
-            return {"verdict": "moteur" if nom in self.moteur_methodes else "inconnu"}
+                return {"verdict": "ours"}
+            return {"verdict": "engine" if nom in self.moteur_methodes else "unknown"}
         derniere = recepteur.split(".")[-1]
         if nom in ("connect", "emit", "disconnect", "is_connected"):
             porteur = s if derniere == recepteur else self._script_de(s, recepteur.rsplit(".", 1)[0])
             if porteur is not None and derniere in porteur.signaux:
                 relation = "emits" if nom == "emit" else "connects"
                 self._lien(s, source, f"{porteur.id}_signal_{derniere.lower()}", relation, ligne)
-                return {"verdict": "notre"}
-            return {"verdict": "moteur"}
+                return {"verdict": "ours"}
+            return {"verdict": "engine"}
         if nom == "call" and derniere in s.anonymes:
-            return {"verdict": "anonyme"}
+            return {"verdict": "anonymous"}
         tete = recepteur.split(".")[0]
         if (tete in self.moteur_noms or (recepteur == tete and s.types.get(tete) in self.moteur_noms)) \
                 and (nom in self.moteur_methodes or nom not in self.par_nom):
-            return {"verdict": "moteur"}
+            return {"verdict": "engine"}
         notres = self.par_nom.get(nom, [])
         if notres and nom not in self.moteur_methodes:
             for autre in notres:
                 self._lien(s, source, f"{autre.id}_{nom.lower()}", "calls", ligne, sur=False)
-            return {"verdict": "notre?" if len(notres) == 1 else "ambigu"}
+            return {"verdict": "ours?" if len(notres) == 1 else "ambiguous"}
         if nom in self.moteur_methodes:
-            return {"verdict": "ambigu" if notres else "moteur"}
-        return {"verdict": "inconnu"}
+            return {"verdict": "ambiguous" if notres else "engine"}
+        return {"verdict": "unknown"}
 
 
 def _api_du_moteur(api: dict | None) -> tuple[set[str], set[str]]:
@@ -314,8 +314,8 @@ def _api_du_moteur(api: dict | None) -> tuple[set[str], set[str]]:
                 brut = (Path(dossier) / "extension_api.json").read_bytes()
                 api = json.loads(brut)  # un JSON casse n'entre pas au cache : il casserait chaque construction
             except (OSError, ValueError, subprocess.SubprocessError) as e:
-                print(f"graphe : {godot} ([godot] executable) n'a pas donne l'API du moteur ({e}) :"
-                      " ses appels restent non resolus", file=sys.stderr)
+                print(f"graphe: {godot} ([godot] executable) did not give the engine API ({e}):"
+                      " its calls stay unresolved", file=sys.stderr)
                 return set(), set()
         SORTIE.mkdir(exist_ok=True)
         garde.write_bytes(brut)
@@ -358,28 +358,28 @@ def _appels_par_tokenize(chemin: Path) -> Counter:
     return sites
 
 
-def contribuer(projet) -> dict:
+def contribute(projet) -> dict:
     """La contribution du lecteur GDScript (docs/contribution.md) : un site par appel, et ses alertes.
 
-    Sous `graphe verifier`, les appels sont recomptes par un autre lecteur (le tokenize de Python) : un appel
+    Sous `graphe check`, les appels sont recomptes par un autre lecteur (le tokenize de Python) : un appel
     manque ou en trop est une alerte.
     """
-    extraction = Extraction(chemins=projet.fichiers(".gd"))
+    extraction = Extraction(chemins=projet.files(".gd"))
     ids = {n["id"] for n in extraction.noeuds}
     sites = []
     for s in extraction.sites:
-        site = {"verdict": s["verdict"], "fichier": _rel(s["script"].chemin), "ligne": s["ligne"], "nom": s["nom"],
-                "texte": f"{s['recepteur'] or '-'}.{s['nom']}"}
-        if s["verdict"] == "inconnu" and s["nom"] in extraction.par_nom:
-            site["alerte"] = "non relie au nom d'une de nos fonctions"
+        site = {"verdict": s["verdict"], "file": _rel(s["script"].chemin), "line": s["ligne"], "name": s["nom"],
+                "text": f"{s['recepteur'] or '-'}.{s['nom']}"}
+        if s["verdict"] == "unknown" and s["nom"] in extraction.par_nom:
+            site["alert"] = "not linked to the name of one of our functions"
         sites.append(site)
-    if projet.verifier:
+    if projet.checking:
         lus = Counter((_rel(site["script"].chemin), site["ligne"], site["nom"]) for site in extraction.sites)
         recomptes = Counter()
         for s in extraction.scripts.values():
             for (ligne, nom), n in _appels_par_tokenize(s.chemin).items():
                 recomptes[(_rel(s.chemin), ligne, nom)] += n
-        # Un appel en trop n'a jamais fait echouer verifier : seuls les manques sont des alertes.
+        # Un appel en trop n'a jamais fait echouer check : seuls les manques sont des alertes.
         for (fichier, ligne, nom), n in sorted((recomptes - lus).items()):
-            sites += [{"fichier": fichier, "ligne": ligne, "nom": nom, "texte": nom, "alerte": "manque a la lecture"}] * n
-    return {"noeuds": extraction.noeuds, "sites": sites, "liens": [e for e in extraction.liens if e["target"] in ids]}
+            sites += [{"file": fichier, "line": ligne, "name": nom, "text": nom, "alert": "missed by the reader"}] * n
+    return {"nodes": extraction.noeuds, "sites": sites, "links": [e for e in extraction.liens if e["target"] in ids]}

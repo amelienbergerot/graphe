@@ -6,10 +6,10 @@ dataclass, retour), une construction (`x = Classe(...)`, `self.x =
 Classe(...)`), une iteration sur un conteneur type, un retour deduit
 (`return Classe(...)`). A defaut, un nom porte par une seule de nos
 fonctions est relie par le nom seul (INFERRED) ; porte par plusieurs, il
-reste non relie et compte comme ambigu.
+reste non relie et compte comme `ambiguous`.
 
-`graphe verifier` lit le classement de chaque appel dans les sites de sa
-contribution (`contribuer`).
+`graphe check` lit le classement de chaque appel dans les sites de sa
+contribution (`contribute`).
 """
 
 from __future__ import annotations
@@ -622,8 +622,8 @@ class Lecture:
     # ---------- le graphe
 
     def _noeud(self, id_: str, label: str, sorte: str, rel: str, ligne: int, nom: str) -> None:
-        self.noeuds.append({"id": id_, "label": label, "sorte": sorte, "source_file": rel,
-                            "source_location": f"L{ligne}", "nom": nom})
+        self.noeuds.append({"id": id_, "label": label, "kind": sorte, "source_file": rel,
+                            "source_location": f"L{ligne}", "name": nom})
 
     def _lien(self, source: str, cible: str, relation: str, rel: str, ligne: int, sur: bool = True,
               contexte: str = "") -> None:
@@ -633,7 +633,7 @@ class Lecture:
 
     def _emettre(self) -> None:
         for m in self.modules.values():
-            self._noeud(m.id, Path(m.rel).name, "fichier", m.rel, 1, m.nom)
+            self._noeud(m.id, Path(m.rel).name, "file", m.rel, 1, m.nom)
             for local, imp in m.imports.items():
                 cible = self._module(imp[1])
                 if imp[0] == "symbole" and self._module(f"{imp[1]}.{imp[2]}") is not None:
@@ -645,7 +645,7 @@ class Lecture:
                     if t and t[0] in ("fonction", "classe"):
                         self._lien(m.id, t[1].id, "imports", m.rel, 1, contexte=local)
         for c in self.classes:
-            self._noeud(c.id, c.nom, "classe", c.module.rel, c.noeud.lineno, c.qualnom)
+            self._noeud(c.id, c.nom, "class", c.module.rel, c.noeud.lineno, c.qualnom)
             self._lien(c.module.id if "." not in c.qualnom else self._parent_id(c), c.id, "contains",
                        c.module.rel, c.noeud.lineno)
             for base in c.noeud.bases:
@@ -653,12 +653,12 @@ class Lecture:
                 if t and t[0] == "classe":
                     self._lien(c.id, t[1].id, "inherits", c.module.rel, c.noeud.lineno)
             for nom, ligne in c.champs.items():
-                self._noeud(self.id_de_champ(c, nom), f"{c.nom}.{nom}", "champ", c.module.rel, ligne,
+                self._noeud(self.id_de_champ(c, nom), f"{c.nom}.{nom}", "field", c.module.rel, ligne,
                             f"{c.qualnom}.{nom}")
                 self._lien(c.id, self.id_de_champ(c, nom), "contains", c.module.rel, ligne)
         for f in self.fonctions:
             label = f"{'.' if f.classe else ''}{f.nom}()"
-            self._noeud(f.id, label, "methode" if f.classe else "fonction", f.module.rel, f.noeud.lineno, f.qualnom)
+            self._noeud(f.id, label, "method" if f.classe else "function", f.module.rel, f.noeud.lineno, f.qualnom)
             if f.classe is not None:
                 self._lien(f.classe.id, f.id, "method", f.module.rel, f.noeud.lineno)
             else:
@@ -710,10 +710,10 @@ class Lecture:
                     and id(n) not in appeles:
                 if isinstance(n, ast.Attribute):
                     self._propriete(n, qui, f, m)
-                    self._champ(n, qui, f, m, "lit")
+                    self._champ(n, qui, f, m, "reads")
                 self._reference(n, qui, f, m)
             elif isinstance(n, ast.Attribute) and isinstance(n.ctx, ast.Store):
-                self._champ(n, qui, f, m, "ecrit")
+                self._champ(n, qui, f, m, "writes")
             elif isinstance(n, (ast.Import, ast.ImportFrom)) and f is not None:
                 for local, imp in self._entrees_d_import(m, n).items():
                     cible = self._import(m, imp, local)
@@ -742,12 +742,12 @@ class Lecture:
             methode = porteur.methodes.get(n.attr)
             if methode is not None:
                 if {"property", "cached_property"} & methode.decorateurs and methode.id != qui:
-                    self._lien(qui, methode.id, "calls", m.rel, n.lineno, contexte="propriete")
+                    self._lien(qui, methode.id, "calls", m.rel, n.lineno, contexte="property")
                 return
 
     def id_de_champ(self, c: Classe, nom: str) -> str:
         id_ = f"{c.id}_{_id(nom)}"
-        return id_ + "_champ" if nom in c.methodes or nom in self.noms_de_classes else id_
+        return id_ + "_field" if nom in c.methodes or nom in self.noms_de_classes else id_
 
     def _champ(self, n: ast.Attribute, qui: str, f: Fonction | None, m: Module, relation: str) -> None:
         """`etat.demande` : lire ou ecrire le champ d'une de nos classes,
@@ -788,14 +788,14 @@ class Lecture:
         t = self.type_de(func, f, m)
         if t and t[0] == "fonction":
             self._lien(qui, t[1].id, "calls", m.rel, appel.lineno)
-            verdict = "notre"
+            verdict = "ours"
         elif t and t[0] == "classe":
-            self._lien(qui, t[1].id, "uses", m.rel, appel.lineno, contexte="instancie")
-            verdict = "notre"
+            self._lien(qui, t[1].id, "uses", m.rel, appel.lineno, contexte="instantiates")
+            verdict = "ours"
         elif t and t[0] in ("externe", "rend"):
-            verdict = "externe"
+            verdict = "external"
         elif t and t[0] == "attribut":
-            verdict = "attribut"  # un attribut appele : un rappel range dans l'objet
+            verdict = "attribute"  # un attribut appele : un rappel range dans l'objet
         elif t and t[0] == "absent":
             verdict = "absent"
         else:
@@ -803,21 +803,21 @@ class Lecture:
             if isinstance(func, ast.Attribute):
                 recepteur = self.type_de(func.value, f, m)
             if recepteur and recepteur[0] in ("externe", "conteneur", "dict", "paires"):
-                verdict = "externe"
+                verdict = "external"
             elif not nom:
-                verdict = "dynamique"
+                verdict = "dynamic"
             elif isinstance(func, ast.Name):
-                verdict = "local" if self._est_local(nom, f) else "inconnu"
+                verdict = "local" if self._est_local(nom, f) else "unknown"
             else:
                 notres = self.par_nom.get(nom, [])
                 if len(notres) == 1:
                     self._lien(qui, notres[0].id, "calls", m.rel, appel.lineno, sur=False)
-                    verdict = "notre?"
+                    verdict = "ours?"
                 elif notres:
-                    verdict = "ambigu"
+                    verdict = "ambiguous"
                     site["candidats"] = len(notres)
                 else:
-                    verdict = "externe?"
+                    verdict = "external?"
         site["verdict"] = verdict
         self.sites.append(site)
 
@@ -832,19 +832,19 @@ class Lecture:
         return False
 
 
-def contribuer(projet) -> dict:
+def contribute(projet) -> dict:
     """La contribution du lecteur Python (docs/contribution.md) : un site par appel, et ses alertes."""
-    lecture = Lecture(projet.fichiers(".py"), projet.racine)
+    lecture = Lecture(projet.files(".py"), projet.root)
     nos_noms = set(lecture.par_nom) | lecture.noms_de_classes
     sites = []
     for s in lecture.sites:
-        site = {"verdict": s["verdict"], "fichier": s["rel"], "ligne": s["ligne"], "nom": s["nom"], "texte": s["expr"]}
-        if s["verdict"] in ("inconnu", "externe?", "absent") and s["nom"] in nos_noms:
-            site["alerte"] = "non relie au nom d'une de nos fonctions"
+        site = {"verdict": s["verdict"], "file": s["rel"], "line": s["ligne"], "name": s["nom"], "text": s["expr"]}
+        if s["verdict"] in ("unknown", "external?", "absent") and s["nom"] in nos_noms:
+            site["alert"] = "not linked to the name of one of our functions"
         sites.append(site)
-    if projet.verifier:
+    if projet.checking:
         total = sum(1 for m in lecture.modules.values() for n in ast.walk(m.arbre) if isinstance(n, ast.Call))
         if total != len(lecture.sites):
-            sites.append({"fichier": "", "ligne": 0, "nom": "", "alerte": "appels de l'ast non classes",
-                          "texte": f"{total} appels dans l'ast, {len(lecture.sites)} classes"})
-    return {"noeuds": lecture.noeuds, "liens": lecture.liens, "sites": sites}
+            sites.append({"file": "", "line": 0, "name": "", "alert": "ast calls left unclassified",
+                          "text": f"{total} calls in the ast, {len(lecture.sites)} classified"})
+    return {"nodes": lecture.noeuds, "links": lecture.liens, "sites": sites}

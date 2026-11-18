@@ -2,10 +2,10 @@
 lecteurs passes (graphe_manques.md).
 
 Pour chaque fonction, methode, commande ou action :
-- `fin` : sa derniere ligne - la premiere ligne non vide qui revient a son
+- `end` : sa derniere ligne - la premiere ligne non vide qui revient a son
   retrait ferme son corps (Python, GDScript et PHP sont lus de meme) ;
-  `expliquer X --source` imprime ses lignes ;
-- `textes` : les textes qu'elle affiche, par le motif `texte_affiche` de
+  `explain X --source` imprime ses lignes ;
+- `texts` : les textes qu'elle affiche, par le motif `displayed_text` de
   graphe.toml (T-0009) - un texte vu a l'ecran mene a son code ; sans motif,
   aucun ;
 - `notes` : le commentaire juste au-dessus d'elle - un concept dit en
@@ -14,19 +14,19 @@ Pour chaque fonction, methode, commande ou action :
 Et :
 - un noeud par variable ou constante de module (Python : une affectation en
   colonne 0 ; GDScript : `const`/`var` en colonne 0, hors `preload`), relie
-  aux fonctions qui la lisent (`lit`) ou l'ecrivent (`ecrit`) - dans son
+  aux fonctions qui la lisent (`reads`) ou l'ecrivent (`writes`) - dans son
   fichier par le nom, ailleurs par `X.NOM` quand ce nom n'existe qu'une fois ;
 - une classe et ses champs ont leur fin et leur commentaire ;
 - Python : `alias.CONSTANTE`, ou `alias` est un module importe sous ce nom,
   lit la constante de ce module (EXTRACTED) ;
 - un noeud par document (T-0010) : chaque Markdown de l'hote, restreint par
-  `[documents] motifs` (graphe.toml). Un document dont le nom commence par
-  un identifiant (`[documents] identifiant`, `T-` et quatre chiffres par defaut) est un
+  `[documents] patterns` (graphe.toml). Un document dont le nom commence par
+  un identifiant (`[documents] identifier`, `T-` et quatre chiffres par defaut) est un
   ticket : le code qui contient son identifiant (dans son corps ou son
-  commentaire) et les autres documents y menent par `cite`. Un document
-  mene aux fonctions qu'il nomme entre accents graves (`nomme`, par le nom) ;
-- un noeud `valeur` par chaine (un identifiant, `"coupee"`) ecrite a la fois
-  en Python et en GDScript, relie a chaque corps qui l'ecrit (`valeur`) : ce
+  commentaire) et les autres documents y menent par `cites`. Un document
+  mene aux fonctions qu'il nomme entre accents graves (`names`, par le nom) ;
+- un noeud `value` par chaine (un identifiant, `"coupee"`) ecrite a la fois
+  en Python et en GDScript, relie a chaque corps qui l'ecrit (`value`) : ce
   qu'un cote emet et ce que l'autre compare.
 """
 
@@ -41,12 +41,12 @@ import networkx as nx
 import graphe_godot
 import graphe_racine
 
-CORPS = {"fonction", "methode", "commande", "action", "classe"}
+CORPS = {"function", "method", "command", "action", "class"}
 # Une etendue et un commentaire, sans etre un corps qui possede ses lignes.
-ETENDUS = CORPS | {"champ"}
+ETENDUS = CORPS | {"field"}
 PY_ALIAS = re.compile(r"^\s*(?:from\s+([\w.]+)\s+import\s+(\w+)(?:\s+as\s+(\w+))?|import\s+([\w.]+)\s+as\s+(\w+))\s*$")
 PY_QUALIFIE = re.compile(r"\b([a-z_]\w*)\.(\w+)\b")
-# T-0010 : l'identifiant d'un document par defaut (`[documents] identifiant`), celui des tickets.
+# T-0010 : l'identifiant d'un document par defaut (`[documents] identifier`), celui des tickets.
 IDENTIFIANT = r"\bT-\d{4}\b"
 NOMME = re.compile(r"`([A-Za-z_][\w.]*?)(?:\(\))?`")
 PY_VARIABLE = re.compile(r"^([A-Za-z_]\w*)\s*(?::[^=]+)?=(?!=)")
@@ -123,12 +123,12 @@ def _variables(rel: str, lignes: list[str]) -> list[tuple[str, int, str]]:
             m = PY_VARIABLE.match(ligne)
             if m and m.group(1) not in ("__all__",):
                 nom = m.group(1)
-                trouvees.append((nom, i, "constante" if nom.lstrip("_").isupper() else "variable"))
+                trouvees.append((nom, i, "constant" if nom.lstrip("_").isupper() else "variable"))
     elif rel.endswith(".gd"):
         for i, ligne in enumerate(lignes, start=1):
             m = GD_VARIABLE.match(ligne)
             if m and "preload(" not in m.group(3) and "load(" not in m.group(3):
-                trouvees.append((m.group(2), i, "constante" if m.group(1) == "const" else "variable"))
+                trouvees.append((m.group(2), i, "constant" if m.group(1) == "const" else "variable"))
     vus = set()
     return [t for t in trouvees if not (t[0] in vus or vus.add(t[0]))]
 
@@ -137,24 +137,24 @@ def _ajouter_lien(graphe: nx.DiGraph, s: str, c: str, relation: str, lieu: str, 
     if graphe.has_edge(s, c):
         d = graphe[s][c]
         d["relations"].add(relation)
-        if lieu not in d["lieux"]:
-            d["lieux"].append(lieu)
+        if lieu not in d["locations"]:
+            d["locations"].append(lieu)
     else:
-        graphe.add_edge(s, c, relations={relation}, confiance=confiance, lieux=[lieu], contextes=[])
+        graphe.add_edge(s, c, relations={relation}, confidence=confiance, locations=[lieu], contexts=[])
 
 
 def motif_des_textes(racine: Path) -> re.Pattern | None:
-    """`texte_affiche` (graphe.toml) : le motif d'un appel qui affiche un texte, le texte dans son seul groupe."""
-    brut = graphe_racine.configuration(racine).get("texte_affiche")
+    """`displayed_text` (graphe.toml) : le motif d'un appel qui affiche un texte, le texte dans son seul groupe."""
+    brut = graphe_racine.configuration(racine).get("displayed_text")
     if brut is None:
         return None
     try:
         motif = re.compile(brut)
     except (re.error, TypeError) as e:
-        raise RuntimeError(f"texte_affiche ({graphe_racine.CONFIGURATION}) : {e}") from None
+        raise RuntimeError(f"displayed_text ({graphe_racine.CONFIGURATION}): {e}") from None
     if motif.groups != 1:
-        raise RuntimeError(f"texte_affiche ({graphe_racine.CONFIGURATION}) : il faut un seul groupe, le texte "
-                           f"affiche ; il y en a {motif.groups}")
+        raise RuntimeError(f"displayed_text ({graphe_racine.CONFIGURATION}): it needs exactly one group, the "
+                           f"displayed text; it has {motif.groups}")
     return motif
 
 
@@ -178,19 +178,19 @@ def enrichir(graphe: nx.DiGraph, racine: Path) -> None:
             continue
         for n in ids:
             d = graphe.nodes[n]
-            if d["sorte"] not in ETENDUS:
+            if d["kind"] not in ETENDUS:
                 continue
             debut = int(d["source_location"].lstrip("L") or 0)
             fin = etendue(lignes, debut)
-            d["fin"] = fin
+            d["end"] = fin
             texte = "\n".join(lignes[debut - 1:fin])
             trouves = [t.replace('\\"', '"') for t in affiche.findall(texte)] if affiche else []
             if trouves:
-                d["textes"] = trouves
+                d["texts"] = trouves
             note = notes(lignes, debut)
             if note:
                 d["notes"] = note
-            if d["sorte"] in CORPS:
+            if d["kind"] in CORPS:
                 corps[n] = (rel, debut, fin)
 
     # Chaque ligne a son proprietaire : le plus petit corps qui la contient -
@@ -203,7 +203,7 @@ def enrichir(graphe: nx.DiGraph, racine: Path) -> None:
             proprietaires[rel][i] = n
 
     # Les variables et constantes de module.
-    fichier_id = {graphe.nodes[n]["source_file"]: n for n in graphe.nodes if graphe.nodes[n]["sorte"] == "fichier"}
+    fichier_id = {graphe.nodes[n]["source_file"]: n for n in graphe.nodes if graphe.nodes[n]["kind"] == "file"}
     variables: dict[str, dict[str, str]] = defaultdict(dict)  # fichier -> nom -> id
     noms_de_module: dict[str, list[str]] = defaultdict(list)
     for rel, lignes in textes_des_fichiers.items():
@@ -214,8 +214,8 @@ def enrichir(graphe: nx.DiGraph, racine: Path) -> None:
             vid = f"{fid}_{nom.lower()}"
             if vid in graphe:
                 vid += "_" + sorte
-            graphe.add_node(vid, id=vid, label=nom, sorte=sorte, source_file=rel, source_location=f"L{ligne}",
-                            nom=nom, fin=etendue(lignes, ligne))
+            graphe.add_node(vid, id=vid, label=nom, kind=sorte, source_file=rel, source_location=f"L{ligne}",
+                            name=nom, end=etendue(lignes, ligne))
             note = notes(lignes, ligne)
             if note:
                 graphe.nodes[vid]["notes"] = note
@@ -245,25 +245,25 @@ def enrichir(graphe: nx.DiGraph, racine: Path) -> None:
             if ici is not None:
                 for m in ici.finditer(ligne):
                     ecrit = re.match(ecriture, ligne[m.end():])
-                    _ajouter_lien(graphe, n, locales[m.group(1)], "ecrit" if ecrit else "lit", lieu, "EXTRACTED")
+                    _ajouter_lien(graphe, n, locales[m.group(1)], "writes" if ecrit else "reads", lieu, "EXTRACTED")
             if alias and "." in ligne:
                 for tete, nom in set(QUALIFIE.findall(ligne)):
                     vid = variables.get(alias.get(tete, ""), {}).get(nom)
                     if vid:
-                        _ajouter_lien(graphe, n, vid, "lit", lieu, "EXTRACTED")
+                        _ajouter_lien(graphe, n, vid, "reads", lieu, "EXTRACTED")
             elif ailleurs is not None and "." in ligne:
                 surs = set()
                 for tete, nom in set(PY_QUALIFIE.findall(ligne)) if alias_py else ():
                     vid = variables.get(alias_py.get(tete, ""), {}).get(nom)
                     if vid:
-                        _ajouter_lien(graphe, n, vid, "lit", lieu, "EXTRACTED")
+                        _ajouter_lien(graphe, n, vid, "reads", lieu, "EXTRACTED")
                         surs.add(nom)
                 for nom in set(ailleurs.findall(ligne)) - surs:
                     vid = uniques[nom]
                     # `examen.graine` en Python ne lit pas une variable GDScript.
                     autre = graphe.nodes[vid]["source_file"]
                     if autre != rel and Path(autre).suffix == Path(rel).suffix:
-                        _ajouter_lien(graphe, n, vid, "lit", lieu, "INFERRED")
+                        _ajouter_lien(graphe, n, vid, "reads", lieu, "INFERRED")
             # T-0354 : les valeurs ecrites dans un langage et lues dans l'autre.
             if '"' in ligne and rel.endswith((".py", ".gd")):
                 for v in set(VALEUR.findall(ligne)):
@@ -285,12 +285,12 @@ def _relier_les_valeurs(graphe: nx.DiGraph, usages: dict[str, list[tuple[str, st
         if (len({lieu.rsplit(":", 1)[0] for _, lieu, _ in us}) > VALEUR_FICHIERS_MAX
                 or len({n for n, _, _ in us}) > VALEUR_CORPS_MAX):
             continue
-        vid = f"valeur_{v}"
+        vid = f"value_{v}"
         rel, ligne = min(lieu for _, lieu, s in us if s == ".py").rsplit(":", 1)
-        graphe.add_node(vid, id=vid, label=f'"{v}"', sorte="valeur", source_file=rel, source_location=f"L{ligne}",
-                        nom=f'"{v}"', fin=int(ligne))
+        graphe.add_node(vid, id=vid, label=f'"{v}"', kind="value", source_file=rel, source_location=f"L{ligne}",
+                        name=f'"{v}"', end=int(ligne))
         for n, lieu, _ in us:
-            _ajouter_lien(graphe, n, vid, "valeur", lieu, "EXTRACTED")
+            _ajouter_lien(graphe, n, vid, "value", lieu, "EXTRACTED")
 
 
 def _alias_python(lignes: list[str], fichiers: set[str]) -> dict[str, str]:
@@ -316,14 +316,14 @@ def _documents(racine: Path) -> tuple[re.Pattern, list[str] | None]:
     qui restreignent les documents (None : tous les Markdown)."""
     table = graphe_racine.configuration(racine).get("documents", {})
     if not isinstance(table, dict):
-        raise RuntimeError(f"documents ({graphe_racine.CONFIGURATION}) : il faut une table [documents]")
+        raise RuntimeError(f"documents ({graphe_racine.CONFIGURATION}): [documents] must be a table")
     try:
-        motif = re.compile(table.get("identifiant", IDENTIFIANT))
+        motif = re.compile(table.get("identifier", IDENTIFIANT))
     except (re.error, TypeError) as e:
-        raise RuntimeError(f"[documents] identifiant ({graphe_racine.CONFIGURATION}) : {e}") from None
-    restreints = table.get("motifs")
+        raise RuntimeError(f"[documents] identifier ({graphe_racine.CONFIGURATION}): {e}") from None
+    restreints = table.get("patterns")
     if restreints is not None and not (isinstance(restreints, list) and all(isinstance(m, str) for m in restreints)):
-        raise RuntimeError(f"[documents] motifs ({graphe_racine.CONFIGURATION}) : il faut une liste de motifs")
+        raise RuntimeError(f"[documents] patterns ({graphe_racine.CONFIGURATION}): it must be a list of patterns")
     return motif, restreints
 
 
@@ -336,7 +336,7 @@ def _cites(motif: re.Pattern, texte: str) -> set[str]:
 
 
 def _relier_les_documents(graphe: nx.DiGraph, racine: Path, corps: dict, textes: dict[str, list[str]]) -> None:
-    """T-0010 : chaque Markdown de l'hote (`[documents] motifs` les restreint) est un document. Celui dont le
+    """T-0010 : chaque Markdown de l'hote (`[documents] patterns` les restreint) est un document. Celui dont le
     nom commence par un identifiant est un ticket ; il est cite par le code et par les documents qui le
     contiennent. Un document nomme les fonctions qu'il ecrit entre accents graves."""
     motif, restreints = _documents(racine)
@@ -357,8 +357,8 @@ def _relier_les_documents(graphe: nx.DiGraph, racine: Path, corps: dict, textes:
             tickets[nom] = did = _id_de_document("ticket_", nom)
         else:
             nom, sorte, did = rel, "document", _id_de_document("document_", rel)
-        graphe.add_node(did, id=did, label=nom, sorte=sorte, source_file=rel, source_location="L1",
-                        nom=nom, notes=titre, fin=len(texte.splitlines()))
+        graphe.add_node(did, id=did, label=nom, kind=sorte, source_file=rel, source_location="L1",
+                        name=nom, notes=titre, end=len(texte.splitlines()))
         documents.append((did, rel, texte))
     # Le code qui cite un ticket, dans son corps ou son commentaire.
     for n, (rel, debut, fin) in corps.items():
@@ -366,22 +366,22 @@ def _relier_les_documents(graphe: nx.DiGraph, racine: Path, corps: dict, textes:
         cites = _cites(motif, "\n".join(lignes[debut - 1:fin])) | _cites(motif, graphe.nodes[n].get("notes", ""))
         for ident in sorted(cites):
             if ident in tickets:
-                _ajouter_lien(graphe, n, tickets[ident], "cite", f"{rel}:{debut}", "EXTRACTED")
+                _ajouter_lien(graphe, n, tickets[ident], "cites", f"{rel}:{debut}", "EXTRACTED")
     # Les tickets qu'un document cite, et les fonctions qu'il nomme : un nom porte par un seul corps.
     porteurs: dict[str, list[str]] = defaultdict(list)
     for n in corps:
         d = graphe.nodes[n]
-        if d["sorte"] in ("fonction", "methode", "classe"):
-            porteurs[d["nom"].rsplit(".", 1)[-1]].append(n)
+        if d["kind"] in ("function", "method", "class"):
+            porteurs[d["name"].rsplit(".", 1)[-1]].append(n)
     for did, rel, texte in documents:
         for i, ligne in enumerate(texte.splitlines(), start=1):
             for ident in sorted(_cites(motif, ligne)):
                 if ident in tickets and tickets[ident] != did:  # pas de soi a soi
-                    _ajouter_lien(graphe, did, tickets[ident], "cite", f"{rel}:{i}", "EXTRACTED")
+                    _ajouter_lien(graphe, did, tickets[ident], "cites", f"{rel}:{i}", "EXTRACTED")
         for nom in set(NOMME.findall(texte)):
             dernier = nom.rsplit(".", 1)[-1]
             if len(dernier) >= NOM_MIN and len(porteurs.get(dernier, [])) == 1:
-                _ajouter_lien(graphe, did, porteurs[dernier][0], "nomme", rel, "INFERRED")
+                _ajouter_lien(graphe, did, porteurs[dernier][0], "names", rel, "INFERRED")
 
 
 def lignes_sans_commentaires(lignes: list[str]) -> list[str]:

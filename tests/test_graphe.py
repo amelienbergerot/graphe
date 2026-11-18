@@ -142,7 +142,7 @@ def test_un_objet_hors_du_depot_ne_prend_pas_nos_noms(lecture):
     vers_start = [e for e in lecture.liens if e["target"] == f"{F}flotte_start" and e["relation"] != "method"]
     assert vers_start == []
     site = next(s for s in lecture.sites if s["expr"] == "m.start")
-    assert site["verdict"] == "externe"
+    assert site["verdict"] == "external"
 
 
 def test_trouver_un_noeud_par_son_nom(lecture):
@@ -233,16 +233,16 @@ def test_enrichir_relie_les_variables_et_trouve_par_le_texte(tmp_path: Path):
             return tr("Réseau stable")
     ''').encode("utf-8"))
     # T-0009 : le motif de l'appel qui affiche un texte vient de l'hote.
-    (tmp_path / "graphe.toml").write_text("texte_affiche = '\\btr\\(\"([^\"]*)\"'\n", encoding="utf-8")
+    (tmp_path / "graphe.toml").write_text("displayed_text = '\\btr\\(\"([^\"]*)\"'\n", encoding="utf-8")
     lu = graphe_python.Lecture([chemin], racine=tmp_path)
     g = nx.DiGraph()
     for n in lu.noeuds:
         g.add_node(n["id"], **n)
     _enrichir(g, tmp_path)
     f = "simulation_jeu_"
-    assert "lit" in g[f"{f}avancer"][f"{f}limite"]["relations"]
-    assert "ecrit" in g[f"{f}avancer"][f"{f}compte"]["relations"]
-    assert g.nodes[f"{f}avancer"]["textes"] == ["Réseau stable"]
+    assert "reads" in g[f"{f}avancer"][f"{f}limite"]["relations"]
+    assert "writes" in g[f"{f}avancer"][f"{f}compte"]["relations"]
+    assert g.nodes[f"{f}avancer"]["texts"] == ["Réseau stable"]
     assert [n for n, _ in graphe.recherche(g, "réseau stable")] == [f"{f}avancer"]
     assert [n for n, _ in graphe.recherche(g, "clarte")] == [f"{f}avancer"]
     assert [n for n, _ in graphe.recherche(g, "def avancer")] == [f"{f}avancer"]
@@ -271,14 +271,14 @@ def test_une_valeur_ecrite_des_deux_cotes(tmp_path: Path):
     g = nx.DiGraph()
     for n in lu.noeuds:
         g.add_node(n["id"], **n)
-    g.add_node("godot_lecture_texte", id="godot_lecture_texte", label="texte()", sorte="fonction",
-               source_file="godot/lecture.gd", source_location="L1", nom="texte")
+    g.add_node("godot_lecture_texte", id="godot_lecture_texte", label="texte()", kind="function",
+               source_file="godot/lecture.gd", source_location="L1", name="texte")
     _enrichir(g, tmp_path)
-    assert {s for s, _ in g.in_edges("valeur_coupee")} == {"serveur_etat_construire", "godot_lecture_texte"}
-    assert "valeur_voisin" not in g  # ecrite d'un seul cote
-    assert [n for n, _ in graphe.recherche(g, "coupee")] == ["valeur_coupee"]
+    assert {s for s, _ in g.in_edges("value_coupee")} == {"serveur_etat_construire", "godot_lecture_texte"}
+    assert "value_voisin" not in g  # ecrite d'un seul cote
+    assert [n for n, _ in graphe.recherche(g, "coupee")] == ["value_coupee"]
     de, noms = graphe.communautes(g)
-    assert noms[de["valeur_coupee"]] == "valeurs"
+    assert noms[de["value_coupee"]] == "values"
 
 
 def test_champs_alias_d_import_et_tickets(tmp_path: Path):
@@ -316,19 +316,19 @@ def test_champs_alias_d_import_et_tickets(tmp_path: Path):
     for n in lu.noeuds:
         g.add_node(n["id"], **n)
     for e in lu.liens:
-        g.add_edge(e["source"], e["target"], relations={e["relation"]}, confiance=e["confidence"],
-                   lieux=[e["source_file"]], contextes=[])
+        g.add_edge(e["source"], e["target"], relations={e["relation"]}, confidence=e["confidence"],
+                   locations=[e["source_file"]], contexts=[])
     _enrichir(g, tmp_path)
     f, champ = "simulation_jeu_", "simulation_jeu_etat_demande_mw"
-    assert g.nodes[champ]["sorte"] == "champ" and g.nodes[champ]["notes"] == "La demande, en MW."
-    assert g.nodes[f"{f}etat"]["fin"] == 9
-    assert "ecrit" in g[f"{f}remplir"][champ]["relations"]
-    assert "lit" in g[f"{f}lire"][champ]["relations"]
+    assert g.nodes[champ]["kind"] == "field" and g.nodes[champ]["notes"] == "La demande, en MW."
+    assert g.nodes[f"{f}etat"]["end"] == 9
+    assert "writes" in g[f"{f}remplir"][champ]["relations"]
+    assert "reads" in g[f"{f}lire"][champ]["relations"]
     constante = "simulation_aides_previsionniste"
-    assert g[f"{f}lire"][constante]["confiance"] == "EXTRACTED"
-    assert "cite" in g[f"{f}remplir"]["ticket_t_0999"]["relations"]
+    assert g[f"{f}lire"][constante]["confidence"] == "EXTRACTED"
+    assert "cites" in g[f"{f}remplir"]["ticket_t_0999"]["relations"]
     assert g.nodes["ticket_t_0999"]["notes"] == "Un essai"
-    assert "nomme" in g["ticket_t_0999"][f"{f}lire"]["relations"]
+    assert "names" in g["ticket_t_0999"][f"{f}lire"]["relations"]
 
 
 @grid_zero
@@ -336,8 +336,8 @@ def test_le_godot_resout_ses_prechargements():
     """Sur le vrai depot : `Charte.ACCENT` lu par le prechargement,
     `Progress.record` trouve par lui, un envoi du client mene a son action."""
     g, *_ = graphe.assembler()
-    accent = next(n for n, d in g.nodes(data=True) if d["source_file"] == "godot/menu/charte.gd" and d["nom"] == "ACCENT")
-    assert sum("lit" in g[s][accent]["relations"] and g[s][accent]["confiance"] == "EXTRACTED"
+    accent = next(n for n, d in g.nodes(data=True) if d["source_file"] == "godot/menu/charte.gd" and d["name"] == "ACCENT")
+    assert sum("reads" in g[s][accent]["relations"] and g[s][accent]["confidence"] == "EXTRACTED"
                for s in g.predecessors(accent)) >= 10
     assert [g.nodes[n]["source_file"] for n in graphe.trouver(g, "Progress.record")] == ["godot/settings/progress.gd"]
     assert any("sends" in g[s]["web_api_scenarios_action_defi_envoyer"]["relations"]
@@ -345,9 +345,9 @@ def test_le_godot_resout_ses_prechargements():
     # Les cles de l'etat : le client lit `demand_rising_beyond` par sa cle.
     champ = "simulation_game_etat_de_jeu_etatdejeu_demand_rising_beyond"
     assert "godot/map/lectures.gd" in {g.nodes[s]["source_file"] for s in g.predecessors(champ)
-                                       if "lit" in g[s][champ]["relations"]}
+                                       if "reads" in g[s][champ]["relations"]}
     # Le champ d'une base (EngineState) se lit aussi par sa cle.
-    tick = next(n for n, d in g.nodes(data=True) if d["sorte"] == "champ" and d["nom"] == "EngineState.tick")
+    tick = next(n for n, d in g.nodes(data=True) if d["kind"] == "field" and d["name"] == "EngineState.tick")
     assert any(g.nodes[s]["source_file"].endswith(".gd") for s in g.predecessors(tick))
 
 
@@ -364,14 +364,14 @@ def test_sans_le_sens_le_chemin_prefere_le_code(capsys):
     chemin ne passe par elle que faute de chemin par le code."""
     import networkx as nx
     g = nx.DiGraph()
-    for n, sorte in (("a", "fonction"), ("b", "fonction"), ("c", "fonction"), ("d", "fonction"),
-                     ("valeur_x", "valeur")):
-        g.add_node(n, id=n, label=n, nom=n, sorte=sorte, source_file="f.py", source_location="L1")
+    for n, sorte in (("a", "function"), ("b", "function"), ("c", "function"), ("d", "function"),
+                     ("value_x", "value")):
+        g.add_node(n, id=n, label=n, name=n, kind=sorte, source_file="f.py", source_location="L1")
     for s, c, rel in (("a", "b", "calls"), ("b", "c", "calls"), ("c", "d", "calls"),
-                      ("a", "valeur_x", "valeur"), ("d", "valeur_x", "valeur")):
-        g.add_edge(s, c, relations={rel}, confiance="EXTRACTED", lieux=["f.py:1"], contextes=[])
+                      ("a", "value_x", "value"), ("d", "value_x", "value")):
+        g.add_edge(s, c, relations={rel}, confidence="EXTRACTED", locations=["f.py:1"], contexts=[])
     assert graphe.chemin(g, "a", "d", sans_sens=True) == 0
-    assert "valeur_x" not in capsys.readouterr().out
+    assert "value_x" not in capsys.readouterr().out
     g.remove_edge("b", "c")
     assert graphe.chemin(g, "a", "d", sans_sens=True) == 0
-    assert "valeur_x" in capsys.readouterr().out
+    assert "value_x" in capsys.readouterr().out

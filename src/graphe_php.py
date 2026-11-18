@@ -33,10 +33,10 @@ def _id(chemin: Path, racine: Path) -> str:
     return re.sub(r"\W", "_", chemin.relative_to(racine).with_suffix("").as_posix()).lower()
 
 
-def contribuer(projet) -> dict:
+def contribute(projet) -> dict:
     """La contribution du lecteur PHP (docs/contribution.md) : ni appels classes, ni sites."""
-    lecture = Lecture(projet.fichiers(".php"), projet.racine)
-    return {"noeuds": lecture.noeuds, "liens": lecture.liens}
+    lecture = Lecture(projet.files(".php"), projet.root)
+    return {"nodes": lecture.noeuds, "links": lecture.liens}
 
 
 def id_d_action(fichier_id: str, action: str) -> str:
@@ -53,7 +53,7 @@ class Lecture:
             rel = chemin.relative_to(racine).as_posix()
             fid = _id(chemin, racine)
             lignes = chemin.read_bytes().decode("utf-8", "replace").splitlines()
-            self._noeud(fid, chemin.name, "fichier", rel, 1, rel)
+            self._noeud(fid, chemin.name, "file", rel, 1, rel)
             precedente = ""  # une action sans corps, qui mene a la suivante
             for i, ligne in enumerate(lignes, start=1):
                 f, a = FONCTION.match(ligne), ACTION.match(ligne)
@@ -62,7 +62,7 @@ class Lecture:
                 if f:
                     nid = f"{fid}_{f.group(1).lower()}"
                     definies[f.group(1)] = nid
-                    self._noeud(nid, f"{f.group(1)}()", "fonction", rel, i, f.group(1))
+                    self._noeud(nid, f"{f.group(1)}()", "function", rel, i, f.group(1))
                 else:
                     nid = id_d_action(fid, a.group(1))
                     self._noeud(nid, a.group(1), "action", rel, i, a.group(1))
@@ -82,8 +82,8 @@ class Lecture:
                         self._lien(nid, cible, "calls", rel, i)
 
     def _noeud(self, nid: str, label: str, sorte: str, rel: str, ligne: int, nom: str) -> None:
-        self.noeuds.append({"id": nid, "label": label, "sorte": sorte, "source_file": rel,
-                            "source_location": f"L{ligne}", "nom": nom})
+        self.noeuds.append({"id": nid, "label": label, "kind": sorte, "source_file": rel,
+                            "source_location": f"L{ligne}", "name": nom})
 
     def _lien(self, source: str, cible: str, relation: str, rel: str, ligne: int) -> None:
         self.liens.append({"source": source, "target": cible, "relation": relation, "confidence": "EXTRACTED",
