@@ -7,10 +7,12 @@ ignored, each to the reader of its extension; `graphe.toml` excludes folders.
 from __future__ import annotations
 
 import json
+import math
 import os
 import shutil
 import subprocess
 import sys
+from collections import Counter
 from pathlib import Path
 
 from conftest import GRID_ZERO, grid_zero
@@ -492,3 +494,48 @@ def test_answers_name_each_neighbour_as_the_agent_designates_it_next(tmp_path: P
     assert "  flotte.py: tout:11\n" in r.stdout, r.stdout
     r = _run(host, "search", "avancer")
     assert "  flotte.py: Flotte.avancer:2, Reparations.avancer:7\n" in r.stdout, r.stdout
+
+
+# T-0017: the layout keeps the positions of the tool of 7681fac (T-0016 made it faster, not different).
+LAYOUT_FIXTURE = Path(__file__).parent / "layout_7681fac.json"
+
+
+def _many_communities(tmp_path: Path) -> Path:
+    """40 files of 1 to 40 chained functions, none calling another file: tens of communities of varied sizes."""
+    files = {f"m{k:02d}.py": "".join(f"def f{j}():\n    return f{j - 1}()\n\n\n" if j else "def f0():\n    return 0\n\n\n"
+                                     for j in range(k)) for k in range(1, 41)}
+    return _host(tmp_path, files, tracked=".")
+
+
+def test_the_layout_keeps_the_positions_of_the_tool_before_t_0016(tmp_path: Path):
+    host = _many_communities(tmp_path)
+    r = _run(host, "build")
+    assert r.returncode == 0, r.stderr
+    data = json.loads((host / "graphe" / "graphe.json").read_bytes())
+    assert len(data["communities"]) > 30  # the spiral places many discs
+    assert {n["id"]: [n["x"], n["y"]] for n in data["nodes"]} == json.loads(LAYOUT_FIXTURE.read_bytes())
+
+
+def test_a_community_above_1000_nodes_is_laid_out_in_its_disc(tmp_path: Path):
+    host = _host(tmp_path, {"etoile.py": "def centre():\n    return 0\n\n\n" + "".join(
+        f"def b{j}():\n    return centre()\n\n\n" for j in range(1100))}, tracked=".")
+    r = _run(host, "build")
+    assert r.returncode == 0, r.stderr
+    data = json.loads((host / "graphe" / "graphe.json").read_bytes())
+    sizes = Counter(n["community"] for n in data["nodes"])
+    big, size = sizes.most_common(1)[0]
+    assert size > 1000  # the precondition: the sunflower's branch is taken
+    points = [(n["x"], n["y"]) for n in data["nodes"] if n["community"] == big]
+    assert all(math.isfinite(x) and math.isfinite(y) for x, y in points)
+    assert len(set(points)) == len(points)
+    cx, cy = sum(x for x, _ in points) / len(points), sum(y for _, y in points) / len(points)
+    radius = math.sqrt(size) * 1.6 + 1.0  # the disc of a community, as graphe.html draws it
+    assert all(math.dist((x, y), (cx, cy)) <= radius for x, y in points)
+
+
+def test_a_relation_with_a_sure_and_a_guessed_link_marks_the_guessed_one(tmp_path: Path):
+    host = _host(tmp_path, {"outils.py": "class A:\n    def m(self):\n        return 1\n\n\ndef g():\n    return 2\n\n\n"
+                                         "def f(x):\n    g()\n    x.m()\n"}, tracked=".")
+    r = _run(host, "explain", "f")
+    assert r.returncode == 0, r.stderr
+    assert "  calls (2) [1 by name: ?]\n    outils.py: A.m:2?, g:6\n" in r.stdout, r.stdout
