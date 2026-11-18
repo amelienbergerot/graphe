@@ -4,15 +4,15 @@ Part of: T-0001
 Blocked by: T-0014
 Created: 2026-11-17
 
-# T-0015 : TypeScript et Svelte, branchés sur 4cast
+# T-0015: TypeScript and Svelte, plugged into 4cast
 
-## Ce qu'il faut construire
+## What to build
 
-Le lecteur JS lit aussi les fichiers `.ts` et le bloc `<script>` des fichiers `.svelte`. 4cast devient le troisième hôte extérieur. Son `graphe.toml` donne le motif d'identifiant de ses issues, et son API PHP est lue par le lecteur PHP existant.
+The JS reader also reads the `.ts` files and the `<script>` block of the `.svelte` files. 4cast becomes the third outside host. Its `graphe.toml` gives the identifier pattern of its issues, and its PHP API is read by the existing PHP reader.
 
-## Critères d'acceptation
+## Acceptance criteria
 
-- [ ] Un mini-projet témoin TS et Svelte donne les liens attendus, y compris d'un composant Svelte vers une fonction TS.
-- [ ] Dans 4cast, `graphe chemin` relie un composant Svelte à la fonction TS qu'il appelle, et `expliquer` nomme l'issue qui la cite.
-- [ ] La couverture de `verifier` sur 4cast est notée dans ce ticket, comme référence.
-- [ ] Les appels manqués sont notés dans le backlog, avec l'hôte.
+- [ ] A small sample TS and Svelte project gives the expected links, including from a Svelte component to a TS function.
+- [ ] In 4cast, `graphe path` links a Svelte component to the TS function it calls, and `explain` names the issue that cites it.
+- [ ] The coverage of `check` on 4cast is noted in this ticket, as a reference.
+- [ ] The missed calls are noted in the backlog, with the host.

@@ -1,14 +1,14 @@
-"""Le PHP de l'hote dans le graphe du code.
+"""The host's PHP in the code graph.
 
-Un lecteur sommaire, par motifs, comme celui du GDScript :
-- un noeud par fichier, un par fonction (`function lire(`) ;
-- dans un point d'entree a actions (`switch ($action)`), un noeud par
-  `case 'x':` - sorte « action » ; deux `case` a la suite partagent un
-  corps : le premier mene au second, qui le porte ;
-- les appels entre nos fonctions, par leur nom.
+A rough reader, by patterns, like the GDScript one:
+- a node per file, one per function (`function lire(`);
+- in an entry point with actions (`switch ($action)`), a node per
+  `case 'x':` - kind « action »; two `case` in a row share a body: the
+  first leads to the second, which bears it;
+- the calls between our functions, by their name.
 
-Ce qui envoie a ces actions, depuis un autre langage, revient a une
-extension locale de l'hote (T-0009).
+What sends to these actions, from another language, falls to a local
+extension of the host (T-0009).
 """
 
 from __future__ import annotations
@@ -16,75 +16,75 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from graphe_enrichir import etendue, lignes_sans_commentaires
-import graphe_racine
-from graphe_racine import RACINE
+from graphe_core import extent, lines_without_comments
+import graphe_root
+from graphe_root import ROOT
 
-FONCTION = re.compile(r"^function\s+(\w+)\s*\(")
+FUNCTION = re.compile(r"^function\s+(\w+)\s*\(")
 ACTION = re.compile(r"^\s*case\s+'(\w+)'\s*:\s*$")
-APPEL = re.compile(r"\b(\w+)\s*\(")
+CALL = re.compile(r"\b(\w+)\s*\(")
 
 
-def fichiers(racine: Path = RACINE) -> list[Path]:
-    return graphe_racine.fichiers(".php", racine)
+def files(root: Path = ROOT) -> list[Path]:
+    return graphe_root.files(".php", root)
 
 
-def _id(chemin: Path, racine: Path) -> str:
-    return re.sub(r"\W", "_", chemin.relative_to(racine).with_suffix("").as_posix()).lower()
+def _id(path: Path, root: Path) -> str:
+    return re.sub(r"\W", "_", path.relative_to(root).with_suffix("").as_posix()).lower()
 
 
-def contribute(projet) -> dict:
-    """La contribution du lecteur PHP (docs/contribution.md) : ni appels classes, ni sites."""
-    lecture = Lecture(projet.files(".php"), projet.root)
-    return {"nodes": lecture.noeuds, "links": lecture.liens}
+def contribute(project) -> dict:
+    """The PHP reader's contribution (docs/contribution.md): neither classified calls, nor sites."""
+    reader = Reader(project.files(".php"), project.root)
+    return {"nodes": reader.nodes, "links": reader.links}
 
 
-def id_d_action(fichier_id: str, action: str) -> str:
-    return f"{fichier_id}_action_{action.lower()}"
+def action_id(file_id: str, action: str) -> str:
+    return f"{file_id}_action_{action.lower()}"
 
 
-class Lecture:
-    def __init__(self, chemins: list[Path] | None = None, racine: Path = RACINE) -> None:
-        self.noeuds: list[dict] = []
-        self.liens: list[dict] = []
-        definies: dict[str, str] = {}
-        corps: list[tuple[str, str, int, list[str]]] = []  # (id, fichier, ligne, lignes du corps)
-        for chemin in fichiers(racine) if chemins is None else chemins:
-            rel = chemin.relative_to(racine).as_posix()
-            fid = _id(chemin, racine)
-            lignes = chemin.read_bytes().decode("utf-8", "replace").splitlines()
-            self._noeud(fid, chemin.name, "file", rel, 1, rel)
-            precedente = ""  # une action sans corps, qui mene a la suivante
-            for i, ligne in enumerate(lignes, start=1):
-                f, a = FONCTION.match(ligne), ACTION.match(ligne)
+class Reader:
+    def __init__(self, paths: list[Path] | None = None, root: Path = ROOT) -> None:
+        self.nodes: list[dict] = []
+        self.links: list[dict] = []
+        defined: dict[str, str] = {}
+        bodies: list[tuple[str, str, int, list[str]]] = []  # (id, file, line, lines of the body)
+        for path in files(root) if paths is None else paths:
+            rel = path.relative_to(root).as_posix()
+            fid = _id(path, root)
+            lines = path.read_bytes().decode("utf-8", "replace").splitlines()
+            self._node(fid, path.name, "file", rel, 1, rel)
+            previous = ""  # an action without a body, which leads to the next one
+            for i, line in enumerate(lines, start=1):
+                f, a = FUNCTION.match(line), ACTION.match(line)
                 if not (f or a):
                     continue
                 if f:
                     nid = f"{fid}_{f.group(1).lower()}"
-                    definies[f.group(1)] = nid
-                    self._noeud(nid, f"{f.group(1)}()", "function", rel, i, f.group(1))
+                    defined[f.group(1)] = nid
+                    self._node(nid, f"{f.group(1)}()", "function", rel, i, f.group(1))
                 else:
-                    nid = id_d_action(fid, a.group(1))
-                    self._noeud(nid, a.group(1), "action", rel, i, a.group(1))
-                    if precedente:
-                        self._lien(precedente, nid, "dispatches", rel, i)
-                self._lien(fid, nid, "contains", rel, i)
-                fin = etendue(lignes, i)
-                precedente = nid if a and fin == i else ""
-                corps.append((nid, rel, i, lignes_sans_commentaires(lignes[i:fin])))
-        for nid, rel, i, lignes_du_corps in corps:
-            vus = set()
-            for texte in lignes_du_corps:
-                for m in APPEL.finditer(texte):
-                    cible = definies.get(m.group(1))
-                    if cible and cible != nid and cible not in vus:
-                        vus.add(cible)
-                        self._lien(nid, cible, "calls", rel, i)
+                    nid = action_id(fid, a.group(1))
+                    self._node(nid, a.group(1), "action", rel, i, a.group(1))
+                    if previous:
+                        self._link(previous, nid, "dispatches", rel, i)
+                self._link(fid, nid, "contains", rel, i)
+                end = extent(lines, i)
+                previous = nid if a and end == i else ""
+                bodies.append((nid, rel, i, lines_without_comments(lines[i:end])))
+        for nid, rel, i, body_lines in bodies:
+            seen = set()
+            for text in body_lines:
+                for m in CALL.finditer(text):
+                    target = defined.get(m.group(1))
+                    if target and target != nid and target not in seen:
+                        seen.add(target)
+                        self._link(nid, target, "calls", rel, i)
 
-    def _noeud(self, nid: str, label: str, sorte: str, rel: str, ligne: int, nom: str) -> None:
-        self.noeuds.append({"id": nid, "label": label, "kind": sorte, "source_file": rel,
-                            "source_location": f"L{ligne}", "name": nom})
+    def _node(self, nid: str, label: str, kind: str, rel: str, line: int, name: str) -> None:
+        self.nodes.append({"id": nid, "label": label, "kind": kind, "source_file": rel,
+                           "source_location": f"L{line}", "name": name})
 
-    def _lien(self, source: str, cible: str, relation: str, rel: str, ligne: int) -> None:
-        self.liens.append({"source": source, "target": cible, "relation": relation, "confidence": "EXTRACTED",
-                           "source_file": rel, "source_location": f"L{ligne}", "context": ""})
+    def _link(self, source: str, target: str, relation: str, rel: str, line: int) -> None:
+        self.links.append({"source": source, "target": target, "relation": relation, "confidence": "EXTRACTED",
+                           "source_file": rel, "source_location": f"L{line}", "context": ""})

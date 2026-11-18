@@ -14,7 +14,7 @@ preloads its script (`Script.function`).
 
 The readers: graphe_python.py (the ast, calls resolved by types),
 graphe_godot.py (GDScript, by patterns) and graphe_php.py (its functions and
-the actions of a `switch ($action)`). The core, graphe_enrichir.py, then
+the actions of a `switch ($action)`). The core, graphe_core.py, then
 reads the text: the end of each function and class, the texts it displays
 (the `displayed_text` pattern of graphe.toml), its comment, module variables
 and who reads them, and the documents (the host's Markdown, `[documents]` of
@@ -27,11 +27,11 @@ documents; `strip_prefixes` removes prefixes from community names.
 
 The contract (docs/contribution.md): readers and local extensions return a
 contribution through `contribute(project)`. Assembly runs the readers, then
-the core (graphe_enrichir), then the extensions declared by `[[extensions]]`
+the core (graphe_core), then the extensions declared by `[[extensions]]`
 in graphe.toml, in their order. A `with_readers` extension comes in with the
 readers, before the core, and may take over their links.
 
-Files read (graphe_racine.py): those git tracks, plus untracked files that
+Files read (graphe_root.py): those git tracks, plus untracked files that
 are not ignored, each to the reader of its extension; `exclude`, in an
 optional graphe.toml at the host root, removes folders.
 
@@ -59,319 +59,318 @@ from pathlib import Path
 
 import networkx as nx
 
-import graphe_enrichir
+import graphe_core
 import graphe_godot
 import graphe_php
 import graphe_python
-import graphe_racine
-from graphe_racine import CONFIGURATION, RACINE, SORTIE
+import graphe_root
+from graphe_root import CONFIGURATION, OUTPUT, ROOT
 
-JSON = SORTIE / "graphe.json"
-CROCHETS = ("post-commit", "post-merge", "post-checkout", "post-rewrite")
-# (debut, fin) du bloc pose dans un crochet ; le second, celui d'avant T-0011 (le relais de l'hote puis l'outil en
-# francais), est retire aussi.
-BLOCS = (("# >>> graphe code graph", "# <<< graphe code graph"), ("# >>> graphe du code", "# <<< graphe du code"))
-# Ce qui fait passer de l'appelant a l'appele.
-APPELS = {"calls", "uses", "references", "indirect_call", "sends", "dispatches", "reads", "writes", "value"}
-# T-0354 : des noeuds qui ne sont pas du code, chacun leur communaute - un
-# ticket, une valeur ou un document relie des fichiers que rien d'autre ne relie, et
-# fondrait des communautes sans rapport. L'hote en ajoute (`[communities] separate`).
-A_PART = {"ticket": "tickets", "value": "values", "document": "documents"}
-POIDS_HORS_CODE = 4
-
-
-def _communautes() -> tuple[dict[str, str], list[str]]:
-    """`[communities]` de graphe.toml : les sortes a part (sorte -> nom), et les prefixes retires des noms."""
-    table = graphe_racine.configuration().get("communities", {})
-    return {**A_PART, **table.get("separate", {})}, table.get("strip_prefixes", [])
+JSON = OUTPUT / "graphe.json"
+HOOKS = ("post-commit", "post-merge", "post-checkout", "post-rewrite")
+# (start, end) of the block set in a hook; the second, the one from before T-0011 (the host's relay, then the tool in
+# French), is removed too.
+BLOCKS = (("# >>> graphe code graph", "# <<< graphe code graph"), ("# >>> graphe du code", "# <<< graphe du code"))
+# What leads from the caller to the callee.
+CALLS = {"calls", "uses", "references", "indirect_call", "sends", "dispatches", "reads", "writes", "value"}
+# T-0354: nodes that are not code, each their own community - a ticket, a value or a document links files that
+# nothing else links, and would merge unrelated communities. The host adds some (`[communities] separate`).
+SEPARATE = {"ticket": "tickets", "value": "values", "document": "documents"}
+OFF_CODE_WEIGHT = 4
 
 
-# ---------- construire
+def _communities_config() -> tuple[dict[str, str], list[str]]:
+    """`[communities]` of graphe.toml: the separate kinds (kind -> name), and the prefixes removed from names."""
+    table = graphe_root.configuration().get("communities", {})
+    return {**SEPARATE, **table.get("separate", {})}, table.get("strip_prefixes", [])
+
+
+# ---------- build
 
 def _sources() -> list[Path]:
-    """T-0009 : tous les fichiers de l'hote, pas seulement ceux des lecteurs (une extension lit ce qu'elle veut)."""
-    return [p for p in graphe_racine.fichiers("") + [RACINE / CONFIGURATION]
-            + [RACINE / e.get("path", "") for e in _extensions_declarees()] if p.is_file()]
+    """T-0009: all the host's files, not only the readers' (an extension reads what it wants)."""
+    return [p for p in graphe_root.files("") + [ROOT / CONFIGURATION]
+            + [ROOT / e.get("path", "") for e in _declared_extensions()] if p.is_file()]
 
 
-def _outil() -> list[Path]:
-    """Les fichiers de l'outil (T-0006) : un lecteur corrige perime le graphe de chaque hote."""
+def _tool() -> list[Path]:
+    """The tool's files (T-0006): a fixed reader makes every host's graph stale."""
     return sorted(Path(__file__).parent.glob("graphe*.py"))
 
 
 def _commit() -> str | None:
     try:
-        r = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=RACINE, capture_output=True, text=True,
+        r = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=ROOT, capture_output=True, text=True,
                            timeout=10)
         return r.stdout.strip() or None
     except (OSError, subprocess.SubprocessError):
         return None
 
 
-# Chaque lecteur sous le nom de sa section de graphe.toml : la cle de sa configuration et de sa couverture.
-LECTEURS = {"python": graphe_python.contribute, "godot": graphe_godot.contribute, "php": graphe_php.contribute}
-CHAMPS_DU_NOEUD = ("id", "label", "kind", "source_file", "source_location", "name")
-CHAMPS_DU_LIEN = ("source", "target", "relation", "confidence", "source_file", "source_location", "context")
+# Each reader under the name of its graphe.toml section: the key of its configuration and of its coverage.
+READERS = {"python": graphe_python.contribute, "godot": graphe_godot.contribute, "php": graphe_php.contribute}
+NODE_FIELDS = ("id", "label", "kind", "source_file", "source_location", "name")
+LINK_FIELDS = ("source", "target", "relation", "confidence", "source_file", "source_location", "context")
 
 
-class Projet:
-    """Ce que recoit `contribute(project)` : la racine, les fichiers de l'hote, la section de configuration de
-    celui qui contribue et le graphe deja assemble, copie a la lecture (docs/contribution.md)."""
+class Project:
+    """What `contribute(project)` receives: the root, the host's files, the configuration section of the one who
+    contributes and the graph already assembled, copied on reading (docs/contribution.md)."""
 
-    def __init__(self, configuration: dict, graphe: nx.DiGraph, verifier: bool) -> None:
-        self.root = RACINE
+    def __init__(self, configuration: dict, graph: nx.DiGraph, checking: bool) -> None:
+        self.root = ROOT
         self.configuration = configuration
-        self.checking = verifier
-        self._graphe = graphe
+        self.checking = checking
+        self._graph = graph
 
-    def files(self, suffixe: str) -> list[Path]:
-        return graphe_racine.fichiers(suffixe, self.root)
+    def files(self, suffix: str) -> list[Path]:
+        return graphe_root.files(suffix, self.root)
 
     @cached_property
     def graph(self) -> dict:
-        return {"nodes": {n: copy.deepcopy(d) for n, d in self._graphe.nodes(data=True)},
-                "links": [{"source": s, "target": c, **copy.deepcopy({**d, "relations": sorted(d["relations"])})}
-                          for s, c, d in self._graphe.edges(data=True)]}
+        return {"nodes": {n: copy.deepcopy(d) for n, d in self._graph.nodes(data=True)},
+                "links": [{"source": s, "target": t, **copy.deepcopy({**d, "relations": sorted(d["relations"])})}
+                          for s, t, d in self._graph.edges(data=True)]}
 
 
-def _extensions_declarees() -> list[dict]:
-    return graphe_racine.configuration().get("extensions", [])
+def _declared_extensions() -> list[dict]:
+    return graphe_root.configuration().get("extensions", [])
 
 
 def _extension(declaration: dict):
-    """La fonction `contribute` d'une extension locale ; une extension introuvable arrete la construction."""
-    chemin = declaration.get("path", "")
-    fichier = RACINE / chemin
-    if not chemin or not fichier.is_file():
-        raise RuntimeError(f"local extension {chemin!r} not found ([[extensions]] path, {CONFIGURATION})")
-    spec = importlib.util.spec_from_file_location(f"graphe_extension_{fichier.stem}", fichier)
+    """The `contribute` function of a local extension; an extension not found stops the build."""
+    rel = declaration.get("path", "")
+    file = ROOT / rel
+    if not rel or not file.is_file():
+        raise RuntimeError(f"local extension {rel!r} not found ([[extensions]] path, {CONFIGURATION})")
+    spec = importlib.util.spec_from_file_location(f"graphe_extension_{file.stem}", file)
     if spec is None:
-        raise RuntimeError(f"local extension {chemin}: not a Python module")
+        raise RuntimeError(f"local extension {rel}: not a Python module")
     module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module  # une dataclass de l'extension cherche son module ici
+    sys.modules[spec.name] = module  # a dataclass of the extension looks for its module here
     spec.loader.exec_module(module)
     if not callable(getattr(module, "contribute", None)):
-        raise RuntimeError(f"local extension {chemin}: no function contribute(project)")
+        raise RuntimeError(f"local extension {rel}: no function contribute(project)")
     return module.contribute
 
 
-def _inserer(graphe: nx.DiGraph, apports: list[tuple[str, dict]], pendants: list[dict]) -> None:
-    """Les contributions dans le graphe : les noeuds tries par l'id (un id deja la fusionne ses attributs), puis
-    les liens ; un lien par paire de noeuds, qui garde ses relations et ses lieux."""
-    noeuds = sorted(((qui, n) for qui, c in apports for n in c.get("nodes", [])), key=lambda p: str(p[1].get("id")))
-    for qui, n in noeuds:
-        requis = ("id",) if n.get("id") in graphe else CHAMPS_DU_NOEUD
-        if manque := [k for k in requis if k not in n]:
-            raise RuntimeError(f"{qui}: node {n.get('id')!r} lacks {', '.join(manque)}")
-        graphe.add_node(n["id"], **n)
-    for qui, c in apports:
+def _insert(graph: nx.DiGraph, contributions: list[tuple[str, dict]], dangling: list[dict]) -> None:
+    """The contributions into the graph: the nodes sorted by id (an id already there merges its attributes), then
+    the links; one link per pair of nodes, which keeps its relations and its locations."""
+    nodes = sorted(((who, n) for who, c in contributions for n in c.get("nodes", [])), key=lambda p: str(p[1].get("id")))
+    for who, n in nodes:
+        required = ("id",) if n.get("id") in graph else NODE_FIELDS
+        if missing := [k for k in required if k not in n]:
+            raise RuntimeError(f"{who}: node {n.get('id')!r} lacks {', '.join(missing)}")
+        graph.add_node(n["id"], **n)
+    for who, c in contributions:
         for e in c.get("links", []):
-            if manque := [k for k in CHAMPS_DU_LIEN if k not in e]:
-                raise RuntimeError(f"{qui}: link {e.get('source')!r} -> {e.get('target')!r} lacks "
-                                   f"{', '.join(manque)}")
-            s, cible = e["source"], e["target"]
-            if s not in graphe or cible not in graphe:
-                pendants.append(e)
+            if missing := [k for k in LINK_FIELDS if k not in e]:
+                raise RuntimeError(f"{who}: link {e.get('source')!r} -> {e.get('target')!r} lacks "
+                                   f"{', '.join(missing)}")
+            s, target = e["source"], e["target"]
+            if s not in graph or target not in graph:
+                dangling.append(e)
                 continue
-            lieu = f"{e['source_file']}:{e['source_location'].lstrip('L')}"
-            if graphe.has_edge(s, cible):
-                d = graphe[s][cible]
+            location = f"{e['source_file']}:{e['source_location'].lstrip('L')}"
+            if graph.has_edge(s, target):
+                d = graph[s][target]
                 d["relations"].add(e["relation"])
-                if lieu not in d["locations"]:
-                    d["locations"].append(lieu)
+                if location not in d["locations"]:
+                    d["locations"].append(location)
                 if e["confidence"] == "EXTRACTED":
                     d["confidence"] = "EXTRACTED"
                 if e["context"] and e["context"] not in d["contexts"]:
                     d["contexts"].append(e["context"])
             else:
-                graphe.add_edge(s, cible, relations={e["relation"]}, confidence=e["confidence"], locations=[lieu],
-                                contexts=[e["context"]] if e["context"] else [])
+                graph.add_edge(s, target, relations={e["relation"]}, confidence=e["confidence"], locations=[location],
+                               contexts=[e["context"]] if e["context"] else [])
 
 
-def _reprendre(apports: list[tuple[str, dict]]) -> None:
-    """Les reprises (`takeovers`), dans leur ordre : les liens qui partent de `from` depuis les lignes `lines`
-    (bornes comprises) de `source_file` partent de `to`. Une reprise suivante voit les precedentes (une branche dans une branche).
-    Seuls les liens des lecteurs sont repris : une extension rend les siens deja a leur place."""
-    liens = [e for qui, c in apports if qui in LECTEURS for e in c.get("links", [])]
-    for qui, c in apports:
+def _take_over(contributions: list[tuple[str, dict]]) -> None:
+    """The takeovers (`takeovers`), in their order: the links that leave `from` from the lines `lines`
+    (bounds included) of `source_file` leave from `to`. A later takeover sees the earlier ones (a branch in a branch).
+    Only the readers' links are taken over: an extension returns its own already in their place."""
+    links = [e for who, c in contributions if who in READERS for e in c.get("links", [])]
+    for who, c in contributions:
         for r in c.get("takeovers", []):
-            if manque := [k for k in ("from", "to", "source_file", "lines") if k not in r]:
-                raise RuntimeError(f"{qui}: a takeover lacks {', '.join(manque)}")
-            debut, fin = r["lines"]
-            for e in liens:
-                ligne = int(str(e.get("source_location", "")).lstrip("L") or 0)
-                if e.get("source") == r["from"] and e.get("source_file") == r["source_file"] and debut <= ligne <= fin:
+            if missing := [k for k in ("from", "to", "source_file", "lines") if k not in r]:
+                raise RuntimeError(f"{who}: a takeover lacks {', '.join(missing)}")
+            start, end = r["lines"]
+            for e in links:
+                line = int(str(e.get("source_location", "")).lstrip("L") or 0)
+                if e.get("source") == r["from"] and e.get("source_file") == r["source_file"] and start <= line <= end:
                     e["source"] = r["to"]
 
 
-def assembler(verifier: bool = False) -> tuple[nx.DiGraph, dict, list[dict], dict[str, list[dict]]]:
-    """Les lecteurs (et les extensions `avec_les_lecteurs`), puis le coeur, puis les autres extensions locales
-    dans l'ordre de graphe.toml : le graphe oriente,
-    la couverture, les liens pendants et les sites de chaque contribution."""
-    configuration = graphe_racine.configuration()
-    graphe = nx.DiGraph()
-    pendants: list[dict] = []
-    # Les lecteurs ensemble : leurs noeuds entrent tries tous a la fois, comme avant le contrat (T-0007).
-    lecteurs = [(nom, contribuer(Projet(configuration.get(nom, {}), graphe, verifier)))
-                for nom, contribuer in LECTEURS.items()]
-    # T-0008 : une extension `with_readers` entre avec eux, avant le coeur, et peut reprendre leurs liens.
-    avec, apres = [], []
-    for declaration in _extensions_declarees():
-        (avec if declaration.get("with_readers") else apres).append(declaration)
-    lecteurs += [(d.get("path", ""), _extension(d)(Projet(d, graphe, verifier))) for d in avec]
-    _reprendre(lecteurs)
-    _inserer(graphe, lecteurs, pendants)
-    graphe_enrichir.enrichir(graphe, RACINE)
-    apports = list(lecteurs)
-    for declaration in apres:
-        apport = (declaration.get("path", ""), _extension(declaration)(Projet(declaration, graphe, verifier)))
-        if "takeovers" in apport[1]:
-            raise RuntimeError(f"{apport[0]}: takeovers without with_readers = true ({CONFIGURATION})")
-        _inserer(graphe, [apport], pendants)
-        apports.append(apport)
-    # shortcut: un fichier declare deux fois qui rend des sites deux fois ne garde que les derniers ; a fusionner
-    # si une extension en a besoin des deux cotes.
-    sites = {qui: c["sites"] for qui, c in apports if "sites" in c}
-    couverture = {qui: dict(Counter(s["verdict"] for s in liste if "verdict" in s).most_common())
-                  for qui, liste in sites.items()}
-    couverture["dangling"] = len(pendants)
-    return _trie(graphe), couverture, pendants, sites
+def assemble(checking: bool = False) -> tuple[nx.DiGraph, dict, list[dict], dict[str, list[dict]]]:
+    """The readers (and the `with_readers` extensions), then the core, then the other local extensions
+    in the order of graphe.toml: the directed graph,
+    the coverage, the dangling links and the sites of each contribution."""
+    configuration = graphe_root.configuration()
+    graph = nx.DiGraph()
+    dangling: list[dict] = []
+    # The readers together: their nodes come in sorted all at once, as before the contract (T-0007).
+    readers = [(name, contribute(Project(configuration.get(name, {}), graph, checking)))
+               for name, contribute in READERS.items()]
+    # T-0008: a `with_readers` extension comes in with them, before the core, and may take over their links.
+    with_, after = [], []
+    for declaration in _declared_extensions():
+        (with_ if declaration.get("with_readers") else after).append(declaration)
+    readers += [(d.get("path", ""), _extension(d)(Project(d, graph, checking))) for d in with_]
+    _take_over(readers)
+    _insert(graph, readers, dangling)
+    graphe_core.enrich(graph, ROOT)
+    contributions = list(readers)
+    for declaration in after:
+        contribution = (declaration.get("path", ""), _extension(declaration)(Project(declaration, graph, checking)))
+        if "takeovers" in contribution[1]:
+            raise RuntimeError(f"{contribution[0]}: takeovers without with_readers = true ({CONFIGURATION})")
+        _insert(graph, [contribution], dangling)
+        contributions.append(contribution)
+    # shortcut: a file declared twice that returns sites twice keeps only the last ones; to merge if an extension
+    # needs both sides.
+    sites = {who: c["sites"] for who, c in contributions if "sites" in c}
+    coverage = {who: dict(Counter(s["verdict"] for s in site_list if "verdict" in s).most_common())
+                for who, site_list in sites.items()}
+    coverage["dangling"] = len(dangling)
+    return _sorted(graph), coverage, dangling, sites
 
 
-def _cle_lieu(lieu: str) -> tuple[str, int]:
-    fichier, _, ligne = lieu.rpartition(":")
-    chiffres = re.match(r"\d*", ligne).group()
-    return fichier, int(chiffres or 0)
+def _location_key(location: str) -> tuple[str, int]:
+    file, _, line = location.rpartition(":")
+    digits = re.match(r"\d*", line).group()
+    return file, int(digits or 0)
 
 
-def _trie(graphe: nx.DiGraph) -> nx.DiGraph:
-    """T-0381 : noeuds, liens et lieux dans l'ordre de leur contenu - celui des lecteurs (et du hachage) bougeait graphe.html."""
-    trie = nx.DiGraph()
-    trie.add_nodes_from(sorted(graphe.nodes(data=True), key=lambda n: n[0]))
-    for s, c, d in sorted(graphe.edges(data=True), key=lambda e: (e[0], e[1])):
-        trie.add_edge(s, c, **{**d, "locations": sorted(d["locations"], key=_cle_lieu), "contexts": sorted(d["contexts"])})
-    return trie
+def _sorted(graph: nx.DiGraph) -> nx.DiGraph:
+    """T-0381: nodes, links and locations in the order of their content - that of the readers (and of hashing) moved graphe.html."""
+    sorted_ = nx.DiGraph()
+    sorted_.add_nodes_from(sorted(graph.nodes(data=True), key=lambda n: n[0]))
+    for s, t, d in sorted(graph.edges(data=True), key=lambda e: (e[0], e[1])):
+        sorted_.add_edge(s, t, **{**d, "locations": sorted(d["locations"], key=_location_key), "contexts": sorted(d["contexts"])})
+    return sorted_
 
 
-def communautes(graphe: nx.DiGraph) -> tuple[dict[str, int], dict[int, str]]:
-    a_part, prefixes = _communautes()
-    non_oriente = nx.Graph()
-    non_oriente.add_nodes_from(n for n in graphe.nodes if graphe.nodes[n]["kind"] not in a_part)
-    for s, c, d in graphe.edges(data=True):
-        if s != c and s in non_oriente and c in non_oriente:
-            poids = non_oriente[s][c]["poids"] if non_oriente.has_edge(s, c) else 0
-            non_oriente.add_edge(s, c, poids=poids + len(d["locations"]))
-    groupes = nx.community.louvain_communities(non_oriente, weight="poids", seed=0)
-    groupes = sorted(groupes, key=lambda g: (-len(g), min(g)))
-    de, noms, vus = {}, {}, Counter()
-    for i, groupe in enumerate(groupes):
-        for n in groupe:
-            de[n] = i
-        fichiers = Counter(graphe.nodes[n]["source_file"] for n in sorted(groupe))  # egalites : par l'id
-        (premier, nombre), *suite = fichiers.most_common(2)
-        nom = _court(premier, prefixes)
-        if suite and suite[0][1] * 3 >= nombre:
-            nom += " + " + _court(suite[0][0], prefixes)
-        vus[nom] += 1
-        noms[i] = nom if vus[nom] == 1 else f"{nom} ({vus[nom]})"
-    for sorte, nom in a_part.items():
-        membres = [n for n, d in graphe.nodes(data=True) if d["kind"] == sorte]
-        if membres:
-            i = len(noms)
-            noms[i] = nom
-            de.update(dict.fromkeys(membres, i))
-    return de, noms
+def communities(graph: nx.DiGraph) -> tuple[dict[str, int], dict[int, str]]:
+    separate, prefixes = _communities_config()
+    undirected = nx.Graph()
+    undirected.add_nodes_from(n for n in graph.nodes if graph.nodes[n]["kind"] not in separate)
+    for s, t, d in graph.edges(data=True):
+        if s != t and s in undirected and t in undirected:
+            weight = undirected[s][t]["weight"] if undirected.has_edge(s, t) else 0
+            undirected.add_edge(s, t, weight=weight + len(d["locations"]))
+    groups = nx.community.louvain_communities(undirected, weight="weight", seed=0)
+    groups = sorted(groups, key=lambda g: (-len(g), min(g)))
+    community_of, names, seen = {}, {}, Counter()
+    for i, group in enumerate(groups):
+        for n in group:
+            community_of[n] = i
+        files = Counter(graph.nodes[n]["source_file"] for n in sorted(group))  # ties: by the id
+        (first, count), *rest = files.most_common(2)
+        name = _short(first, prefixes)
+        if rest and rest[0][1] * 3 >= count:
+            name += " + " + _short(rest[0][0], prefixes)
+        seen[name] += 1
+        names[i] = name if seen[name] == 1 else f"{name} ({seen[name]})"
+    for kind, name in separate.items():
+        members = [n for n, d in graph.nodes(data=True) if d["kind"] == kind]
+        if members:
+            i = len(names)
+            names[i] = name
+            community_of.update(dict.fromkeys(members, i))
+    return community_of, names
 
 
-def _court(fichier: str, prefixes: list[str]) -> str:
-    for prefixe in prefixes:
-        fichier = fichier.removeprefix(prefixe)
-    return fichier.rsplit(".", 1)[0]
+def _short(file: str, prefixes: list[str]) -> str:
+    for prefix in prefixes:
+        file = file.removeprefix(prefix)
+    return file.rsplit(".", 1)[0]
 
 
-def disposer(graphe: nx.DiGraph, de: dict[str, int]) -> dict[str, tuple[float, float]]:
-    """Chaque communaute disposee seule dans un disque, les disques poses en
-    spirale du plus grand au plus petit : bien plus vite qu'une disposition
-    d'ensemble (15 s pour 2400 noeuds), et sans chevauchement."""
-    membres = defaultdict(list)
-    for n, i in de.items():
-        membres[i].append(n)
-    places: list[tuple[float, float, float]] = []
+def layout(graph: nx.DiGraph, community_of: dict[str, int]) -> dict[str, tuple[float, float]]:
+    """Each community laid out alone in a disc, the discs set in a spiral
+    from the largest to the smallest: much faster than a whole layout
+    (15 s for 2400 nodes), and without overlap."""
+    members = defaultdict(list)
+    for n, i in community_of.items():
+        members[i].append(n)
+    placed: list[tuple[float, float, float]] = []
     positions = {}
-    for i in sorted(membres, key=lambda i: (-len(membres[i]), i)):
-        rayon = math.sqrt(len(membres[i])) * 1.6 + 1.0
-        if not places:
-            centre = (0.0, 0.0)
+    for i in sorted(members, key=lambda i: (-len(members[i]), i)):
+        radius = math.sqrt(len(members[i])) * 1.6 + 1.0
+        if not placed:
+            center = (0.0, 0.0)
         else:
-            pas = 0
+            step = 0
             while True:
-                angle, distance = pas * 0.5, 2.0 * math.sqrt(pas + 1) * 3.0
-                centre = (distance * math.cos(angle), distance * math.sin(angle))
-                if all(math.dist(centre, (x, y)) >= r + rayon + 1.0 for x, y, r in places):
+                angle, distance = step * 0.5, 2.0 * math.sqrt(step + 1) * 3.0
+                center = (distance * math.cos(angle), distance * math.sin(angle))
+                if all(math.dist(center, (x, y)) >= r + radius + 1.0 for x, y, r in placed):
                     break
-                pas += 1
-        places.append((*centre, rayon))
-        # T-0381 : pas graphe.subgraph(), qui parcourt ses noeuds dans l'ordre d'un ensemble (le hasard du hachage)
-        groupe = sorted(membres[i])
-        dedans = set(groupe)
-        sous = nx.Graph()
-        sous.add_nodes_from(groupe)
-        sous.add_edges_from((s, c) for s, c in graphe.edges(groupe) if c in dedans)
-        local = nx.spring_layout(sous, seed=0, iterations=60) if len(membres[i]) > 1 else {membres[i][0]: (0, 0)}
+                step += 1
+        placed.append((*center, radius))
+        # T-0381: not graph.subgraph(), which walks its nodes in the order of a set (the luck of hashing)
+        group = sorted(members[i])
+        inside = set(group)
+        sub = nx.Graph()
+        sub.add_nodes_from(group)
+        sub.add_edges_from((s, t) for s, t in graph.edges(group) if t in inside)
+        local = nx.spring_layout(sub, seed=0, iterations=60) if len(members[i]) > 1 else {members[i][0]: (0, 0)}
         for n, (x, y) in local.items():
-            positions[n] = (round(centre[0] + x * rayon * 0.92, 2), round(centre[1] + y * rayon * 0.92, 2))
+            positions[n] = (round(center[0] + x * radius * 0.92, 2), round(center[1] + y * radius * 0.92, 2))
     return positions
 
 
-def _ecrire(chemin: Path, texte: str) -> None:
-    """Ecrit a cote puis remplace : deux constructions de suite ne laissent
-    jamais un fichier a moitie ecrit."""
-    with tempfile.NamedTemporaryFile("wb", dir=chemin.parent, delete=False, suffix=".tmp") as f:
-        f.write(texte.encode("utf-8"))
-    os.replace(f.name, chemin)
+def _write(path: Path, text: str) -> None:
+    """Writes alongside then replaces: two builds in a row never leave a
+    half-written file."""
+    with tempfile.NamedTemporaryFile("wb", dir=path.parent, delete=False, suffix=".tmp") as f:
+        f.write(text.encode("utf-8"))
+    os.replace(f.name, path)
 
 
-def construire(calme: bool = False) -> int:
-    debut = time.monotonic()
-    SORTIE.mkdir(exist_ok=True)
-    graphe, couverture, pendants, _ = assembler()
-    de, noms = communautes(graphe)
-    positions = disposer(graphe, de)
-    donnees = {
+def build(quiet: bool = False) -> int:
+    start = time.monotonic()
+    OUTPUT.mkdir(exist_ok=True)
+    graph, coverage, dangling, _ = assemble()
+    community_of, names = communities(graph)
+    positions = layout(graph, community_of)
+    data = {
         "built": time.strftime("%Y-%m-%d %H:%M:%S"), "built_s": time.time(), "commit": _commit(),
-        "coverage": couverture, "communities": {str(i): nom for i, nom in noms.items()},
-        "nodes": [{**graphe.nodes[n], "community": de[n], "x": positions[n][0], "y": positions[n][1]}
-                  for n in graphe.nodes],
-        "links": [{"source": s, "target": c, "relations": sorted(d["relations"]), "confidence": d["confidence"],
-                   "locations": d["locations"], "contexts": d["contexts"]} for s, c, d in graphe.edges(data=True)],
+        "coverage": coverage, "communities": {str(i): name for i, name in names.items()},
+        "nodes": [{**graph.nodes[n], "community": community_of[n], "x": positions[n][0], "y": positions[n][1]}
+                  for n in graph.nodes],
+        "links": [{"source": s, "target": t, "relations": sorted(d["relations"]), "confidence": d["confidence"],
+                   "locations": d["locations"], "contexts": d["contexts"]} for s, t, d in graph.edges(data=True)],
     }
-    _ecrire(JSON, json.dumps(donnees, ensure_ascii=False))
-    _ecrire(SORTIE / "REPORT.md", rapport(graphe, donnees, de, noms))
-    _ecrire(SORTIE / "graphe.html", page(donnees))
-    if not calme:
-        print(f"{graphe.number_of_nodes()} nodes, {graphe.number_of_edges()} links, {len(noms)} communities, "
-              f"{len(pendants)} dangling link(s) - {time.monotonic() - debut:.1f} s -> {SORTIE.relative_to(RACINE)}/")
-        for e in pendants[:10]:
+    _write(JSON, json.dumps(data, ensure_ascii=False))
+    _write(OUTPUT / "REPORT.md", report(graph, data, community_of, names))
+    _write(OUTPUT / "graphe.html", page(data))
+    if not quiet:
+        print(f"{graph.number_of_nodes()} nodes, {graph.number_of_edges()} links, {len(names)} communities, "
+              f"{len(dangling)} dangling link(s) - {time.monotonic() - start:.1f} s -> {OUTPUT.relative_to(ROOT)}/")
+        for e in dangling[:10]:
             print("  dangling", e["source"], "->", e["target"], e["relation"], e["source_file"], e["source_location"])
     return 0
 
 
-# ---------- le rapport
+# ---------- the report
 
-def _lieu(graphe: nx.DiGraph, n: str) -> str:
-    d = graphe.nodes[n]
+def _location(graph: nx.DiGraph, n: str) -> str:
+    d = graph.nodes[n]
     return f"{d['source_file']}:{d['source_location'].lstrip('L')}"
 
 
-def rapport(graphe: nx.DiGraph, donnees: dict, de: dict, noms: dict) -> str:
-    c = donnees["coverage"]
-    sortes = Counter(d["kind"] for _, d in graphe.nodes(data=True))
-    lignes = [
+def report(graph: nx.DiGraph, data: dict, community_of: dict, names: dict) -> str:
+    c = data["coverage"]
+    kinds = Counter(d["kind"] for _, d in graph.nodes(data=True))
+    lines = [
         "# The code graph", "",
-        f"Built on {donnees['built']} (commit {donnees['commit']}, working tree included) "
+        f"Built on {data['built']} (commit {data['commit']}, working tree included) "
         "by `graphe build`.", "",
-        f"- {graphe.number_of_nodes()} nodes: " + ", ".join(f"{n} {s}" for s, n in sortes.most_common()),
-        f"- {graphe.number_of_edges()} links, {len(noms)} communities, {c['dangling']} dangling link(s)",
+        f"- {graph.number_of_nodes()} nodes: " + ", ".join(f"{n} {k}" for k, n in kinds.most_common()),
+        f"- {graph.number_of_edges()} links, {len(names)} communities, {c['dangling']} dangling link(s)",
         f"- Python calls classified: {c['python']}",
         f"- GDScript calls classified: {c['godot']}",
         "", "`ours`: linked for sure; `ours?`: linked by name alone (INFERRED); `ambiguous`: a name that "
@@ -379,457 +378,457 @@ def rapport(graphe: nx.DiGraph, donnees: dict, de: dict, noms: dict) -> str:
         "outside the repository. Details: `graphe check`.", "",
         "## Most connected", "",
     ]
-    def reels(liens) -> int:  # sans la contenance (fichier, classe -> fonction)
-        return sum(1 for *_, d in liens if d["relations"] - {"contains", "method"})
-    entrants = {n: reels(graphe.in_edges(n, data=True)) for n in graphe.nodes}
-    sortants = {n: reels(graphe.out_edges(n, data=True)) for n in graphe.nodes}
-    centraux = sorted((n for n in graphe.nodes if graphe.nodes[n]["kind"] != "file"),
-                      key=lambda n: (-entrants[n] - sortants[n], n))[:20]
-    for n in centraux:
-        lignes.append(f"- `{graphe.nodes[n]['label']}` - {entrants[n]} incoming, "
-                      f"{sortants[n]} outgoing ({_lieu(graphe, n)})")
-    commandes = sorted(n for n in graphe.nodes if graphe.nodes[n]["kind"] == "command")
-    if commandes:
-        lignes += ["", "## Commands", "", "Each command: who sends it, what it calls.", ""]
-    for n in commandes:
-        envoyeurs = sorted({graphe.nodes[s]["label"] for s in graphe.predecessors(n)
-                            if "sends" in graphe[s][n]["relations"]})
-        appeles = sorted({graphe.nodes[x]["label"] for x in graphe.successors(n)})
-        lignes.append(f"- `{graphe.nodes[n]['label']}`: sent by "
-                      f"{', '.join(envoyeurs) or 'nobody'}; calls "
-                      f"{', '.join(appeles[:8]) or '-'}{' …' if len(appeles) > 8 else ''}")
+    def real(links) -> int:  # without containment (file, class -> function)
+        return sum(1 for *_, d in links if d["relations"] - {"contains", "method"})
+    incoming = {n: real(graph.in_edges(n, data=True)) for n in graph.nodes}
+    outgoing = {n: real(graph.out_edges(n, data=True)) for n in graph.nodes}
+    central = sorted((n for n in graph.nodes if graph.nodes[n]["kind"] != "file"),
+                     key=lambda n: (-incoming[n] - outgoing[n], n))[:20]
+    for n in central:
+        lines.append(f"- `{graph.nodes[n]['label']}` - {incoming[n]} incoming, "
+                     f"{outgoing[n]} outgoing ({_location(graph, n)})")
+    commands = sorted(n for n in graph.nodes if graph.nodes[n]["kind"] == "command")
+    if commands:
+        lines += ["", "## Commands", "", "Each command: who sends it, what it calls.", ""]
+    for n in commands:
+        senders = sorted({graph.nodes[s]["label"] for s in graph.predecessors(n)
+                          if "sends" in graph[s][n]["relations"]})
+        callees = sorted({graph.nodes[x]["label"] for x in graph.successors(n)})
+        lines.append(f"- `{graph.nodes[n]['label']}`: sent by "
+                     f"{', '.join(senders) or 'nobody'}; calls "
+                     f"{', '.join(callees[:8]) or '-'}{' …' if len(callees) > 8 else ''}")
     imports = nx.DiGraph()
-    for s, cible, d in graphe.edges(data=True):
-        ss, cc = graphe.nodes[s]["source_file"], graphe.nodes[cible]["source_file"]
-        if "imports" in d["relations"] and graphe.nodes[s]["kind"] == "file" and ss != cc:
-            imports.add_edge(ss, cc)
+    for s, target, d in graph.edges(data=True):
+        ss, tt = graph.nodes[s]["source_file"], graph.nodes[target]["source_file"]
+        if "imports" in d["relations"] and graph.nodes[s]["kind"] == "file" and ss != tt:
+            imports.add_edge(ss, tt)
     cycles = sorted((cy for cy in nx.simple_cycles(imports, length_bound=4)), key=lambda cy: (len(cy), cy))[:20]
-    lignes += ["", "## Import cycles (module level)", ""]
-    lignes += [f"- {' → '.join(cy + cy[:1])}" for cy in cycles] or ["None."]
-    lignes += ["", "## Communities", ""]
-    membres = defaultdict(list)
-    for n, i in de.items():
-        membres[i].append(n)
-    minces = 0
-    for i in sorted(membres):
-        if len(membres[i]) < 4:
-            minces += 1
+    lines += ["", "## Import cycles (module level)", ""]
+    lines += [f"- {' → '.join(cy + cy[:1])}" for cy in cycles] or ["None."]
+    lines += ["", "## Communities", ""]
+    members = defaultdict(list)
+    for n, i in community_of.items():
+        members[i].append(n)
+    small = 0
+    for i in sorted(members):
+        if len(members[i]) < 4:
+            small += 1
             continue
-        tete = sorted(membres[i], key=lambda n: (-graphe.degree(n), n))[:8]
-        lignes += [f"### {i} - {noms[i]} ({len(membres[i])} nodes)", "",
-                   ", ".join(f"`{graphe.nodes[n]['label']}`" for n in tete), ""]
-    lignes += [f"{minces} small communities (fewer than 4 nodes) not detailed.", "",
-               "## What the graph does not see", "",
-               "- dynamic calls: `getattr`, a callback stored in a variable, a receiver that nothing "
-               "types (the `ambiguous` ones);",
-               "- files that no reader takes, and those that `exclude` removes (graphe.toml).", ""]
-    return "\n".join(lignes)
+        top = sorted(members[i], key=lambda n: (-graph.degree(n), n))[:8]
+        lines += [f"### {i} - {names[i]} ({len(members[i])} nodes)", "",
+                  ", ".join(f"`{graph.nodes[n]['label']}`" for n in top), ""]
+    lines += [f"{small} small communities (fewer than 4 nodes) not detailed.", "",
+              "## What the graph does not see", "",
+              "- dynamic calls: `getattr`, a callback stored in a variable, a receiver that nothing "
+              "types (the `ambiguous` ones);",
+              "- files that no reader takes, and those that `exclude` removes (graphe.toml).", ""]
+    return "\n".join(lines)
 
 
-# ---------- la page
+# ---------- the page
 
-def page(donnees: dict) -> str:
-    noeuds = donnees["nodes"]
-    index = {n["id"]: i for i, n in enumerate(noeuds)}
+def page(data: dict) -> str:
+    nodes = data["nodes"]
+    index = {n["id"]: i for i, n in enumerate(nodes)}
     compact = {
         "n": [[n["label"], n["source_file"], n["source_location"].lstrip("L"), n["community"], n["x"], n["y"],
-               n["kind"], n["id"]] for n in noeuds],
+               n["kind"], n["id"]] for n in nodes],
         "l": [[index[e["source"]], index[e["target"]], ",".join(e["relations"]), e["confidence"] == "EXTRACTED"]
-              for e in donnees["links"]],
-        "c": donnees["communities"], "t": donnees["built"], "k": donnees["commit"],
+              for e in data["links"]],
+        "c": data["communities"], "t": data["built"], "k": data["commit"],
     }
-    texte = json.dumps(compact, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
-    return PAGE.replace("__DONNEES__", texte)
+    text = json.dumps(compact, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
+    return PAGE.replace("__DATA__", text)
 
 
 PAGE = r"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Code graph</title>
 <style>
-:root{--fond:#f7f7f5;--texte:#1d1d1b;--doux:#6b6b66;--panneau:#ffffff;--bord:#deded8;--lien:rgba(60,60,60,.10);--choix:#d4572a}
-@media (prefers-color-scheme:dark){:root{--fond:#161615;--texte:#e8e8e3;--doux:#9a9a93;--panneau:#1f1f1d;--bord:#34342f;--lien:rgba(220,220,210,.09);--choix:#f08a5d}}
-*{box-sizing:border-box}html,body{margin:0;height:100%;background:var(--fond);color:var(--texte);font:14px/1.4 system-ui,sans-serif}
-#carte{position:fixed;top:0;left:0;width:calc(100% - 340px);height:100%;cursor:grab;touch-action:none}#carte.tire{cursor:grabbing}
-#cote{position:fixed;top:0;right:0;bottom:0;width:340px;background:var(--panneau);border-left:1px solid var(--bord);display:flex;flex-direction:column;overflow-x:hidden}
-#cote header{padding:12px 14px;border-bottom:1px solid var(--bord)}#cote h1{font-size:15px;margin:0 0 6px}
-#cote input[type=search]{width:100%;padding:7px 9px;border:1px solid var(--bord);border-radius:6px;background:var(--fond);color:var(--texte);font:inherit}
-#cote label{display:block;margin-top:8px;color:var(--doux);font-size:12px}
-#fiche{padding:12px 14px;overflow:auto;flex:1}#fiche h2{font-size:15px;margin:0 0 2px;word-break:break-all}
-#fiche .ou{color:var(--doux);font-size:12px;margin-bottom:10px;word-break:break-all}#fiche h3{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--doux);margin:14px 0 4px}
-#fiche a{color:var(--texte);text-decoration:none;display:block;padding:2px 0;border-bottom:1px dotted transparent;cursor:pointer;word-break:break-all}
-#fiche a:hover{color:var(--choix)}#fiche .rel{color:var(--doux);font-size:11px}
-@media (max-width:760px){#carte{width:100%;height:55vh}#cote{top:auto;height:45vh;width:100%;border-left:0;border-top:1px solid var(--bord)}}
+:root{--bg:#f7f7f5;--text:#1d1d1b;--muted:#6b6b66;--panel:#ffffff;--border:#deded8;--link:rgba(60,60,60,.10);--pick:#d4572a}
+@media (prefers-color-scheme:dark){:root{--bg:#161615;--text:#e8e8e3;--muted:#9a9a93;--panel:#1f1f1d;--border:#34342f;--link:rgba(220,220,210,.09);--pick:#f08a5d}}
+*{box-sizing:border-box}html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:14px/1.4 system-ui,sans-serif}
+#map{position:fixed;top:0;left:0;width:calc(100% - 340px);height:100%;cursor:grab;touch-action:none}#map.dragging{cursor:grabbing}
+#side{position:fixed;top:0;right:0;bottom:0;width:340px;background:var(--panel);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow-x:hidden}
+#side header{padding:12px 14px;border-bottom:1px solid var(--border)}#side h1{font-size:15px;margin:0 0 6px}
+#side input[type=search]{width:100%;padding:7px 9px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font:inherit}
+#side label{display:block;margin-top:8px;color:var(--muted);font-size:12px}
+#card{padding:12px 14px;overflow:auto;flex:1}#card h2{font-size:15px;margin:0 0 2px;word-break:break-all}
+#card .where{color:var(--muted);font-size:12px;margin-bottom:10px;word-break:break-all}#card h3{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:14px 0 4px}
+#card a{color:var(--text);text-decoration:none;display:block;padding:2px 0;border-bottom:1px dotted transparent;cursor:pointer;word-break:break-all}
+#card a:hover{color:var(--pick)}#card .rel{color:var(--muted);font-size:11px}
+@media (max-width:760px){#map{width:100%;height:55vh}#side{top:auto;height:45vh;width:100%;border-left:0;border-top:1px solid var(--border)}}
 </style></head><body>
-<canvas id="carte"></canvas>
-<aside id="cote"><header><h1>Code graph</h1><input id="cherche" type="search" list="noms" placeholder="Search a function, a file…" autocomplete="off"><datalist id="noms"></datalist>
-<label><input id="contient" type="checkbox"> containment links (file → function)</label></header>
-<div id="fiche"></div></aside>
-<script id="donnees" type="application/json">__DONNEES__</script>
+<canvas id="map"></canvas>
+<aside id="side"><header><h1>Code graph</h1><input id="search" type="search" list="names" placeholder="Search a function, a file…" autocomplete="off"><datalist id="names"></datalist>
+<label><input id="contains" type="checkbox"> containment links (file → function)</label></header>
+<div id="card"></div></aside>
+<script id="data" type="application/json">__DATA__</script>
 <script>
-const D=JSON.parse(document.getElementById('donnees').textContent);
-const N=D.n.map((n,i)=>({i,label:n[0],fichier:n[1],ligne:n[2],c:n[3],x:n[4],y:n[5],sorte:n[6],id:n[7],sort:[],entr:[]}));
-const L=D.l.map(l=>({s:l[0],t:l[1],rel:l[2],sur:l[3]}));
-for(const l of L){N[l.s].sort.push(l);N[l.t].entr.push(l)}
-for(const n of N){n.deg=n.sort.length+n.entr.length;n.r=1.2+Math.sqrt(n.deg)*0.45}
-const teinte=c=>`hsl(${(c*137.508)%360},55%,52%)`;
-const cv=document.getElementById('carte'),cx=cv.getContext('2d');
-let fit=1,vue={x:0,y:0,z:1},choisi=null,voisins=new Set(),contient=false;
-function taille(){const r=cv.getBoundingClientRect(),d=devicePixelRatio||1;cv.width=r.width*d;cv.height=r.height*d;cx.setTransform(d,0,0,d,0,0);dessiner()}
-function cadrer(){let a=1e9,b=1e9,c=-1e9,e=-1e9;for(const n of N){a=Math.min(a,n.x);b=Math.min(b,n.y);c=Math.max(c,n.x);e=Math.max(e,n.y)}
-const r=cv.getBoundingClientRect();vue.z=fit=Math.min(r.width/(c-a+10),r.height/(e-b+10));vue.x=r.width/2-(a+c)/2*vue.z;vue.y=r.height/2-(b+e)/2*vue.z}
-const ecran=n=>[n.x*vue.z+vue.x,n.y*vue.z+vue.y];
-function couleur(v){return getComputedStyle(document.documentElement).getPropertyValue(v)}
-function dessiner(){const r=cv.getBoundingClientRect();cx.clearRect(0,0,r.width,r.height);
-cx.lineWidth=1;cx.strokeStyle=couleur('--lien');cx.beginPath();
-for(const l of L){if(!contient&&(l.rel==='contains'||l.rel==='method'))continue;const[a,b]=ecran(N[l.s]),[c,d]=ecran(N[l.t]);cx.moveTo(a,b);cx.lineTo(c,d)}cx.stroke();
-if(choisi){cx.strokeStyle=couleur('--choix');cx.lineWidth=1.5;cx.beginPath();for(const l of choisi.sort.concat(choisi.entr)){const[a,b]=ecran(N[l.s]),[c,d]=ecran(N[l.t]);cx.moveTo(a,b);cx.lineTo(c,d)}cx.stroke()}
-for(const n of N){const[x,y]=ecran(n);if(x<-20||y<-20||x>r.width+20||y>r.height+20)continue;const rr=Math.max(1.5,n.r*Math.sqrt(vue.z));
-cx.globalAlpha=choisi&&!voisins.has(n.i)&&n!==choisi?0.25:1;cx.fillStyle=n===choisi?couleur('--choix'):teinte(n.c);cx.beginPath();cx.arc(x,y,rr,0,7);cx.fill()}
-cx.globalAlpha=1;cx.fillStyle=couleur('--texte');
-// Des etiquettes qui ne se chevauchent pas : les plus reliees d'abord.
-const poses=[],libre=(x,y,w)=>{for(const p of poses)if(x<p[2]&&x+w>p[0]&&y-11<p[3]&&y+3>p[1])return false;poses.push([x,y-11,x+w,y+3]);return true};
-if(vue.z>fit*2.5){cx.font='12px system-ui';const vus=N.filter(n=>{const[x,y]=ecran(n);return x>0&&y>0&&x<r.width&&y<r.height&&(!choisi||voisins.has(n.i)||n===choisi)});
-vus.sort((a,b)=>(b===choisi)-(a===choisi)||b.deg-a.deg);for(const n of vus.slice(0,600)){const[x,y]=ecran(n),w=cx.measureText(n.label).width;if(libre(x+4,y-3,w))cx.fillText(n.label,x+4,y-3)}}
-else{const centres={};for(const n of N){const c=centres[n.c]||(centres[n.c]={x:0,y:0,k:0});c.x+=n.x;c.y+=n.y;c.k++}
-cx.font='600 12px system-ui';for(const c of Object.keys(centres).sort((a,b)=>centres[b].k-centres[a].k)){const v=centres[c];const w=cx.measureText(D.c[c]).width,x=(v.x/v.k)*vue.z+vue.x-w/2,y=(v.y/v.k)*vue.z+vue.y;if(libre(x,y,w))cx.fillText(D.c[c],x,y)}}}
-function lien(n){return `<a data-i="${n.i}">${esc(n.label)} <span class="rel">${esc(n.fichier)}:${n.ligne}</span></a>`}
+const D=JSON.parse(document.getElementById('data').textContent);
+const N=D.n.map((n,i)=>({i,label:n[0],file:n[1],line:n[2],c:n[3],x:n[4],y:n[5],kind:n[6],id:n[7],outs:[],ins:[]}));
+const L=D.l.map(l=>({s:l[0],t:l[1],rel:l[2],sure:l[3]}));
+for(const l of L){N[l.s].outs.push(l);N[l.t].ins.push(l)}
+for(const n of N){n.deg=n.outs.length+n.ins.length;n.r=1.2+Math.sqrt(n.deg)*0.45}
+const hue=c=>`hsl(${(c*137.508)%360},55%,52%)`;
+const cv=document.getElementById('map'),cx=cv.getContext('2d');
+let fit=1,view={x:0,y:0,z:1},picked=null,neighbours=new Set(),showContains=false;
+function resize(){const r=cv.getBoundingClientRect(),d=devicePixelRatio||1;cv.width=r.width*d;cv.height=r.height*d;cx.setTransform(d,0,0,d,0,0);draw()}
+function frame(){let a=1e9,b=1e9,c=-1e9,e=-1e9;for(const n of N){a=Math.min(a,n.x);b=Math.min(b,n.y);c=Math.max(c,n.x);e=Math.max(e,n.y)}
+const r=cv.getBoundingClientRect();view.z=fit=Math.min(r.width/(c-a+10),r.height/(e-b+10));view.x=r.width/2-(a+c)/2*view.z;view.y=r.height/2-(b+e)/2*view.z}
+const screen=n=>[n.x*view.z+view.x,n.y*view.z+view.y];
+function color(v){return getComputedStyle(document.documentElement).getPropertyValue(v)}
+function draw(){const r=cv.getBoundingClientRect();cx.clearRect(0,0,r.width,r.height);
+cx.lineWidth=1;cx.strokeStyle=color('--link');cx.beginPath();
+for(const l of L){if(!showContains&&(l.rel==='contains'||l.rel==='method'))continue;const[a,b]=screen(N[l.s]),[c,d]=screen(N[l.t]);cx.moveTo(a,b);cx.lineTo(c,d)}cx.stroke();
+if(picked){cx.strokeStyle=color('--pick');cx.lineWidth=1.5;cx.beginPath();for(const l of picked.outs.concat(picked.ins)){const[a,b]=screen(N[l.s]),[c,d]=screen(N[l.t]);cx.moveTo(a,b);cx.lineTo(c,d)}cx.stroke()}
+for(const n of N){const[x,y]=screen(n);if(x<-20||y<-20||x>r.width+20||y>r.height+20)continue;const rr=Math.max(1.5,n.r*Math.sqrt(view.z));
+cx.globalAlpha=picked&&!neighbours.has(n.i)&&n!==picked?0.25:1;cx.fillStyle=n===picked?color('--pick'):hue(n.c);cx.beginPath();cx.arc(x,y,rr,0,7);cx.fill()}
+cx.globalAlpha=1;cx.fillStyle=color('--text');
+// Labels that do not overlap: the most linked first.
+const placed=[],free=(x,y,w)=>{for(const p of placed)if(x<p[2]&&x+w>p[0]&&y-11<p[3]&&y+3>p[1])return false;placed.push([x,y-11,x+w,y+3]);return true};
+if(view.z>fit*2.5){cx.font='12px system-ui';const shown=N.filter(n=>{const[x,y]=screen(n);return x>0&&y>0&&x<r.width&&y<r.height&&(!picked||neighbours.has(n.i)||n===picked)});
+shown.sort((a,b)=>(b===picked)-(a===picked)||b.deg-a.deg);for(const n of shown.slice(0,600)){const[x,y]=screen(n),w=cx.measureText(n.label).width;if(free(x+4,y-3,w))cx.fillText(n.label,x+4,y-3)}}
+else{const centers={};for(const n of N){const c=centers[n.c]||(centers[n.c]={x:0,y:0,k:0});c.x+=n.x;c.y+=n.y;c.k++}
+cx.font='600 12px system-ui';for(const c of Object.keys(centers).sort((a,b)=>centers[b].k-centers[a].k)){const v=centers[c];const w=cx.measureText(D.c[c]).width,x=(v.x/v.k)*view.z+view.x-w/2,y=(v.y/v.k)*view.z+view.y;if(free(x,y,w))cx.fillText(D.c[c],x,y)}}}
+function link(n){return `<a data-i="${n.i}">${esc(n.label)} <span class="rel">${esc(n.file)}:${n.line}</span></a>`}
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
-function groupe(liste,bout){const g={};for(const l of liste){for(const r of l.rel.split(','))(g[r]=g[r]||[]).push(N[l[bout]])}
-return Object.keys(g).sort().map(r=>`<h3>${esc(r)} (${g[r].length})</h3>`+g[r].sort((a,b)=>a.label.localeCompare(b.label)).map(lien).join('')).join('')}
-function choisir(n,centrer){choisi=n;voisins=new Set();if(n){for(const l of n.sort)voisins.add(l.t);for(const l of n.entr)voisins.add(l.s)}
-const f=document.getElementById('fiche');
-if(!n){f.innerHTML=`<p class="ou">${N.length} nodes, ${L.length} links. Built on ${esc(D.t)} (commit ${esc(D.k)}).</p><p class="ou">Wheel: zoom. Drag: move. Click: a node and its links.</p>`}
-else{f.innerHTML=`<h2>${esc(n.label)}</h2><div class="ou">${esc(n.sorte)} · ${esc(n.fichier)}:${n.ligne} · ${esc(D.c[n.c])}<br>${esc(n.id)}</div><h3 style="color:var(--texte)">What it calls</h3>${groupe(n.sort.filter(l=>l.rel!=='contains'&&l.rel!=='method'),'t')||'<p class=ou>nothing</p>'}<h3 style="color:var(--texte)">What calls it</h3>${groupe(n.entr.filter(l=>l.rel!=='contains'&&l.rel!=='method'),'s')||'<p class=ou>nothing</p>'}`}
-if(n&&centrer){const r=cv.getBoundingClientRect();vue.z=Math.max(vue.z,fit*6);vue.x=r.width/2-n.x*vue.z;vue.y=r.height/2-n.y*vue.z}dessiner()}
-document.getElementById('fiche').addEventListener('click',e=>{const a=e.target.closest('a[data-i]');if(a)choisir(N[+a.dataset.i],true)});
-const dl=document.getElementById('noms');dl.innerHTML=N.map(n=>`<option value="${esc(n.label)} — ${esc(n.fichier)}">`).join('');
-document.getElementById('cherche').addEventListener('change',e=>{const v=e.target.value.split(' — ');const n=N.find(n=>n.label===v[0]&&(!v[1]||n.fichier===v[1]))||N.find(n=>n.label.toLowerCase().includes(v[0].toLowerCase()));if(n)choisir(n,true)});
-document.getElementById('contient').addEventListener('change',e=>{contient=e.target.checked;dessiner()});
-let tir=null,bouge=false;
-cv.addEventListener('pointerdown',e=>{tir={x:e.clientX,y:e.clientY,vx:vue.x,vy:vue.y};bouge=false;cv.classList.add('tire');cv.setPointerCapture(e.pointerId)});
-cv.addEventListener('pointermove',e=>{if(!tir)return;const dx=e.clientX-tir.x,dy=e.clientY-tir.y;if(Math.abs(dx)+Math.abs(dy)>3)bouge=true;vue.x=tir.vx+dx;vue.y=tir.vy+dy;dessiner()});
-cv.addEventListener('pointerup',e=>{cv.classList.remove('tire');if(!bouge){const r=cv.getBoundingClientRect(),px=e.clientX-r.left,py=e.clientY-r.top;let m=null,dm=144;
-for(const n of N){const[x,y]=ecran(n),d=(x-px)**2+(y-py)**2;if(d<dm){dm=d;m=n}}choisir(m,false)}tir=null});
+function group(list,end){const g={};for(const l of list){for(const r of l.rel.split(','))(g[r]=g[r]||[]).push(N[l[end]])}
+return Object.keys(g).sort().map(r=>`<h3>${esc(r)} (${g[r].length})</h3>`+g[r].sort((a,b)=>a.label.localeCompare(b.label)).map(link).join('')).join('')}
+function pick(n,center){picked=n;neighbours=new Set();if(n){for(const l of n.outs)neighbours.add(l.t);for(const l of n.ins)neighbours.add(l.s)}
+const f=document.getElementById('card');
+if(!n){f.innerHTML=`<p class="where">${N.length} nodes, ${L.length} links. Built on ${esc(D.t)} (commit ${esc(D.k)}).</p><p class="where">Wheel: zoom. Drag: move. Click: a node and its links.</p>`}
+else{f.innerHTML=`<h2>${esc(n.label)}</h2><div class="where">${esc(n.kind)} · ${esc(n.file)}:${n.line} · ${esc(D.c[n.c])}<br>${esc(n.id)}</div><h3 style="color:var(--text)">What it calls</h3>${group(n.outs.filter(l=>l.rel!=='contains'&&l.rel!=='method'),'t')||'<p class=where>nothing</p>'}<h3 style="color:var(--text)">What calls it</h3>${group(n.ins.filter(l=>l.rel!=='contains'&&l.rel!=='method'),'s')||'<p class=where>nothing</p>'}`}
+if(n&&center){const r=cv.getBoundingClientRect();view.z=Math.max(view.z,fit*6);view.x=r.width/2-n.x*view.z;view.y=r.height/2-n.y*view.z}draw()}
+document.getElementById('card').addEventListener('click',e=>{const a=e.target.closest('a[data-i]');if(a)pick(N[+a.dataset.i],true)});
+const dl=document.getElementById('names');dl.innerHTML=N.map(n=>`<option value="${esc(n.label)} — ${esc(n.file)}">`).join('');
+document.getElementById('search').addEventListener('change',e=>{const v=e.target.value.split(' — ');const n=N.find(n=>n.label===v[0]&&(!v[1]||n.file===v[1]))||N.find(n=>n.label.toLowerCase().includes(v[0].toLowerCase()));if(n)pick(n,true)});
+document.getElementById('contains').addEventListener('change',e=>{showContains=e.target.checked;draw()});
+let drag=null,moved=false;
+cv.addEventListener('pointerdown',e=>{drag={x:e.clientX,y:e.clientY,vx:view.x,vy:view.y};moved=false;cv.classList.add('dragging');cv.setPointerCapture(e.pointerId)});
+cv.addEventListener('pointermove',e=>{if(!drag)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;if(Math.abs(dx)+Math.abs(dy)>3)moved=true;view.x=drag.vx+dx;view.y=drag.vy+dy;draw()});
+cv.addEventListener('pointerup',e=>{cv.classList.remove('dragging');if(!moved){const r=cv.getBoundingClientRect(),px=e.clientX-r.left,py=e.clientY-r.top;let m=null,dm=144;
+for(const n of N){const[x,y]=screen(n),d=(x-px)**2+(y-py)**2;if(d<dm){dm=d;m=n}}pick(m,false)}drag=null});
 cv.addEventListener('wheel',e=>{e.preventDefault();const r=cv.getBoundingClientRect(),px=e.clientX-r.left,py=e.clientY-r.top,f=Math.exp(-e.deltaY*0.0015);
-vue.x=px-(px-vue.x)*f;vue.y=py-(py-vue.y)*f;vue.z*=f;dessiner()},{passive:false});
-addEventListener('resize',taille);taille();cadrer();choisir(null);
-// graphe.html#<id> ouvre ce noeud.
-const ancre=()=>{const n=N.find(n=>n.id===decodeURIComponent(location.hash.slice(1)));if(n)choisir(n,true)};addEventListener('hashchange',ancre);ancre();
+view.x=px-(px-view.x)*f;view.y=py-(py-view.y)*f;view.z*=f;draw()},{passive:false});
+addEventListener('resize',resize);resize();frame();pick(null);
+// graphe.html#<id> opens that node.
+const anchor=()=>{const n=N.find(n=>n.id===decodeURIComponent(location.hash.slice(1)));if(n)pick(n,true)};addEventListener('hashchange',anchor);anchor();
 </script></body></html>
 """
 
 
-# ---------- les requetes
+# ---------- the queries
 
-def charger(tel_quel: bool = False) -> nx.DiGraph:
-    """Le graphe ; reconstruit d'abord s'il est plus ancien que le code de l'hote ou que l'outil."""
-    if not JSON.exists() or (not tel_quel and max((p.stat().st_mtime for p in _sources() + _outil()), default=0)
+def load(as_is: bool = False) -> nx.DiGraph:
+    """The graph; rebuilt first if it is older than the host's code or than the tool."""
+    if not JSON.exists() or (not as_is and max((p.stat().st_mtime for p in _sources() + _tool()), default=0)
                              > JSON.stat().st_mtime):
         print("(the graph is older than the code or the tool: rebuilding)", file=sys.stderr)
-        construire(calme=True)
-    donnees = json.loads(JSON.read_bytes())
-    graphe = nx.DiGraph(communities=donnees["communities"])
-    for n in donnees["nodes"]:
-        graphe.add_node(n["id"], **n)
-    for e in donnees["links"]:
-        graphe.add_edge(e["source"], e["target"], **{k: v for k, v in e.items() if k not in ("source", "target")})
-    return graphe
+        build(quiet=True)
+    data = json.loads(JSON.read_bytes())
+    graph = nx.DiGraph(communities=data["communities"])
+    for n in data["nodes"]:
+        graph.add_node(n["id"], **n)
+    for e in data["links"]:
+        graph.add_edge(e["source"], e["target"], **{k: v for k, v in e.items() if k not in ("source", "target")})
+    return graph
 
 
-def _nu(label: str) -> str:
+def _bare(label: str) -> str:
     return label.removesuffix("()").lstrip(".")
 
 
-def _prechargements(racine: Path = RACINE) -> dict[str, set[str]]:
-    """Les constantes qui prechargent un script GDScript, et ce script :
+def _preloads(root: Path = ROOT) -> dict[str, set[str]]:
+    """The constants that preload a GDScript script, and that script:
     `const Outils = preload("res://menu/outils.gd")` -> godot/menu/outils.gd (graphe_godot.GODOT)."""
-    motif = re.compile(r'^const\s+(\w+)\s*=\s*preload\("res://([^"]+\.gd)"\)', re.M)
+    pattern = re.compile(r'^const\s+(\w+)\s*=\s*preload\("res://([^"]+\.gd)"\)', re.M)
     alias: dict[str, set[str]] = defaultdict(set)
-    for chemin in graphe_godot.scripts():
-        for nom, cible in motif.findall(chemin.read_bytes().decode("utf-8", "replace")):
-            alias[nom].add(graphe_godot.res(cible))
+    for script in graphe_godot.scripts():
+        for name, target in pattern.findall(script.read_bytes().decode("utf-8", "replace")):
+            alias[name].add(graphe_godot.res(target))
     return alias
 
 
-def trouver(graphe: nx.DiGraph, texte: str) -> list[str]:
-    if texte in graphe:
-        return [texte]
-    fichier, _, nom = texte.rpartition("::")
-    trouves = []
-    for n, d in graphe.nodes(data=True):
-        if fichier and not (d["source_file"].endswith(fichier) or fichier in d["source_file"]):
+def find(graph: nx.DiGraph, text: str) -> list[str]:
+    if text in graph:
+        return [text]
+    file, _, name = text.rpartition("::")
+    found = []
+    for n, d in graph.nodes(data=True):
+        if file and not (d["source_file"].endswith(file) or file in d["source_file"]):
             continue
-        if nom in (d["name"], _nu(d["label"]), d["label"]) or d["name"].endswith("." + nom):
-            trouves.append(n)
-    if not trouves and not fichier and "." in nom:
-        # `Outils.aider` : Outils precharge godot/menu/outils.gd.
-        tete, _, membre = nom.partition(".")
-        scripts = _prechargements().get(tete, set())
-        trouves = [n for n, d in graphe.nodes(data=True)
-                   if d["source_file"] in scripts and membre in (d["name"], _nu(d["label"]))]
-    return sorted(trouves)
+        if name in (d["name"], _bare(d["label"]), d["label"]) or d["name"].endswith("." + name):
+            found.append(n)
+    if not found and not file and "." in name:
+        # `Outils.aider`: Outils preloads godot/menu/outils.gd.
+        head, _, member = name.partition(".")
+        scripts = _preloads().get(head, set())
+        found = [n for n, d in graph.nodes(data=True)
+                 if d["source_file"] in scripts and member in (d["name"], _bare(d["label"]))]
+    return sorted(found)
 
 
-def _un(graphe: nx.DiGraph, texte: str) -> str | None:
-    trouves = trouver(graphe, texte)
-    if len(trouves) == 1:
-        return trouves[0]
-    if not trouves:
-        print(f"no node for {texte!r} - try: graphe search {texte}")
+def _one(graph: nx.DiGraph, text: str) -> str | None:
+    found = find(graph, text)
+    if len(found) == 1:
+        return found[0]
+    if not found:
+        print(f"no node for {text!r} - try: graphe search {text}")
     else:
-        print(f"{texte!r} designates {len(trouves)} nodes; narrow it by id or by file::name:")
-        for n in trouves:
-            print(f"  {n}  ({_lieu(graphe, n)})")
+        print(f"{text!r} designates {len(found)} nodes; narrow it by id or by file::name:")
+        for n in found:
+            print(f"  {n}  ({_location(graph, n)})")
     return None
 
 
-def _etiquette(graphe: nx.DiGraph, n: str) -> str:
-    return f"{graphe.nodes[n]['label']} ({_lieu(graphe, n)})"
+def _label(graph: nx.DiGraph, n: str) -> str:
+    return f"{graph.nodes[n]['label']} ({_location(graph, n)})"
 
 
-def chemin(graphe: nx.DiGraph, a: str, b: str, sans_sens: bool) -> int:
-    source, cible = _un(graphe, a), _un(graphe, b)
-    if source is None or cible is None:
+def path(graph: nx.DiGraph, a: str, b: str, undirected: bool) -> int:
+    source, target = _one(graph, a), _one(graph, b)
+    if source is None or target is None:
         return 2
-    vu = graphe.to_undirected(as_view=True) if sans_sens else graphe
-    a_part, _ = _communautes()
+    view = graph.to_undirected(as_view=True) if undirected else graph
+    separate, _ = _communities_config()
 
-    def poids(x: str, y: str, _d: dict) -> int:
-        # T-0354 : sans le sens, une valeur ou un ticket relie tout ce qui
-        # l'ecrit ; il ne sert que faute de chemin par le code.
-        hors_code = graphe.nodes[x]["kind"] in a_part or graphe.nodes[y]["kind"] in a_part
-        return POIDS_HORS_CODE if sans_sens and hors_code else 1
+    def weight(x: str, y: str, _d: dict) -> int:
+        # T-0354: without the direction, a value or a ticket links everything
+        # that writes it; it serves only for want of a path through the code.
+        off_code = graph.nodes[x]["kind"] in separate or graph.nodes[y]["kind"] in separate
+        return OFF_CODE_WEIGHT if undirected and off_code else 1
 
     try:
-        etapes = nx.shortest_path(vu, source, cible, weight=poids)
+        steps = nx.shortest_path(view, source, target, weight=weight)
     except nx.NetworkXNoPath:
-        print("no path" + ("" if sans_sens else " in the direction of the links (try --undirected)"))
+        print("no path" + ("" if undirected else " in the direction of the links (try --undirected)"))
         return 1
-    print(f"{len(etapes) - 1} step(s):")
-    print(f"  {_etiquette(graphe, etapes[0])}")
-    for x, y in zip(etapes, etapes[1:], strict=False):
-        sens, d = ("-->", graphe[x][y]) if graphe.has_edge(x, y) else ("<--", graphe[y][x])
-        sur = "" if d["confidence"] == "EXTRACTED" else " [by name]"
-        print(f"    {sens} {','.join(d['relations'])}{sur}  {d['locations'][0]}")
-        print(f"  {_etiquette(graphe, y)}")
+    print(f"{len(steps) - 1} step(s):")
+    print(f"  {_label(graph, steps[0])}")
+    for x, y in zip(steps, steps[1:], strict=False):
+        direction, d = ("-->", graph[x][y]) if graph.has_edge(x, y) else ("<--", graph[y][x])
+        sure = "" if d["confidence"] == "EXTRACTED" else " [by name]"
+        print(f"    {direction} {','.join(d['relations'])}{sure}  {d['locations'][0]}")
+        print(f"  {_label(graph, y)}")
     return 0
 
 
-def source(graphe: nx.DiGraph, n: str) -> str:
-    """Les lignes du noeud, numerotees ; "" sans etendue connue."""
-    d = graphe.nodes[n]
-    debut, fin = int(d["source_location"].lstrip("L") or 0), int(d.get("end", 0))
-    if not fin or not (RACINE / d["source_file"]).is_file():
+def source_text(graph: nx.DiGraph, n: str) -> str:
+    """The node's lines, numbered; "" without a known extent."""
+    d = graph.nodes[n]
+    start, end = int(d["source_location"].lstrip("L") or 0), int(d.get("end", 0))
+    if not end or not (ROOT / d["source_file"]).is_file():
         return ""
-    lignes = (RACINE / d["source_file"]).read_bytes().decode("utf-8", "replace").splitlines()
-    return "\n".join(f"{i:5d}  {lignes[i - 1]}" for i in range(debut, min(fin, len(lignes)) + 1))
+    lines = (ROOT / d["source_file"]).read_bytes().decode("utf-8", "replace").splitlines()
+    return "\n".join(f"{i:5d}  {lines[i - 1]}" for i in range(start, min(end, len(lines)) + 1))
 
 
-def expliquer(graphe: nx.DiGraph, x: str, tout: bool, code: bool = False) -> int:
-    n = _un(graphe, x)
+def explain(graph: nx.DiGraph, x: str, all_: bool, code: bool = False) -> int:
+    n = _one(graph, x)
     if n is None:
         return 2
-    d = graphe.nodes[n]
-    fin = f"-{d['end']}" if d.get("end") and d["end"] != int(d["source_location"].lstrip("L") or 0) else ""
-    print(f"{d['label']}  [{d['kind']}]  {_lieu(graphe, n)}{fin}")
+    d = graph.nodes[n]
+    end = f"-{d['end']}" if d.get("end") and d["end"] != int(d["source_location"].lstrip("L") or 0) else ""
+    print(f"{d['label']}  [{d['kind']}]  {_location(graph, n)}{end}")
     print(f"  id: {n}")
-    print(f"  community: {graphe.graph['communities'][str(d['community'])]}")
+    print(f"  community: {graph.graph['communities'][str(d['community'])]}")
     if d.get("notes"):
         print(f"  note: {d['notes'][:300]}")
-    for texte in d.get("texts", [])[:10]:
-        print(f"  displays: {texte}")
+    for text in d.get("texts", [])[:10]:
+        print(f"  displays: {text}")
     if code:
-        print("\n" + (source(graphe, n) or "  (no known extent)"))
-    limite = None if tout else 25
-    for titre, paires in (("what it calls", [(c, graphe[n][c]) for c in graphe.successors(n)]),
-                          ("what calls it", [(s, graphe[s][n]) for s in graphe.predecessors(n)])):
-        par = defaultdict(list)
-        for autre, lien in paires:
-            for r in lien["relations"]:
-                par[r].append((autre, lien))
-        print(f"\n{titre}:" + ("" if par else " nothing"))
-        for r in sorted(par):
-            print(f"  {r} ({len(par[r])})")
-            for autre, lien in sorted(par[r], key=lambda p: _etiquette(graphe, p[0]))[:limite]:
-                sur = "" if lien["confidence"] == "EXTRACTED" else " [by name]"
-                print(f"    {_etiquette(graphe, autre)}{sur}")
-            if limite and len(par[r]) > limite:
-                print(f"    ... and {len(par[r]) - limite} more (--all)")
+        print("\n" + (source_text(graph, n) or "  (no known extent)"))
+    limit = None if all_ else 25
+    for title, pairs in (("what it calls", [(t, graph[n][t]) for t in graph.successors(n)]),
+                         ("what calls it", [(s, graph[s][n]) for s in graph.predecessors(n)])):
+        by_relation = defaultdict(list)
+        for other, link in pairs:
+            for r in link["relations"]:
+                by_relation[r].append((other, link))
+        print(f"\n{title}:" + ("" if by_relation else " nothing"))
+        for r in sorted(by_relation):
+            print(f"  {r} ({len(by_relation[r])})")
+            for other, link in sorted(by_relation[r], key=lambda p: _label(graph, p[0]))[:limit]:
+                sure = "" if link["confidence"] == "EXTRACTED" else " [by name]"
+                print(f"    {_label(graph, other)}{sure}")
+            if limit and len(by_relation[r]) > limit:
+                print(f"    ... and {len(by_relation[r]) - limit} more (--all)")
     return 0
 
 
-def appelants(graphe: nx.DiGraph, x: str, profondeur: int) -> int:
-    n = _un(graphe, x)
+def callers(graph: nx.DiGraph, x: str, depth: int) -> int:
+    n = _one(graph, x)
     if n is None:
         return 2
-    vus, front = {n}, [n]
-    for niveau in range(1, profondeur + 1):
-        suivant = []
+    seen, front = {n}, [n]
+    for level in range(1, depth + 1):
+        following = []
         for y in front:
-            for s in graphe.predecessors(y):
-                if s not in vus and APPELS & set(graphe[s][y]["relations"]):
-                    vus.add(s)
-                    suivant.append(s)
-        if not suivant:
+            for s in graph.predecessors(y):
+                if s not in seen and CALLS & set(graph[s][y]["relations"]):
+                    seen.add(s)
+                    following.append(s)
+        if not following:
             break
-        print(f"level {niveau} ({len(suivant)}):")
-        for s in sorted(suivant, key=lambda s: _etiquette(graphe, s)):
-            print(f"  {_etiquette(graphe, s)}")
-        front = suivant
-    if len(vus) == 1:
+        print(f"level {level} ({len(following)}):")
+        for s in sorted(following, key=lambda s: _label(graph, s)):
+            print(f"  {_label(graph, s)}")
+        front = following
+    if len(seen) == 1:
         print("nothing calls it (in what the graph sees)")
     return 0
 
 
-# `def reset`, `func _ready`, `class Gabarit` : le nom, sans le mot du langage.
-MOTS_DE_TETE = re.compile(r"^(?:async\s+def|def|static\s+func|func|class|function|const|var)\s+")
+# `def reset`, `func _ready`, `class Gabarit`: the name, without the language's keyword.
+HEAD_WORDS = re.compile(r"^(?:async\s+def|def|static\s+func|func|class|function|const|var)\s+")
 
 
-def recherche(graphe: nx.DiGraph, motif: str) -> list[tuple[str, str]]:
-    """(noeud, ou) : par le nom d'abord ; puis, si un texte affiche ou un
-    commentaire le contient, avec ce qui l'a trouve."""
-    motif = MOTS_DE_TETE.sub("", motif.strip()).lower()
-    par_nom = sorted(n for n, d in graphe.nodes(data=True)
-                     if motif in n.lower() or motif in d["label"].lower() or motif in d["name"].lower())
-    vus = set(par_nom)
-    autres = []
-    for n, d in sorted(graphe.nodes(data=True)):
-        if n in vus:
+def search_nodes(graph: nx.DiGraph, pattern: str) -> list[tuple[str, str]]:
+    """(node, where): by the name first; then, if a displayed text or a
+    comment contains it, with what found it."""
+    pattern = HEAD_WORDS.sub("", pattern.strip()).lower()
+    by_name = sorted(n for n, d in graph.nodes(data=True)
+                     if pattern in n.lower() or pattern in d["label"].lower() or pattern in d["name"].lower())
+    seen = set(by_name)
+    others = []
+    for n, d in sorted(graph.nodes(data=True)):
+        if n in seen:
             continue
-        texte = next((t for t in d.get("texts", []) if motif in t.lower()), None)
-        if texte is not None:
-            autres.append((n, f"displays \"{texte[:60]}\""))
-        elif motif in d.get("notes", "").lower():
-            autres.append((n, "comment"))
-    return [(n, "") for n in par_nom] + autres
+        text = next((t for t in d.get("texts", []) if pattern in t.lower()), None)
+        if text is not None:
+            others.append((n, f"displays \"{text[:60]}\""))
+        elif pattern in d.get("notes", "").lower():
+            others.append((n, "comment"))
+    return [(n, "") for n in by_name] + others
 
 
-def chercher(graphe: nx.DiGraph, motif: str) -> int:
-    trouves = recherche(graphe, motif)
-    for n, ou in trouves[:60]:
-        print(f"  {graphe.nodes[n]['label']:40s} {_lieu(graphe, n):45s} {n}" + (f"  ({ou})" if ou else ""))
-    print(f"{len(trouves)} node(s)" + (" (60 shown)" if len(trouves) > 60 else ""))
-    return 0 if trouves else 1
+def search(graph: nx.DiGraph, pattern: str) -> int:
+    found = search_nodes(graph, pattern)
+    for n, where in found[:60]:
+        print(f"  {graph.nodes[n]['label']:40s} {_location(graph, n):45s} {n}" + (f"  ({where})" if where else ""))
+    print(f"{len(found)} node(s)" + (" (60 shown)" if len(found) > 60 else ""))
+    return 0 if found else 1
 
 
-def verifier() -> int:
-    """La couverture de chaque contribution, lue dans ses sites : le classement des appels, les noms les plus
-    frequents de chaque verdict, puis les alertes ; un echec s'il y a une alerte ou un lien pendant."""
-    _, _, pendants, sites = assembler(verifier=True)
-    alertes = 0
-    for qui, liste in sites.items():
-        verdicts = Counter(s["verdict"] for s in liste if "verdict" in s)
-        print(f"== {qui}: {sum(verdicts.values())} sites classified {dict(verdicts.most_common())}")
+def check() -> int:
+    """The coverage of each contribution, read in its sites: the classification of the calls, the most frequent
+    names of each verdict, then the alerts; a failure if there is an alert or a dangling link."""
+    _, _, dangling, sites = assemble(checking=True)
+    alerts = 0
+    for who, site_list in sites.items():
+        verdicts = Counter(s["verdict"] for s in site_list if "verdict" in s)
+        print(f"== {who}: {sum(verdicts.values())} sites classified {dict(verdicts.most_common())}")
         for verdict, n in verdicts.most_common():
-            noms = Counter(s["text"] for s in liste if s.get("verdict") == verdict)
-            print(f"  {verdict} ({n}): {dict(noms.most_common(12))}")
-        a_signaler = [s for s in liste if "alert" in s]
-        alertes += len(a_signaler)
-        print(f"  alerts: {len(a_signaler)}")
-        for s in a_signaler[:60]:
+            names = Counter(s["text"] for s in site_list if s.get("verdict") == verdict)
+            print(f"  {verdict} ({n}): {dict(names.most_common(12))}")
+        to_report = [s for s in site_list if "alert" in s]
+        alerts += len(to_report)
+        print(f"  alerts: {len(to_report)}")
+        for s in to_report[:60]:
             print(f"    {s['file']}:{s['line']} {s['text']} ({s['alert']})")
         print()
-    print(f"== Graph: {len(pendants)} dangling link(s)")
-    for e in pendants[:20]:
+    print(f"== Graph: {len(dangling)} dangling link(s)")
+    for e in dangling[:20]:
         print("  ", e["source"], "->", e["target"], e["relation"], e["source_file"], e["source_location"])
-    return 1 if alertes or pendants else 0
+    return 1 if alerts or dangling else 0
 
 
-# ---------- les crochets git
+# ---------- the git hooks
 
-def _dossier_des_crochets() -> Path:
-    r = subprocess.run(["git", "rev-parse", "--git-path", "hooks"], cwd=RACINE, capture_output=True, text=True,
+def _hooks_folder() -> Path:
+    r = subprocess.run(["git", "rev-parse", "--git-path", "hooks"], cwd=ROOT, capture_output=True, text=True,
                        check=True)
-    chemin = Path(r.stdout.strip())
-    return chemin if chemin.is_absolute() else RACINE / chemin
+    folder = Path(r.stdout.strip())
+    return folder if folder.is_absolute() else ROOT / folder
 
 
-def _sans_bloc(texte: str) -> str:
-    """Le crochet tel qu'avant `install`, a l'octet pres : le bloc est un ajout exact."""
-    for ouvre, ferme in BLOCS:
-        debut = texte.find("\n" + ouvre)
-        fin = texte.find(ferme, debut)
-        if debut >= 0 and fin >= 0:
-            # Jusqu'a la fin de la ligne qui ferme le bloc, LF ou CRLF (un editeur a pu convertir le crochet) : un
-            # bloc reconnu n'est jamais double.
-            texte = texte[:debut] + texte[fin:].partition("\n")[2]
-    return texte
+def _without_block(text: str) -> str:
+    """The hook as it was before `install`, to the byte: the block is an exact addition."""
+    for opening, closing in BLOCKS:
+        start = text.find("\n" + opening)
+        end = text.find(closing, start)
+        if start >= 0 and end >= 0:
+            # Up to the end of the line that closes the block, LF or CRLF (an editor may have converted the hook): a
+            # recognised block is never doubled.
+            text = text[:start] + text[end:].partition("\n")[2]
+    return text
 
 
-def _ignorer_la_sortie() -> None:
-    """Ajoute la sortie au .gitignore de l'hote, sauf si git l'ignore deja (sous quelque forme que ce soit)."""
-    if subprocess.run(["git", "check-ignore", "-q", f"{SORTIE.name}/"], cwd=RACINE).returncode == 0:
+def _ignore_output() -> None:
+    """Adds the output to the host's .gitignore, unless git already ignores it (in whatever form)."""
+    if subprocess.run(["git", "check-ignore", "-q", f"{OUTPUT.name}/"], cwd=ROOT).returncode == 0:
         return
-    chemin = RACINE / ".gitignore"
-    texte = chemin.read_bytes() if chemin.exists() else b""  # en octets : un .gitignore hors UTF-8 reste intact
-    chemin.write_bytes(texte + (b"\n" if texte and not texte.endswith(b"\n") else b"") + f"/{SORTIE.name}/\n".encode())
-    print(f"  .gitignore: /{SORTIE.name}/ added")
+    file = ROOT / ".gitignore"
+    text = file.read_bytes() if file.exists() else b""  # in bytes: a .gitignore outside UTF-8 stays intact
+    file.write_bytes(text + (b"\n" if text and not text.endswith(b"\n") else b"") + f"/{OUTPUT.name}/\n".encode())
+    print(f"  .gitignore: /{OUTPUT.name}/ added")
 
 
-def installer(retirer: bool = False) -> int:
-    """Pose (ou retire) le bloc qui reconstruit le graphe dans chaque
-    crochet ; un crochet deja la garde ce qu'il faisait."""
-    dossier = _dossier_des_crochets()
-    dossier.mkdir(parents=True, exist_ok=True)
-    # shortcut: `graphe` doit etre dans le PATH du shell de git, sinon le crochet echoue en silence (la requete
-    # suivante reconstruit quand meme) ; un chemin absolu si un client git n'herite pas du PATH.
-    bloc = f"\n{BLOCS[0][0]} (graphe install)\ngraphe build --quiet >/dev/null 2>&1 &\n{BLOCS[0][1]}\n"
-    for nom in CROCHETS:
-        chemin = dossier / nom
-        texte = _sans_bloc(chemin.read_bytes().decode("utf-8") if chemin.exists() else "#!/bin/sh\n")
-        if not retirer:
-            texte += bloc
-        # shortcut: un crochet de l'hote reduit a `#!/bin/sh` est efface comme ceux qu'installer a crees ; a
-        # distinguer si un hote en garde un.
-        if retirer and texte.strip() in ("", "#!/bin/sh"):
-            chemin.unlink(missing_ok=True)
-            print(f"  {nom}: removed")
+def install(remove: bool = False) -> int:
+    """Sets (or removes) the block that rebuilds the graph in each hook; a
+    hook already there keeps what it did."""
+    folder = _hooks_folder()
+    folder.mkdir(parents=True, exist_ok=True)
+    # shortcut: `graphe` must be in the PATH of git's shell, else the hook fails silently (the next query rebuilds
+    # anyway); an absolute path if a git client does not inherit the PATH.
+    block = f"\n{BLOCKS[0][0]} (graphe install)\ngraphe build --quiet >/dev/null 2>&1 &\n{BLOCKS[0][1]}\n"
+    for name in HOOKS:
+        hook = folder / name
+        text = _without_block(hook.read_bytes().decode("utf-8") if hook.exists() else "#!/bin/sh\n")
+        if not remove:
+            text += block
+        # shortcut: a host hook reduced to `#!/bin/sh` is deleted like those install created; to tell apart if a
+        # host keeps one.
+        if remove and text.strip() in ("", "#!/bin/sh"):
+            hook.unlink(missing_ok=True)
+            print(f"  {name}: removed")
             continue
-        chemin.write_bytes(texte.encode("utf-8"))
-        chemin.chmod(0o755)
-        print(f"  {nom}: {'block removed' if retirer else 'set'} ({chemin})")
-    if not retirer:
-        _ignorer_la_sortie()
+        hook.write_bytes(text.encode("utf-8"))
+        hook.chmod(0o755)
+        print(f"  {name}: {'block removed' if remove else 'set'} ({hook})")
+    if not remove:
+        _ignore_output()
     return 0
 
 
-def _option(arguments: list[str], nom: str, defaut: int) -> int:
-    return int(arguments[arguments.index(nom) + 1]) if nom in arguments else defaut
+def _option(arguments: list[str], name: str, default: int) -> int:
+    return int(arguments[arguments.index(name) + 1]) if name in arguments else default
 
 
 def main(arguments: list[str] | None = None) -> int:
-    arguments = sys.argv[1:] if arguments is None else arguments  # la commande `graphe`
-    # Lu par un autre programme (un agent, un tube), cp1252 sortait « D?fi ».
+    arguments = sys.argv[1:] if arguments is None else arguments  # the `graphe` command
+    # Read by another program (an agent, a pipe), cp1252 printed « D?fi ».
     if not sys.stdout.isatty():
         sys.stdout.reconfigure(encoding="utf-8")
-    commande, reste = (arguments[0], arguments[1:]) if arguments else ("", [])
-    positionnels = [a for i, a in enumerate(reste) if not a.startswith("--")
-                    and not (i and reste[i - 1] == "--depth")]
-    if commande == "build":
+    command, rest = (arguments[0], arguments[1:]) if arguments else ("", [])
+    positionals = [a for i, a in enumerate(rest) if not a.startswith("--")
+                   and not (i and rest[i - 1] == "--depth")]
+    if command == "build":
         try:
-            return construire(calme="--quiet" in reste)
+            return build(quiet="--quiet" in rest)
         except Exception as e:
-            if "--quiet" not in reste:
-                if isinstance(e, RuntimeError):  # une extension introuvable, un noeud incomplet : le message suffit
+            if "--quiet" not in rest:
+                if isinstance(e, RuntimeError):  # an extension not found, an incomplete node: the message suffices
                     print(f"graphe: {e}", file=sys.stderr)
                     return 1
                 raise
-            import traceback  # noqa: PLC0415 - le chemin d'erreur seul
-            SORTIE.mkdir(exist_ok=True)
-            (SORTIE / "error.txt").write_bytes(traceback.format_exc().encode("utf-8"))
+            import traceback  # noqa: PLC0415 - the error path only
+            OUTPUT.mkdir(exist_ok=True)
+            (OUTPUT / "error.txt").write_bytes(traceback.format_exc().encode("utf-8"))
             return 1
-    if commande == "check":
-        return verifier()
-    if commande == "install":
-        return installer(retirer="--remove" in reste)
-    if commande == "path" and len(positionnels) == 2:
-        return chemin(charger(), *positionnels, sans_sens="--undirected" in reste)
-    if commande == "explain" and len(positionnels) == 1:
-        return expliquer(charger(), positionnels[0], tout="--all" in reste, code="--source" in reste)
-    if commande == "callers" and len(positionnels) == 1:
-        return appelants(charger(), positionnels[0], _option(reste, "--depth", 2))
-    if commande == "search" and len(positionnels) == 1:
-        return chercher(charger(), positionnels[0])
+    if command == "check":
+        return check()
+    if command == "install":
+        return install(remove="--remove" in rest)
+    if command == "path" and len(positionals) == 2:
+        return path(load(), *positionals, undirected="--undirected" in rest)
+    if command == "explain" and len(positionals) == 1:
+        return explain(load(), positionals[0], all_="--all" in rest, code="--source" in rest)
+    if command == "callers" and len(positionals) == 1:
+        return callers(load(), positionals[0], _option(rest, "--depth", 2))
+    if command == "search" and len(positionals) == 1:
+        return search(load(), positionals[0])
     print(__doc__)
     return 2
 

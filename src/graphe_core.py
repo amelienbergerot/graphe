@@ -1,0 +1,388 @@
+"""The core: what the graph draws from the text of the sources, once the
+readers have run (BACKLOG.md).
+
+For each function, method, command or action:
+- `end`: its last line - the first non-blank line that comes back to its
+  indentation closes its body (Python, GDScript and PHP are read alike);
+  `explain X --source` prints its lines;
+- `texts`: the texts it displays, by the `displayed_text` pattern of
+  graphe.toml (T-0009) - a text seen on screen leads to its code; without a
+  pattern, none;
+- `notes`: the comment just above it - a concept said in a comment
+  (« clarte ») leads to the function that has it.
+
+And:
+- a node per module variable or constant (Python: an assignment in column
+  0; GDScript: `const`/`var` in column 0, except `preload`), linked to the
+  functions that read it (`reads`) or write it (`writes`) - in its file by
+  the name, elsewhere by `X.NAME` when that name exists only once;
+- a class and its fields have their end and their comment;
+- Python: `alias.CONSTANT`, where `alias` is a module imported under that
+  name, reads that module's constant (EXTRACTED);
+- a node per document (T-0010): each Markdown file of the host, restricted
+  by `[documents] patterns` (graphe.toml). A document whose name starts with
+  an identifier (`[documents] identifier`, `T-` and four digits by default)
+  is a ticket: the code that contains its identifier (in its body or its
+  comment) and the other documents lead to it by `cites`. A document leads
+  to the functions it names between backticks (`names`, by the name);
+- a `value` node per string (an identifier, `"coupee"`) written both in
+  Python and in GDScript, linked to each body that writes it (`value`): what
+  one side emits and what the other compares.
+"""
+
+from __future__ import annotations
+
+import re
+from collections import defaultdict
+from pathlib import Path
+
+import networkx as nx
+
+import graphe_godot
+import graphe_root
+
+BODIES = {"function", "method", "command", "action", "class"}
+# An extent and a comment, without being a body that owns its lines.
+EXTENDED = BODIES | {"field"}
+PY_ALIAS = re.compile(r"^\s*(?:from\s+([\w.]+)\s+import\s+(\w+)(?:\s+as\s+(\w+))?|import\s+([\w.]+)\s+as\s+(\w+))\s*$")
+PY_QUALIFIED = re.compile(r"\b([a-z_]\w*)\.(\w+)\b")
+# T-0010: a document's default identifier (`[documents] identifier`), that of tickets.
+IDENTIFIER = r"\bT-\d{4}\b"
+NAMED = re.compile(r"`([A-Za-z_][\w.]*?)(?:\(\))?`")
+PY_VARIABLE = re.compile(r"^([A-Za-z_]\w*)\s*(?::[^=]+)?=(?!=)")
+GD_VARIABLE = re.compile(r"^(?:static\s+)?(const|var)\s+(\w+)\b(.*)$")
+PRELOAD = re.compile(r'^const\s+(\w+)\s*=\s*preload\("res://([^"]+\.gd)"\)', re.M)
+QUALIFIED = re.compile(r"\b([A-Z]\w*)\.(\w+)\b")
+# Names too common to be followed from one file to another by the name.
+NAME_MIN = 4
+VALUE = re.compile(r'"([a-z][a-z0-9_]{3,})"')
+VALUE_FILES_MAX = 8
+VALUE_BODIES_MAX = 10
+
+
+def _indent(line: str) -> int:
+    return len(line.expandtabs(4)) - len(line.expandtabs(4).lstrip())
+
+
+def _comment(line: str) -> str | None:
+    s = line.strip()
+    for start in ("#", "//", "/**", "/*", "*"):
+        if s.startswith(start):
+            return s[len(start):].strip().removesuffix("*/").strip()
+    return None
+
+
+def extent(lines: list[str], start: int) -> int:
+    """The last line (1 = the first of the file) of the block that starts at
+    `start`: before the first non-blank line, outside a comment, that comes
+    back to the indentation of `start` or less. A closing `}` or `)` at that
+    indentation belongs to the block."""
+    if start < 1 or start > len(lines):
+        return start
+    base = _indent(lines[start - 1])
+    end = start
+    open_ = lines[start - 1].count("(") - lines[start - 1].count(")")
+    for i in range(start, len(lines)):
+        line = lines[i]
+        if open_ > 0:  # a signature over several lines
+            open_ += line.count("(") - line.count(")")
+            end = i + 1
+            continue
+        s = line.strip()
+        if not s or _comment(line) is not None and _indent(line) > base:
+            continue
+        if _indent(line) <= base:
+            if s[0] in "})]" and _indent(line) == base:
+                end = i + 1
+            break
+        end = i + 1
+    return end
+
+
+def notes(lines: list[str], start: int) -> str:
+    """The comment just above line `start` (decorators skipped), on one
+    line."""
+    i = start - 2
+    while i >= 0 and lines[i].strip().startswith("@"):
+        i -= 1
+    pieces = []
+    while i >= 0:
+        text = _comment(lines[i])
+        if text is None:
+            break
+        pieces.append(text)
+        i -= 1
+    return " ".join(reversed([p for p in pieces if p]))
+
+
+def _variables(rel: str, lines: list[str]) -> list[tuple[str, int, str]]:
+    """(name, line, kind) of the module variables and constants."""
+    found = []
+    if rel.endswith(".py"):
+        for i, line in enumerate(lines, start=1):
+            m = PY_VARIABLE.match(line)
+            if m and m.group(1) not in ("__all__",):
+                name = m.group(1)
+                found.append((name, i, "constant" if name.lstrip("_").isupper() else "variable"))
+    elif rel.endswith(".gd"):
+        for i, line in enumerate(lines, start=1):
+            m = GD_VARIABLE.match(line)
+            if m and "preload(" not in m.group(3) and "load(" not in m.group(3):
+                found.append((m.group(2), i, "constant" if m.group(1) == "const" else "variable"))
+    seen = set()
+    return [t for t in found if not (t[0] in seen or seen.add(t[0]))]
+
+
+def _add_link(graph: nx.DiGraph, s: str, t: str, relation: str, location: str, confidence: str) -> None:
+    if graph.has_edge(s, t):
+        d = graph[s][t]
+        d["relations"].add(relation)
+        if location not in d["locations"]:
+            d["locations"].append(location)
+    else:
+        graph.add_edge(s, t, relations={relation}, confidence=confidence, locations=[location], contexts=[])
+
+
+def displayed_text_pattern(root: Path) -> re.Pattern | None:
+    """`displayed_text` (graphe.toml): the pattern of a call that displays a text, the text in its only group."""
+    raw = graphe_root.configuration(root).get("displayed_text")
+    if raw is None:
+        return None
+    try:
+        pattern = re.compile(raw)
+    except (re.error, TypeError) as e:
+        raise RuntimeError(f"displayed_text ({graphe_root.CONFIGURATION}): {e}") from None
+    if pattern.groups != 1:
+        raise RuntimeError(f"displayed_text ({graphe_root.CONFIGURATION}): it needs exactly one group, the "
+                           f"displayed text; it has {pattern.groups}")
+    return pattern
+
+
+def enrich(graph: nx.DiGraph, root: Path) -> None:
+    """`root` is a git repository: the documents are its Markdown files that git tracks (graphe_root.files)."""
+    displays = displayed_text_pattern(root)
+    by_file: dict[str, list[str]] = defaultdict(list)
+    for n, d in graph.nodes(data=True):
+        by_file[d["source_file"]].append(n)
+    file_lines: dict[str, list[str]] = {}
+    for rel in by_file:
+        path = root / rel
+        if path.is_file():
+            file_lines[rel] = path.read_bytes().decode("utf-8", "replace").splitlines()
+
+    # The bodies: end, texts, notes.
+    bodies: dict[str, tuple[str, int, int]] = {}
+    for rel, ids in by_file.items():
+        lines = file_lines.get(rel)
+        if lines is None:
+            continue
+        for n in ids:
+            d = graph.nodes[n]
+            if d["kind"] not in EXTENDED:
+                continue
+            start = int(d["source_location"].lstrip("L") or 0)
+            end = extent(lines, start)
+            d["end"] = end
+            text = "\n".join(lines[start - 1:end])
+            found = [t.replace('\\"', '"') for t in displays.findall(text)] if displays else []
+            if found:
+                d["texts"] = found
+            note = notes(lines, start)
+            if note:
+                d["notes"] = note
+            if d["kind"] in BODIES:
+                bodies[n] = (rel, start, end)
+
+    # Each line has its owner: the smallest body that contains it - the
+    # branch of a command rather than the function that dispatches (its
+    # calls too: an extension's takeovers, T-0008). The head line is not a
+    # use.
+    owners: dict[str, dict[int, str]] = defaultdict(dict)
+    for n, (rel, start, end) in sorted(bodies.items(), key=lambda b: b[1][2] - b[1][1], reverse=True):
+        for i in range(start + 1, end + 1):
+            owners[rel][i] = n
+
+    # Module variables and constants.
+    file_id = {graph.nodes[n]["source_file"]: n for n in graph.nodes if graph.nodes[n]["kind"] == "file"}
+    variables: dict[str, dict[str, str]] = defaultdict(dict)  # file -> name -> id
+    module_names: dict[str, list[str]] = defaultdict(list)
+    for rel, lines in file_lines.items():
+        fid = file_id.get(rel)
+        if fid is None:
+            continue
+        for name, line, kind in _variables(rel, lines):
+            vid = f"{fid}_{name.lower()}"
+            if vid in graph:
+                vid += "_" + kind
+            graph.add_node(vid, id=vid, label=name, kind=kind, source_file=rel, source_location=f"L{line}",
+                           name=name, end=extent(lines, line))
+            note = notes(lines, line)
+            if note:
+                graph.nodes[vid]["notes"] = note
+            _add_link(graph, fid, vid, "contains", f"{rel}:{line}", "EXTRACTED")
+            variables[rel][name] = vid
+            module_names[name].append(vid)
+    unique = {name: ids[0] for name, ids in module_names.items() if len(ids) == 1 and len(name) >= NAME_MIN}
+    elsewhere = re.compile(r"\b\w+\.(" + "|".join(sorted(map(re.escape, unique), key=len, reverse=True)) + r")\b") \
+        if unique else None
+    write = r"\s*(?:[-+*/]?=(?!=)|\.(?:append|extend|clear|pop|update|insert|remove|add|discard|erase)\()"
+    uses: dict[str, list[tuple[str, str, str]]] = defaultdict(list)
+    py_files = {rel for rel in file_lines if rel.endswith(".py")}
+    for rel, lines in file_lines.items():
+        local = variables.get(rel, {})
+        # GDScript: `Script.CONSTANT`, where Script preloads a script (res://: godot/, graphe_godot.GODOT).
+        alias = {name: graphe_godot.res(target) for name, target in PRELOAD.findall("\n".join(lines))} \
+            if rel.endswith(".gd") else {}
+        # Python: `alias.CONSTANT`, alias a module imported under that name.
+        py_alias = _python_aliases(lines, py_files) if rel.endswith(".py") else {}
+        here = re.compile(r"(?<![\w.])(" + "|".join(sorted(map(re.escape, local), key=len, reverse=True)) + r")\b") \
+            if local else None
+        for i, n in owners.get(rel, {}).items():
+            line = lines[i - 1]
+            if _comment(line) is not None:
+                continue
+            location = f"{rel}:{i}"
+            if here is not None:
+                for m in here.finditer(line):
+                    writes = re.match(write, line[m.end():])
+                    _add_link(graph, n, local[m.group(1)], "writes" if writes else "reads", location, "EXTRACTED")
+            if alias and "." in line:
+                for head, name in set(QUALIFIED.findall(line)):
+                    vid = variables.get(alias.get(head, ""), {}).get(name)
+                    if vid:
+                        _add_link(graph, n, vid, "reads", location, "EXTRACTED")
+            elif elsewhere is not None and "." in line:
+                sure = set()
+                for head, name in set(PY_QUALIFIED.findall(line)) if py_alias else ():
+                    vid = variables.get(py_alias.get(head, ""), {}).get(name)
+                    if vid:
+                        _add_link(graph, n, vid, "reads", location, "EXTRACTED")
+                        sure.add(name)
+                for name in set(elsewhere.findall(line)) - sure:
+                    vid = unique[name]
+                    # `examen.graine` in Python does not read a GDScript variable.
+                    other = graph.nodes[vid]["source_file"]
+                    if other != rel and Path(other).suffix == Path(rel).suffix:
+                        _add_link(graph, n, vid, "reads", location, "INFERRED")
+            # T-0354: values written in one language and read in the other.
+            if '"' in line and rel.endswith((".py", ".gd")):
+                for v in set(VALUE.findall(line)):
+                    uses[v].append((n, location, Path(rel).suffix))
+
+    _link_values(graph, uses)
+    _link_documents(graph, root, bodies, file_lines)
+
+
+def _link_values(graph: nx.DiGraph, uses: dict[str, list[tuple[str, str, str]]]) -> None:
+    """T-0354: a value written in Python and in GDScript becomes a node; its
+    name keeps its quotes, so as not to make ambiguous the name of a
+    function spelled the same. A value written in more than
+    VALUE_FILES_MAX files (`"name"`, `"tick"`) says nothing and shortened
+    one undirected path in three: no node."""
+    for v, us in sorted(uses.items()):
+        if {s for _, _, s in us} != {".py", ".gd"}:
+            continue
+        if (len({location.rsplit(":", 1)[0] for _, location, _ in us}) > VALUE_FILES_MAX
+                or len({n for n, _, _ in us}) > VALUE_BODIES_MAX):
+            continue
+        vid = f"value_{v}"
+        rel, line = min(location for _, location, s in us if s == ".py").rsplit(":", 1)
+        graph.add_node(vid, id=vid, label=f'"{v}"', kind="value", source_file=rel, source_location=f"L{line}",
+                       name=f'"{v}"', end=int(line))
+        for n, location, _ in us:
+            _add_link(graph, n, vid, "value", location, "EXTRACTED")
+
+
+def _python_aliases(lines: list[str], files: set[str]) -> dict[str, str]:
+    """The modules imported under a name: name -> file."""
+    alias = {}
+    for line in lines:
+        m = PY_ALIAS.match(line)
+        if not m:
+            continue
+        if m.group(1):
+            module, name = f"{m.group(1)}.{m.group(2)}", m.group(3) or m.group(2)
+        else:
+            module, name = m.group(4), m.group(5)
+        path = module.replace(".", "/")
+        for rel in (path + ".py", path + "/__init__.py"):
+            if rel in files:
+                alias[name] = rel
+    return alias
+
+
+def _documents(root: Path) -> tuple[re.Pattern, list[str] | None]:
+    """`[documents]` (graphe.toml): the pattern of a document's identifier (IDENTIFIER otherwise), and the
+    patterns that restrict the documents (None: all Markdown files)."""
+    table = graphe_root.configuration(root).get("documents", {})
+    if not isinstance(table, dict):
+        raise RuntimeError(f"documents ({graphe_root.CONFIGURATION}): [documents] must be a table")
+    try:
+        pattern = re.compile(table.get("identifier", IDENTIFIER))
+    except (re.error, TypeError) as e:
+        raise RuntimeError(f"[documents] identifier ({graphe_root.CONFIGURATION}): {e}") from None
+    restricted = table.get("patterns")
+    if restricted is not None and not (isinstance(restricted, list) and all(isinstance(m, str) for m in restricted)):
+        raise RuntimeError(f"[documents] patterns ({graphe_root.CONFIGURATION}): it must be a list of patterns")
+    return pattern, restricted
+
+
+def _document_id(prefix: str, name: str) -> str:
+    return prefix + re.sub(r"\W+", "_", name.lower()).strip("_")
+
+
+def _cited(pattern: re.Pattern, text: str) -> set[str]:
+    return {m.group(0) for m in pattern.finditer(text) if m.group(0)}
+
+
+def _link_documents(graph: nx.DiGraph, root: Path, bodies: dict, texts: dict[str, list[str]]) -> None:
+    """T-0010: each Markdown file of the host (`[documents] patterns` restricts them) is a document. One whose
+    name starts with an identifier is a ticket; it is cited by the code and by the documents that contain it.
+    A document names the functions it writes between backticks."""
+    pattern, restricted = _documents(root)
+    tickets: dict[str, str] = {}  # identifier -> id
+    documents = []
+    for path in graphe_root.files(".md", root):
+        rel = path.relative_to(root).as_posix()
+        if restricted is not None and not graphe_root.designates(rel, restricted):
+            continue
+        text = path.read_bytes().decode("utf-8", "replace")
+        title = next((line.split(":", 1)[1].strip() for line in text.splitlines()[:8]
+                      if line.startswith("title:")), path.stem)
+        m = pattern.match(path.name)
+        # shortcut: two files with the same identifier, the second is only a document; and two names that differ
+        # only by punctuation (`a-b.md`, `a_b.md`) make a single node. To revisit if a host has some.
+        if m and m.group(0) and m.group(0) not in tickets:
+            name, kind = m.group(0), "ticket"
+            tickets[name] = did = _document_id("ticket_", name)
+        else:
+            name, kind, did = rel, "document", _document_id("document_", rel)
+        graph.add_node(did, id=did, label=name, kind=kind, source_file=rel, source_location="L1",
+                       name=name, notes=title, end=len(text.splitlines()))
+        documents.append((did, rel, text))
+    # The code that cites a ticket, in its body or its comment.
+    for n, (rel, start, end) in bodies.items():
+        lines = texts.get(rel, [])
+        cited = _cited(pattern, "\n".join(lines[start - 1:end])) | _cited(pattern, graph.nodes[n].get("notes", ""))
+        for ident in sorted(cited):
+            if ident in tickets:
+                _add_link(graph, n, tickets[ident], "cites", f"{rel}:{start}", "EXTRACTED")
+    # The tickets a document cites, and the functions it names: a name borne by a single body.
+    bearers: dict[str, list[str]] = defaultdict(list)
+    for n in bodies:
+        d = graph.nodes[n]
+        if d["kind"] in ("function", "method", "class"):
+            bearers[d["name"].rsplit(".", 1)[-1]].append(n)
+    for did, rel, text in documents:
+        for i, line in enumerate(text.splitlines(), start=1):
+            for ident in sorted(_cited(pattern, line)):
+                if ident in tickets and tickets[ident] != did:  # not from itself to itself
+                    _add_link(graph, did, tickets[ident], "cites", f"{rel}:{i}", "EXTRACTED")
+        for name in set(NAMED.findall(text)):
+            last = name.rsplit(".", 1)[-1]
+            if len(last) >= NAME_MIN and len(bearers.get(last, [])) == 1:
+                _add_link(graph, did, bearers[last][0], "names", rel, "INFERRED")
+
+
+def lines_without_comments(lines: list[str]) -> list[str]:
+    return [line for line in lines if _comment(line) is None]

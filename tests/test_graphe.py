@@ -1,8 +1,8 @@
-"""Le graphe du code : ce que ses lecteurs relient.
+"""The code graph: what its readers link.
 
-Les lecteurs se jouent sur un petit depot ecrit ici ; les tests marques
-`grid_zero` sur le vrai Grid Zero (conftest.py). Sa couverture et son test de
-reference restent dans Grid Zero (T-0003).
+The readers play on a small repository written here; the tests marked
+`grid_zero` on the real Grid Zero (conftest.py). Its coverage and its
+reference test stay in Grid Zero (T-0003).
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ import graphe
 import graphe_python
 from conftest import grid_zero
 
-MOTEUR = '''
+ENGINE_PY = '''
 from dataclasses import dataclass
 import re
 
@@ -64,7 +64,7 @@ def cle(v):
     return v
 '''
 
-FLOTTE = '''
+FLEET_PY = '''
 class Flotte:
     def pousser(self) -> None:
         pass
@@ -80,7 +80,7 @@ def vider(flotte: Flotte) -> None:
     flotte.pousser()
 '''
 
-SERVEUR = '''
+SERVER_PY = '''
 from simulation.moteur import Moteur
 
 COMMANDES = frozenset({"pas", "rien", "liste", "relister"})
@@ -99,61 +99,61 @@ def handle_command(moteur: Moteur, message: dict) -> dict:
 
 
 @pytest.fixture
-def lecture(tmp_path: Path) -> graphe_python.Lecture:
+def reader(tmp_path: Path) -> graphe_python.Reader:
     (tmp_path / "simulation").mkdir()
-    chemins = []
-    for nom, texte in (("moteur", MOTEUR), ("flotte", FLOTTE), ("server", SERVEUR)):
-        chemin = tmp_path / "simulation" / f"{nom}.py"
-        chemin.write_bytes(textwrap.dedent(texte).encode("utf-8"))
-        chemins.append(chemin)
-    return graphe_python.Lecture(chemins, racine=tmp_path)
+    paths = []
+    for name, text in (("moteur", ENGINE_PY), ("flotte", FLEET_PY), ("server", SERVER_PY)):
+        path = tmp_path / "simulation" / f"{name}.py"
+        path.write_bytes(textwrap.dedent(text).encode("utf-8"))
+        paths.append(path)
+    return graphe_python.Reader(paths, root=tmp_path)
 
 
-def _liens(lecture, relation: str = "calls") -> set[tuple[str, str]]:
-    return {(e["source"], e["target"]) for e in lecture.liens if e["relation"] == relation
+def _links(reader, relation: str = "calls") -> set[tuple[str, str]]:
+    return {(e["source"], e["target"]) for e in reader.links if e["relation"] == relation
             and e["confidence"] == "EXTRACTED"}
 
 
 M, F, S = "simulation_moteur_", "simulation_flotte_", "simulation_server_"
 
 
-def test_un_appel_suit_le_type_des_attributs(lecture):
-    appels = _liens(lecture)
-    # self.flotte = Flotte() dans __init__ ; un champ de dataclass annote
-    assert (f"{M}moteur_charge", f"{F}flotte_mesurer") in appels
-    assert (f"{M}reglage_appliquer", f"{F}flotte_pousser") in appels
-    # l'element d'une liste annotee, le retour deduit d'une methode
-    assert (f"{M}moteur_pas", f"{M}reglage_appliquer") in appels
-    assert (f"{M}moteur_pas", f"{F}flotte_pousser") in appels
+def test_a_call_follows_the_type_of_attributes(reader):
+    calls = _links(reader)
+    # self.flotte = Flotte() in __init__; an annotated dataclass field
+    assert (f"{M}moteur_charge", f"{F}flotte_mesurer") in calls
+    assert (f"{M}reglage_appliquer", f"{F}flotte_pousser") in calls
+    # the element of an annotated list, the inferred return of a method
+    assert (f"{M}moteur_pas", f"{M}reglage_appliquer") in calls
+    assert (f"{M}moteur_pas", f"{F}flotte_pousser") in calls
 
 
-def test_proprietes_imbriquees_imports_locaux_et_rappels(lecture):
-    appels = _liens(lecture)
-    assert (f"{M}moteur_pas", f"{M}moteur_charge") in appels  # lire une propriete l'appelle
-    assert (f"{M}moteur_pas", f"{M}moteur_pas_interne") in appels
-    assert (f"{M}moteur_pas_interne", f"{F}flotte_mesurer") in appels
-    assert (f"{M}moteur_pas", f"{F}vider") in appels  # importe dans la fonction
-    assert (f"{M}moteur_pas", f"{M}cle") in _liens(lecture, "references")
+def test_properties_nested_functions_local_imports_and_callbacks(reader):
+    calls = _links(reader)
+    assert (f"{M}moteur_pas", f"{M}moteur_charge") in calls  # reading a property calls it
+    assert (f"{M}moteur_pas", f"{M}moteur_pas_interne") in calls
+    assert (f"{M}moteur_pas_interne", f"{F}flotte_mesurer") in calls
+    assert (f"{M}moteur_pas", f"{F}vider") in calls  # imported in the function
+    assert (f"{M}moteur_pas", f"{M}cle") in _links(reader, "references")
 
 
-def test_un_objet_hors_du_depot_ne_prend_pas_nos_noms(lecture):
-    """m.start() sur un re.Match : un nom que porte Flotte.start, sur un
-    recepteur qui vient d'ailleurs - aucun lien, meme par le nom."""
-    vers_start = [e for e in lecture.liens if e["target"] == f"{F}flotte_start" and e["relation"] != "method"]
-    assert vers_start == []
-    site = next(s for s in lecture.sites if s["expr"] == "m.start")
+def test_an_object_outside_the_repository_does_not_take_our_names(reader):
+    """m.start() on a re.Match: a name that Flotte.start bears, on a
+    receiver that comes from elsewhere - no link, not even by the name."""
+    to_start = [e for e in reader.links if e["target"] == f"{F}flotte_start" and e["relation"] != "method"]
+    assert to_start == []
+    site = next(s for s in reader.sites if s["expr"] == "m.start")
     assert site["verdict"] == "external"
 
 
-def test_trouver_un_noeud_par_son_nom(lecture):
+def test_find_a_node_by_its_name(reader):
     import networkx as nx
     g = nx.DiGraph()
-    for n in lecture.noeuds:
+    for n in reader.nodes:
         g.add_node(n["id"], **n)
-    assert graphe.trouver(g, "Moteur.pas") == [f"{M}moteur_pas"]
-    assert graphe.trouver(g, "moteur.py::pas") == [f"{M}moteur_pas"]
-    assert set(graphe.trouver(g, "pousser")) == {f"{F}flotte_pousser"}
-    assert graphe.trouver(g, "inexistant") == []
+    assert graphe.find(g, "Moteur.pas") == [f"{M}moteur_pas"]
+    assert graphe.find(g, "moteur.py::pas") == [f"{M}moteur_pas"]
+    assert set(graphe.find(g, "pousser")) == {f"{F}flotte_pousser"}
+    assert graphe.find(g, "inexistant") == []
 
 
 PHP = """<?php
@@ -175,24 +175,24 @@ switch ($action) {
 """
 
 
-def test_le_lecteur_php_lit_fonctions_actions_et_appels(tmp_path: Path):
+def test_the_php_reader_reads_functions_actions_and_calls(tmp_path: Path):
     import graphe_php
     (tmp_path / "web").mkdir()
-    chemin = tmp_path / "web" / "api.php"
-    chemin.write_bytes(PHP.encode("utf-8"))
-    lu = graphe_php.Lecture([chemin], racine=tmp_path)
-    liens = {(e["source"], e["target"], e["relation"]) for e in lu.liens}
+    path = tmp_path / "web" / "api.php"
+    path.write_bytes(PHP.encode("utf-8"))
+    read = graphe_php.Reader([path], root=tmp_path)
+    links = {(e["source"], e["target"], e["relation"]) for e in read.links}
     f = "web_api"
-    assert (f"{f}_gz_lire", f"{f}_gz_valider", "calls") in liens
-    # deux case a la suite : le premier mene au second, qui porte le corps
-    assert (graphe_php.id_d_action(f, "liste"), graphe_php.id_d_action(f, "relister"), "dispatches") in liens
-    assert (graphe_php.id_d_action(f, "relister"), f"{f}_gz_lire", "calls") in liens
-    assert (graphe_php.id_d_action(f, "liste"), f"{f}_gz_lire", "calls") not in liens
+    assert (f"{f}_gz_lire", f"{f}_gz_valider", "calls") in links
+    # two cases in a row: the first leads to the second, which bears the body
+    assert (graphe_php.action_id(f, "liste"), graphe_php.action_id(f, "relister"), "dispatches") in links
+    assert (graphe_php.action_id(f, "relister"), f"{f}_gz_lire", "calls") in links
+    assert (graphe_php.action_id(f, "liste"), f"{f}_gz_lire", "calls") not in links
 
 
-def test_etendue_et_notes_d_un_corps():
-    import graphe_enrichir as ge
-    lignes = textwrap.dedent('''\
+def test_extent_and_notes_of_a_body():
+    import graphe_core as gc
+    lines = textwrap.dedent('''\
         # Le pas du moteur,
         # en deux lignes.
         @decorateur
@@ -204,24 +204,24 @@ def test_etendue_et_notes_d_un_corps():
             return x
         AUTRE = 2
     ''').splitlines()
-    assert ge.etendue(lignes, 4) == 9
-    assert ge.notes(lignes, 4) == "Le pas du moteur, en deux lignes."
-    assert ge.etendue(PHP.splitlines(), 3) == 5  # l'accolade fermante est du bloc
+    assert gc.extent(lines, 4) == 9
+    assert gc.notes(lines, 4) == "Le pas du moteur, en deux lignes."
+    assert gc.extent(PHP.splitlines(), 3) == 5  # the closing brace belongs to the block
 
 
-def _enrichir(g, racine: Path) -> None:
-    """Le coeur, sur des sources ecrites dans `racine` : un depot git, d'ou il tire les documents (T-0010)."""
-    import graphe_enrichir
-    subprocess.run(["git", "init", "-q", str(racine)], check=True)
-    graphe_enrichir.enrichir(g, racine)
+def _enrich(g, root: Path) -> None:
+    """The core, on sources written in `root`: a git repository, from which it draws the documents (T-0010)."""
+    import graphe_core
+    subprocess.run(["git", "init", "-q", str(root)], check=True)
+    graphe_core.enrich(g, root)
 
 
-def test_enrichir_relie_les_variables_et_trouve_par_le_texte(tmp_path: Path):
+def test_enrich_links_variables_and_finds_by_the_text(tmp_path: Path):
     import networkx as nx
 
     (tmp_path / "simulation").mkdir()
-    chemin = tmp_path / "simulation" / "jeu.py"
-    chemin.write_bytes(textwrap.dedent('''\
+    path = tmp_path / "simulation" / "jeu.py"
+    path.write_bytes(textwrap.dedent('''\
         LIMITE = 3
         compte = 0
 
@@ -232,24 +232,24 @@ def test_enrichir_relie_les_variables_et_trouve_par_le_texte(tmp_path: Path):
             compte += LIMITE
             return tr("Réseau stable")
     ''').encode("utf-8"))
-    # T-0009 : le motif de l'appel qui affiche un texte vient de l'hote.
+    # T-0009: the pattern of the call that displays a text comes from the host.
     (tmp_path / "graphe.toml").write_text("displayed_text = '\\btr\\(\"([^\"]*)\"'\n", encoding="utf-8")
-    lu = graphe_python.Lecture([chemin], racine=tmp_path)
+    read = graphe_python.Reader([path], root=tmp_path)
     g = nx.DiGraph()
-    for n in lu.noeuds:
+    for n in read.nodes:
         g.add_node(n["id"], **n)
-    _enrichir(g, tmp_path)
+    _enrich(g, tmp_path)
     f = "simulation_jeu_"
     assert "reads" in g[f"{f}avancer"][f"{f}limite"]["relations"]
     assert "writes" in g[f"{f}avancer"][f"{f}compte"]["relations"]
     assert g.nodes[f"{f}avancer"]["texts"] == ["Réseau stable"]
-    assert [n for n, _ in graphe.recherche(g, "réseau stable")] == [f"{f}avancer"]
-    assert [n for n, _ in graphe.recherche(g, "clarte")] == [f"{f}avancer"]
-    assert [n for n, _ in graphe.recherche(g, "def avancer")] == [f"{f}avancer"]
+    assert [n for n, _ in graphe.search_nodes(g, "réseau stable")] == [f"{f}avancer"]
+    assert [n for n, _ in graphe.search_nodes(g, "clarte")] == [f"{f}avancer"]
+    assert [n for n, _ in graphe.search_nodes(g, "def avancer")] == [f"{f}avancer"]
 
 
-def test_une_valeur_ecrite_des_deux_cotes(tmp_path: Path):
-    """T-0354 : une valeur ecrite en Python et en GDScript devient un noeud, dans sa communaute."""
+def test_a_value_written_on_both_sides(tmp_path: Path):
+    """T-0354: a value written in Python and in GDScript becomes a node, in its community."""
     import networkx as nx
 
     for d in ("serveur", "godot"):
@@ -267,23 +267,23 @@ def test_une_valeur_ecrite_des_deux_cotes(tmp_path: Path):
         \t\treturn "ok"
         \treturn ""
     ''').encode("utf-8"))
-    lu = graphe_python.Lecture(sorted((tmp_path / "serveur").rglob("*.py")), racine=tmp_path)
+    read = graphe_python.Reader(sorted((tmp_path / "serveur").rglob("*.py")), root=tmp_path)
     g = nx.DiGraph()
-    for n in lu.noeuds:
+    for n in read.nodes:
         g.add_node(n["id"], **n)
     g.add_node("godot_lecture_texte", id="godot_lecture_texte", label="texte()", kind="function",
                source_file="godot/lecture.gd", source_location="L1", name="texte")
-    _enrichir(g, tmp_path)
+    _enrich(g, tmp_path)
     assert {s for s, _ in g.in_edges("value_coupee")} == {"serveur_etat_construire", "godot_lecture_texte"}
-    assert "value_voisin" not in g  # ecrite d'un seul cote
-    assert [n for n, _ in graphe.recherche(g, "coupee")] == ["value_coupee"]
-    de, noms = graphe.communautes(g)
-    assert noms[de["value_coupee"]] == "values"
+    assert "value_voisin" not in g  # written on one side only
+    assert [n for n, _ in graphe.search_nodes(g, "coupee")] == ["value_coupee"]
+    community_of, names = graphe.communities(g)
+    assert names[community_of["value_coupee"]] == "values"
 
 
-def test_champs_alias_d_import_et_tickets(tmp_path: Path):
-    """graphe_manques.md : les champs d'une classe, l'alias d'import Python,
-    le ticket cite par le code et celui qui nomme une fonction."""
+def test_fields_import_aliases_and_tickets(tmp_path: Path):
+    """BACKLOG.md: the fields of a class, the Python import alias, the
+    ticket cited by the code and the one that names a function."""
     import networkx as nx
 
     (tmp_path / "simulation").mkdir()
@@ -311,67 +311,67 @@ def test_champs_alias_d_import_et_tickets(tmp_path: Path):
     ''').encode("utf-8"))
     (tmp_path / "tickets" / "T-0999-essai.md").write_bytes(
         b"---\nid: T-0999\ntitle: Un essai\n---\n\n`lire` lit la demande.\n")
-    lu = graphe_python.Lecture(sorted((tmp_path / "simulation").glob("*.py")), racine=tmp_path)
+    read = graphe_python.Reader(sorted((tmp_path / "simulation").glob("*.py")), root=tmp_path)
     g = nx.DiGraph()
-    for n in lu.noeuds:
+    for n in read.nodes:
         g.add_node(n["id"], **n)
-    for e in lu.liens:
+    for e in read.links:
         g.add_edge(e["source"], e["target"], relations={e["relation"]}, confidence=e["confidence"],
                    locations=[e["source_file"]], contexts=[])
-    _enrichir(g, tmp_path)
-    f, champ = "simulation_jeu_", "simulation_jeu_etat_demande_mw"
-    assert g.nodes[champ]["kind"] == "field" and g.nodes[champ]["notes"] == "La demande, en MW."
+    _enrich(g, tmp_path)
+    f, field = "simulation_jeu_", "simulation_jeu_etat_demande_mw"
+    assert g.nodes[field]["kind"] == "field" and g.nodes[field]["notes"] == "La demande, en MW."
     assert g.nodes[f"{f}etat"]["end"] == 9
-    assert "writes" in g[f"{f}remplir"][champ]["relations"]
-    assert "reads" in g[f"{f}lire"][champ]["relations"]
-    constante = "simulation_aides_previsionniste"
-    assert g[f"{f}lire"][constante]["confidence"] == "EXTRACTED"
+    assert "writes" in g[f"{f}remplir"][field]["relations"]
+    assert "reads" in g[f"{f}lire"][field]["relations"]
+    constant = "simulation_aides_previsionniste"
+    assert g[f"{f}lire"][constant]["confidence"] == "EXTRACTED"
     assert "cites" in g[f"{f}remplir"]["ticket_t_0999"]["relations"]
     assert g.nodes["ticket_t_0999"]["notes"] == "Un essai"
     assert "names" in g["ticket_t_0999"][f"{f}lire"]["relations"]
 
 
 @grid_zero
-def test_le_godot_resout_ses_prechargements():
-    """Sur le vrai depot : `Charte.ACCENT` lu par le prechargement,
-    `Progress.record` trouve par lui, un envoi du client mene a son action."""
-    g, *_ = graphe.assembler()
+def test_godot_resolves_its_preloads():
+    """On the real repository: `Charte.ACCENT` read through the preload,
+    `Progress.record` found through it, a send from the client leads to its action."""
+    g, *_ = graphe.assemble()
     accent = next(n for n, d in g.nodes(data=True) if d["source_file"] == "godot/menu/charte.gd" and d["name"] == "ACCENT")
     assert sum("reads" in g[s][accent]["relations"] and g[s][accent]["confidence"] == "EXTRACTED"
                for s in g.predecessors(accent)) >= 10
-    assert [g.nodes[n]["source_file"] for n in graphe.trouver(g, "Progress.record")] == ["godot/settings/progress.gd"]
+    assert [g.nodes[n]["source_file"] for n in graphe.find(g, "Progress.record")] == ["godot/settings/progress.gd"]
     assert any("sends" in g[s]["web_api_scenarios_action_defi_envoyer"]["relations"]
                for s in g.predecessors("web_api_scenarios_action_defi_envoyer"))
-    # Les cles de l'etat : le client lit `demand_rising_beyond` par sa cle.
-    champ = "simulation_game_etat_de_jeu_etatdejeu_demand_rising_beyond"
-    assert "godot/map/lectures.gd" in {g.nodes[s]["source_file"] for s in g.predecessors(champ)
-                                       if "reads" in g[s][champ]["relations"]}
-    # Le champ d'une base (EngineState) se lit aussi par sa cle.
+    # The keys of the state: the client reads `demand_rising_beyond` by its key.
+    field = "simulation_game_etat_de_jeu_etatdejeu_demand_rising_beyond"
+    assert "godot/map/lectures.gd" in {g.nodes[s]["source_file"] for s in g.predecessors(field)
+                                       if "reads" in g[s][field]["relations"]}
+    # The field of a base (EngineState) is read by its key too.
     tick = next(n for n, d in g.nodes(data=True) if d["kind"] == "field" and d["name"] == "EngineState.tick")
     assert any(g.nodes[s]["source_file"].endswith(".gd") for s in g.predecessors(tick))
 
 
 @grid_zero
-def test_le_graphe_ne_change_pas_d_une_construction_a_l_autre():
-    g1, *_ = graphe.assembler()
-    g2, *_ = graphe.assembler()
+def test_the_graph_does_not_change_from_one_build_to_the_next():
+    g1, *_ = graphe.assemble()
+    g2, *_ = graphe.assemble()
     assert sorted(g1.edges) == sorted(g2.edges)
-    assert graphe.communautes(g1) == graphe.communautes(g2)
+    assert graphe.communities(g1) == graphe.communities(g2)
 
 
-def test_sans_le_sens_le_chemin_prefere_le_code(capsys):
-    """T-0354 : une valeur relie tout ce qui l'ecrit ; sans le sens, le
-    chemin ne passe par elle que faute de chemin par le code."""
+def test_undirected_the_path_prefers_the_code(capsys):
+    """T-0354: a value links everything that writes it; undirected, the
+    path goes through it only for want of a path through the code."""
     import networkx as nx
     g = nx.DiGraph()
-    for n, sorte in (("a", "function"), ("b", "function"), ("c", "function"), ("d", "function"),
-                     ("value_x", "value")):
-        g.add_node(n, id=n, label=n, name=n, kind=sorte, source_file="f.py", source_location="L1")
-    for s, c, rel in (("a", "b", "calls"), ("b", "c", "calls"), ("c", "d", "calls"),
+    for n, kind in (("a", "function"), ("b", "function"), ("c", "function"), ("d", "function"),
+                    ("value_x", "value")):
+        g.add_node(n, id=n, label=n, name=n, kind=kind, source_file="f.py", source_location="L1")
+    for s, t, rel in (("a", "b", "calls"), ("b", "c", "calls"), ("c", "d", "calls"),
                       ("a", "value_x", "value"), ("d", "value_x", "value")):
-        g.add_edge(s, c, relations={rel}, confidence="EXTRACTED", locations=["f.py:1"], contexts=[])
-    assert graphe.chemin(g, "a", "d", sans_sens=True) == 0
+        g.add_edge(s, t, relations={rel}, confidence="EXTRACTED", locations=["f.py:1"], contexts=[])
+    assert graphe.path(g, "a", "d", undirected=True) == 0
     assert "value_x" not in capsys.readouterr().out
     g.remove_edge("b", "c")
-    assert graphe.chemin(g, "a", "d", sans_sens=True) == 0
+    assert graphe.path(g, "a", "d", undirected=True) == 0
     assert "value_x" in capsys.readouterr().out

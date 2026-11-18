@@ -1,42 +1,40 @@
 # Graphe
 
-Un outil qui lit le code d'un dépôt et en tire un graphe (qui appelle quoi, qui cite quoi), interrogé d'abord par un agent qui navigue dans ce code.
+A tool that reads a repository's code and draws a graph from it (what calls what, what cites what), queried first by an agent that navigates that code.
 
-Les termes sont en français jusqu'au passage de l'interface en anglais ; le nom anglais prévu est entre crochets.
+## Language
 
-## Langage
+**Host project**:
+A repository that the graph reads and where its results are stored.
+_Avoid_: target project, client, consumer
 
-**Projet hôte** [host project] :
-Un dépôt que le graphe lit et où ses résultats sont rangés.
-_À éviter_ : projet cible, client, consommateur
+**Core**:
+What the tool does for any host project, without knowing anything about it.
+_Avoid_: kernel, engine
 
-**Cœur** [core] :
-Ce que l'outil fait pour tout projet hôte, sans rien savoir de lui.
-_À éviter_ : noyau, moteur
+**Reader**:
+What reads the files of one language and draws nodes and links from them.
+_Avoid_: parser, extractor, analyzer
 
-**Lecteur** [reader] :
-Ce qui lit les fichiers d'un langage et en tire des nœuds et des liens.
-_À éviter_ : parseur, extracteur, analyseur
+**Local extension**:
+An enrichment specific to one host project, stored in that host's repository and declared by its configuration.
+_Avoid_: plugin, add-on
 
-**Extension locale** [local extension] :
-Un enrichissement propre à un projet hôte, rangé dans le dépôt de cet hôte et déclaré par sa configuration.
-_À éviter_ : plugin, greffon
+**Contribution**:
+What a reader or a local extension returns to the graph: nodes, links and, where relevant, coverage sites.
+_Avoid_: result, output, extraction
 
-**Contribution** [contribution] :
-Ce qu'un lecteur ou une extension locale rend au graphe : des nœuds, des liens et, s'il y a lieu, des sites de couverture.
-_À éviter_ : résultat, sortie, extraction
+**Takeover**:
+What an extension that contributes with the readers returns so that one of its nodes takes the links of certain lines from a reader's node, as a command takes those of its branch from the function that dispatches.
+_Avoid_: move, reassignment
 
-**Reprise** [takeover] :
-Ce qu'une extension qui contribue avec les lecteurs rend pour qu'un de ses nœuds prenne les liens de certaines lignes à un nœud d'un lecteur, comme une commande prend ceux de sa branche à la fonction qui aiguille.
-_À éviter_ : déplacement, réattribution
+**Document**:
+A Markdown file of the host project, which cites nodes and other documents.
+_Avoid_: ticket for any document (a ticket is a document that has an identifier)
 
-**Document** :
-Un fichier Markdown du projet hôte, qui cite des nœuds et d'autres documents.
-_À éviter_ : ticket pour tout document (un ticket est un document qui a un identifiant)
+**Identifier**:
+What designates a document in a text (`T-0012`), and what its file name starts with. Its pattern is set in `graphe.toml`. A document that has an identifier is a **ticket** (its node kind).
+_Avoid_: number, key
 
-**Identifiant** [identifier] :
-Ce qui désigne un document dans un texte (`T-0012`), et par quoi commence le nom de son fichier. Son motif se règle dans `graphe.toml`. Un document qui a un identifiant est un **ticket** (sa sorte de nœud).
-_À éviter_ : numéro, clé
-
-**Citation** [citation] :
-Le lien d'un document vers un nœud qu'il nomme, ou vers un autre document qu'il désigne par son identifiant.
+**Citation**:
+The link from a document to a node it names, or to another document it designates by its identifier.

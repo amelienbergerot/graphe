@@ -1,6 +1,6 @@
-"""Les tests marques `grid_zero` lisent le vrai Grid Zero, a cote de ce depot.
+"""The tests marked `grid_zero` read the real Grid Zero, next to this repository.
 
-Les lecteurs fixent leur racine a l'import : GRAPHE_ROOT est pose avant.
+The readers fix their root at import: GRAPHE_ROOT is set before.
 """
 
 from __future__ import annotations
