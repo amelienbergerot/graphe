@@ -19,9 +19,12 @@ Et :
 - une classe et ses champs ont leur fin et leur commentaire ;
 - Python : `alias.CONSTANTE`, ou `alias` est un module importe sous ce nom,
   lit la constante de ce module (EXTRACTED) ;
-- un noeud par ticket (tickets/T-*.md) : le code qui le cite (`T-0337` dans
-  son corps ou son commentaire) y mene par `cite`, et le ticket mene aux
-  fonctions qu'il nomme entre accents graves (`nomme`, par le nom) ;
+- un noeud par document (T-0010) : chaque Markdown de l'hote, restreint par
+  `[documents] motifs` (graphe.toml). Un document dont le nom commence par
+  un identifiant (`[documents] identifiant`, `T-` et quatre chiffres par defaut) est un
+  ticket : le code qui contient son identifiant (dans son corps ou son
+  commentaire) et les autres documents y menent par `cite`. Un document
+  mene aux fonctions qu'il nomme entre accents graves (`nomme`, par le nom) ;
 - un noeud `valeur` par chaine (un identifiant, `"coupee"`) ecrite a la fois
   en Python et en GDScript, relie a chaque corps qui l'ecrit (`valeur`) : ce
   qu'un cote emet et ce que l'autre compare.
@@ -43,7 +46,8 @@ CORPS = {"fonction", "methode", "commande", "action", "classe"}
 ETENDUS = CORPS | {"champ"}
 PY_ALIAS = re.compile(r"^\s*(?:from\s+([\w.]+)\s+import\s+(\w+)(?:\s+as\s+(\w+))?|import\s+([\w.]+)\s+as\s+(\w+))\s*$")
 PY_QUALIFIE = re.compile(r"\b([a-z_]\w*)\.(\w+)\b")
-TICKET = re.compile(r"\bT-(\d{4})\b")
+# T-0010 : l'identifiant d'un document par defaut (`[documents] identifiant`), celui des tickets.
+IDENTIFIANT = r"\bT-\d{4}\b"
 NOMME = re.compile(r"`([A-Za-z_][\w.]*?)(?:\(\))?`")
 PY_VARIABLE = re.compile(r"^([A-Za-z_]\w*)\s*(?::[^=]+)?=(?!=)")
 GD_VARIABLE = re.compile(r"^(?:static\s+)?(const|var)\s+(\w+)\b(.*)$")
@@ -155,6 +159,7 @@ def motif_des_textes(racine: Path) -> re.Pattern | None:
 
 
 def enrichir(graphe: nx.DiGraph, racine: Path) -> None:
+    """`racine` est un depot git : les documents sont ses Markdown que git suit (graphe_racine.fichiers)."""
     affiche = motif_des_textes(racine)
     par_fichier: dict[str, list[str]] = defaultdict(list)
     for n, d in graphe.nodes(data=True):
@@ -265,7 +270,7 @@ def enrichir(graphe: nx.DiGraph, racine: Path) -> None:
                     usages[v].append((n, lieu, Path(rel).suffix))
 
     _relier_les_valeurs(graphe, usages)
-    _relier_les_tickets(graphe, racine, corps, textes_des_fichiers)
+    _relier_les_documents(graphe, racine, corps, textes_des_fichiers)
 
 
 def _relier_les_valeurs(graphe: nx.DiGraph, usages: dict[str, list[tuple[str, str, str]]]) -> None:
@@ -306,39 +311,77 @@ def _alias_python(lignes: list[str], fichiers: set[str]) -> dict[str, str]:
     return alias
 
 
-def _relier_les_tickets(graphe: nx.DiGraph, racine: Path, corps: dict, textes: dict[str, list[str]]) -> None:
-    tickets = {}
-    for chemin in sorted((racine / "tickets").glob("T-[0-9][0-9][0-9][0-9]*.md")):
-        numero = chemin.name[2:6]
+def _documents(racine: Path) -> tuple[re.Pattern, list[str] | None]:
+    """`[documents]` (graphe.toml) : le motif de l'identifiant d'un document (IDENTIFIANT sinon), et les motifs
+    qui restreignent les documents (None : tous les Markdown)."""
+    table = graphe_racine.configuration(racine).get("documents", {})
+    if not isinstance(table, dict):
+        raise RuntimeError(f"documents ({graphe_racine.CONFIGURATION}) : il faut une table [documents]")
+    try:
+        motif = re.compile(table.get("identifiant", IDENTIFIANT))
+    except (re.error, TypeError) as e:
+        raise RuntimeError(f"[documents] identifiant ({graphe_racine.CONFIGURATION}) : {e}") from None
+    restreints = table.get("motifs")
+    if restreints is not None and not (isinstance(restreints, list) and all(isinstance(m, str) for m in restreints)):
+        raise RuntimeError(f"[documents] motifs ({graphe_racine.CONFIGURATION}) : il faut une liste de motifs")
+    return motif, restreints
+
+
+def _id_de_document(prefixe: str, nom: str) -> str:
+    return prefixe + re.sub(r"\W+", "_", nom.lower()).strip("_")
+
+
+def _cites(motif: re.Pattern, texte: str) -> set[str]:
+    return {m.group(0) for m in motif.finditer(texte) if m.group(0)}
+
+
+def _relier_les_documents(graphe: nx.DiGraph, racine: Path, corps: dict, textes: dict[str, list[str]]) -> None:
+    """T-0010 : chaque Markdown de l'hote (`[documents] motifs` les restreint) est un document. Celui dont le
+    nom commence par un identifiant est un ticket ; il est cite par le code et par les documents qui le
+    contiennent. Un document nomme les fonctions qu'il ecrit entre accents graves."""
+    motif, restreints = _documents(racine)
+    tickets: dict[str, str] = {}  # identifiant -> id
+    documents = []
+    for chemin in graphe_racine.fichiers(".md", racine):
+        rel = chemin.relative_to(racine).as_posix()
+        if restreints is not None and not graphe_racine.designe(rel, restreints):
+            continue
         texte = chemin.read_bytes().decode("utf-8", "replace")
         titre = next((ligne.split(":", 1)[1].strip() for ligne in texte.splitlines()[:8]
                       if ligne.startswith("title:")), chemin.stem)
-        tid = f"ticket_t_{numero}"
-        rel = chemin.relative_to(racine).as_posix()
-        graphe.add_node(tid, id=tid, label=f"T-{numero}", sorte="ticket", source_file=rel, source_location="L1",
-                        nom=f"T-{numero}", notes=titre, fin=len(texte.splitlines()))
-        tickets[numero] = (tid, rel, texte)
-    if not tickets:
-        return
+        m = motif.match(chemin.name)
+        # shortcut: deux fichiers au meme identifiant, le second n'est qu'un document ; et deux noms qui ne
+        # different que par la ponctuation (`a-b.md`, `a_b.md`) font un seul noeud. A revoir si un hote en a.
+        if m and m.group(0) and m.group(0) not in tickets:
+            nom, sorte = m.group(0), "ticket"
+            tickets[nom] = did = _id_de_document("ticket_", nom)
+        else:
+            nom, sorte, did = rel, "document", _id_de_document("document_", rel)
+        graphe.add_node(did, id=did, label=nom, sorte=sorte, source_file=rel, source_location="L1",
+                        nom=nom, notes=titre, fin=len(texte.splitlines()))
+        documents.append((did, rel, texte))
     # Le code qui cite un ticket, dans son corps ou son commentaire.
     for n, (rel, debut, fin) in corps.items():
         lignes = textes.get(rel, [])
-        cites = set(TICKET.findall("\n".join(lignes[debut - 1:fin]))) | set(
-            TICKET.findall(graphe.nodes[n].get("notes", "")))
-        for numero in sorted(cites):
-            if numero in tickets:
-                _ajouter_lien(graphe, n, tickets[numero][0], "cite", f"{rel}:{debut}", "EXTRACTED")
-    # Les fonctions qu'un ticket nomme : un nom porte par un seul corps.
+        cites = _cites(motif, "\n".join(lignes[debut - 1:fin])) | _cites(motif, graphe.nodes[n].get("notes", ""))
+        for ident in sorted(cites):
+            if ident in tickets:
+                _ajouter_lien(graphe, n, tickets[ident], "cite", f"{rel}:{debut}", "EXTRACTED")
+    # Les tickets qu'un document cite, et les fonctions qu'il nomme : un nom porte par un seul corps.
     porteurs: dict[str, list[str]] = defaultdict(list)
     for n in corps:
         d = graphe.nodes[n]
         if d["sorte"] in ("fonction", "methode", "classe"):
             porteurs[d["nom"].rsplit(".", 1)[-1]].append(n)
-    for tid, rel, texte in tickets.values():
+    for did, rel, texte in documents:
+        for i, ligne in enumerate(texte.splitlines(), start=1):
+            for ident in sorted(_cites(motif, ligne)):
+                if ident in tickets and tickets[ident] != did:  # pas de soi a soi
+                    _ajouter_lien(graphe, did, tickets[ident], "cite", f"{rel}:{i}", "EXTRACTED")
         for nom in set(NOMME.findall(texte)):
             dernier = nom.rsplit(".", 1)[-1]
             if len(dernier) >= NOM_MIN and len(porteurs.get(dernier, [])) == 1:
-                _ajouter_lien(graphe, tid, porteurs[dernier][0], "nomme", rel, "INFERRED")
+                _ajouter_lien(graphe, did, porteurs[dernier][0], "nomme", rel, "INFERRED")
 
 
 def lignes_sans_commentaires(lignes: list[str]) -> list[str]:

@@ -13,7 +13,8 @@ section du lecteur (`[godot]`), relative a la racine ; sinon le PATH ; sinon
 rien, avec un avertissement qui nomme la cle.
 
 Les autres cles de graphe.toml (T-0009) : `texte_affiche`, le motif de
-l'appel qui affiche un texte (graphe_enrichir) ; `[communautes]`, `a_part` et
+l'appel qui affiche un texte, et `[documents]`, `motifs` et `identifiant`
+(T-0010, graphe_enrichir) ; `[communautes]`, `a_part` et
 `sans_prefixe` (graphe.py) ; `[[extensions]]` (docs/contribution.md).
 """
 
@@ -48,8 +49,9 @@ def configuration(racine: Path = RACINE) -> dict:
     return tomllib.loads(chemin.read_text(encoding="utf-8")) if chemin.is_file() else {}
 
 
-def _exclu(rel: str, motifs: list[str]) -> bool:
-    """`build` exclut le dossier build/ de la racine, `**/tests` tout dossier tests/."""
+def designe(rel: str, motifs: list[str]) -> bool:
+    """Vrai si un des motifs designe `rel` : `build`, le dossier build/ de la racine ; `**/tests`, tout dossier tests/.
+    Sert a `exclure` et a `[documents] motifs`."""
     p = PurePosixPath(rel)
     return any(p.full_match(m) or p.full_match(f"{m}/**") for m in motifs)
 
@@ -63,7 +65,7 @@ def fichiers(suffixe: str, racine: Path = RACINE) -> list[Path]:
     motifs = [SORTIE.name, *configuration(racine).get("exclure", [])]
     # Des Path tries, comme l'ancien rglob : l'ordre de lecture ne change pas.
     return sorted(racine / rel for rel in set(r.stdout.split("\0"))
-                  if rel.endswith(suffixe) and not _exclu(rel, motifs) and (racine / rel).is_file())
+                  if rel.endswith(suffixe) and not designe(rel, motifs) and (racine / rel).is_file())
 
 
 def executable(section: str, nom: str, racine: Path = RACINE) -> Path | None:

@@ -7,6 +7,7 @@ reference restent dans Grid Zero (T-0003).
 
 from __future__ import annotations
 
+import subprocess
 import textwrap
 from pathlib import Path
 
@@ -208,10 +209,16 @@ def test_etendue_et_notes_d_un_corps():
     assert ge.etendue(PHP.splitlines(), 3) == 5  # l'accolade fermante est du bloc
 
 
+def _enrichir(g, racine: Path) -> None:
+    """Le coeur, sur des sources ecrites dans `racine` : un depot git, d'ou il tire les documents (T-0010)."""
+    import graphe_enrichir
+    subprocess.run(["git", "init", "-q", str(racine)], check=True)
+    graphe_enrichir.enrichir(g, racine)
+
+
 def test_enrichir_relie_les_variables_et_trouve_par_le_texte(tmp_path: Path):
     import networkx as nx
 
-    import graphe_enrichir
     (tmp_path / "simulation").mkdir()
     chemin = tmp_path / "simulation" / "jeu.py"
     chemin.write_bytes(textwrap.dedent('''\
@@ -231,7 +238,7 @@ def test_enrichir_relie_les_variables_et_trouve_par_le_texte(tmp_path: Path):
     g = nx.DiGraph()
     for n in lu.noeuds:
         g.add_node(n["id"], **n)
-    graphe_enrichir.enrichir(g, tmp_path)
+    _enrichir(g, tmp_path)
     f = "simulation_jeu_"
     assert "lit" in g[f"{f}avancer"][f"{f}limite"]["relations"]
     assert "ecrit" in g[f"{f}avancer"][f"{f}compte"]["relations"]
@@ -245,7 +252,6 @@ def test_une_valeur_ecrite_des_deux_cotes(tmp_path: Path):
     """T-0354 : une valeur ecrite en Python et en GDScript devient un noeud, dans sa communaute."""
     import networkx as nx
 
-    import graphe_enrichir
     for d in ("serveur", "godot"):
         (tmp_path / d).mkdir(parents=True)
     (tmp_path / "serveur" / "etat.py").write_bytes(textwrap.dedent('''\
@@ -267,7 +273,7 @@ def test_une_valeur_ecrite_des_deux_cotes(tmp_path: Path):
         g.add_node(n["id"], **n)
     g.add_node("godot_lecture_texte", id="godot_lecture_texte", label="texte()", sorte="fonction",
                source_file="godot/lecture.gd", source_location="L1", nom="texte")
-    graphe_enrichir.enrichir(g, tmp_path)
+    _enrichir(g, tmp_path)
     assert {s for s, _ in g.in_edges("valeur_coupee")} == {"serveur_etat_construire", "godot_lecture_texte"}
     assert "valeur_voisin" not in g  # ecrite d'un seul cote
     assert [n for n, _ in graphe.recherche(g, "coupee")] == ["valeur_coupee"]
@@ -280,7 +286,6 @@ def test_champs_alias_d_import_et_tickets(tmp_path: Path):
     le ticket cite par le code et celui qui nomme une fonction."""
     import networkx as nx
 
-    import graphe_enrichir
     (tmp_path / "simulation").mkdir()
     (tmp_path / "tickets").mkdir()
     (tmp_path / "simulation" / "aides.py").write_bytes(b"PREVISIONNISTE = 'p'\n")
@@ -313,7 +318,7 @@ def test_champs_alias_d_import_et_tickets(tmp_path: Path):
     for e in lu.liens:
         g.add_edge(e["source"], e["target"], relations={e["relation"]}, confiance=e["confidence"],
                    lieux=[e["source_file"]], contextes=[])
-    graphe_enrichir.enrichir(g, tmp_path)
+    _enrichir(g, tmp_path)
     f, champ = "simulation_jeu_", "simulation_jeu_etat_demande_mw"
     assert g.nodes[champ]["sorte"] == "champ" and g.nodes[champ]["notes"] == "La demande, en MW."
     assert g.nodes[f"{f}etat"]["fin"] == 9

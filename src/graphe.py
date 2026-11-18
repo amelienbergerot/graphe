@@ -17,13 +17,14 @@ graphe_godot.py (le GDScript, par motifs) et graphe_php.py (ses fonctions et
 les actions d'un `switch ($action)`). Le coeur, graphe_enrichir.py, lit
 ensuite le texte : la fin de chaque fonction et de chaque classe, ses textes
 affiches (le motif `texte_affiche` de graphe.toml), son commentaire, les
-variables de module et qui les lit, et les tickets (tickets/T-*.md) - qui
-les cite, ce qu'ils nomment. Les champs d'une classe sont des noeuds (le
+variables de module et qui les lit, et les documents (les Markdown de
+l'hote, `[documents]` de graphe.toml, T-0010) - qui les cite, ce qu'ils
+nomment. Les champs d'une classe sont des noeuds (le
 lecteur Python).
 
 Les communautes (`[communautes]` de graphe.toml, T-0009) : `a_part` donne
 a des sortes hors du code leur propre communaute (sorte -> nom), apres les
-tickets et les valeurs ; `sans_prefixe` retire des prefixes du nom d'une
+tickets, les valeurs et les documents ; `sans_prefixe` retire des prefixes du nom d'une
 communaute.
 
 Le contrat (T-0007, docs/contribution.md) : lecteurs et extensions locales
@@ -76,9 +77,9 @@ FIN_BLOC = "# <<< graphe du code"
 # Ce qui fait passer de l'appelant a l'appele.
 APPELS = {"calls", "uses", "references", "indirect_call", "sends", "dispatches", "lit", "ecrit", "valeur"}
 # T-0354 : des noeuds qui ne sont pas du code, chacun leur communaute - un
-# ticket ou une valeur relie des fichiers que rien d'autre ne relie, et
+# ticket, une valeur ou un document relie des fichiers que rien d'autre ne relie, et
 # fondrait des communautes sans rapport. L'hote en ajoute (`[communautes] a_part`).
-A_PART = {"ticket": "tickets", "valeur": "valeurs"}
+A_PART = {"ticket": "tickets", "valeur": "valeurs", "document": "documents"}
 POIDS_HORS_CODE = 4
 
 

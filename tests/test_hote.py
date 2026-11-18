@@ -318,6 +318,9 @@ LECTURE = 'func texte(state: Dictionary) -> String:\n\tif state.get("raison_du_j
 PHP_ACTIONS = "<?php\nswitch ($action) {\n    case 'liste':\n        break;\n}\n"
 GRID_ZERO_TOML = r'''texte_affiche = '\bI18n\.tn?\(\s*"((?:[^"\\]|\\.)*)"'
 
+[documents]
+motifs = ["tickets/T-[0-9][0-9][0-9][0-9]*.md"]
+
 [communautes]
 a_part = { conseil = "conseils", iteration = "journal" }
 
@@ -355,3 +358,50 @@ def test_l_extension_de_grid_zero_relie_l_etat_les_actions_les_conseils_et_le_jo
     noms, de = donnees["communautes"], {n["id"]: n["communaute"] for n in donnees["noeuds"]}
     assert noms[str(de["iteration_7"])] == "journal" and noms[str(de["conseil_lecon_0"])] == "conseils"
     assert set(donnees["couverture"]) == {"python", "godot", "pendants"}  # pas de serveur : pas de sites
+
+
+# T-0010 : tout Markdown est un document ; un document cite un noeud qu'il nomme et un autre par son identifiant.
+def test_un_hote_avec_son_motif_d_identifiant_relie_ses_documents(tmp_path: Path):
+    hote = _hote(tmp_path, {
+        "outils.py": 'def aider():\n    """Voir ISSUE-12."""\n    return 1\n',
+        "issues/ISSUE-12-aide.md": "# L'aide\n\nVoir ISSUE-7, et `aider`. ISSUE-12 se cite.\n",
+        "issues/ISSUE-7-debut.md": "# Le debut\n",
+        "README.md": "Lire ISSUE-7.\n",
+        "brouillon/notes.md": "ISSUE-12\n",
+        "graphe.toml": r"""[documents]
+motifs = ['issues', 'README.md']
+identifiant = '\bISSUE-\d+'
+""",
+    })
+    r = _graphe(hote, "construire")
+    assert r.returncode == 0, r.stderr
+    donnees = json.loads((hote / "graphe" / "graphe.json").read_bytes())
+    liens = {(e["source"], e["target"]): e["relations"] for e in donnees["liens"]}
+    a, b, lisez = "ticket_issue_12", "ticket_issue_7", "document_readme_md"
+    assert liens[(a, b)] == ["cite"] and liens[(lisez, b)] == ["cite"]  # par l'identifiant
+    assert (a, a) not in liens  # pas de soi a soi
+    assert liens[("outils_aider", a)] == ["cite"]  # le code qui contient l'identifiant
+    assert "nomme" in liens[(a, "outils_aider")]  # entre accents graves
+    assert not any(n["source_file"].startswith("brouillon/") for n in donnees["noeuds"])  # hors des motifs
+    r = _graphe(hote, "expliquer", "aider")
+    assert "ISSUE-12" in r.stdout
+
+
+def test_sans_configuration_tout_markdown_est_un_document(tmp_path: Path):
+    hote = _hote(tmp_path, {"outils.py": APPELE, "travail.py": APPELANT,
+                            "README.md": "Le travail : `travailler`, voir T-0001.\n",
+                            "tickets/T-0001-aide.md": "# L'aide\n"})
+    r = _graphe(hote, "chercher", "readme")
+    assert r.returncode == 0 and "document_readme_md" in r.stdout, r.stdout + r.stderr
+    r = _graphe(hote, "chemin", "README.md", "aider")  # le document nomme `travailler`, qui appelle aider
+    assert r.returncode == 0 and "nomme" in r.stdout and "calls" in r.stdout, r.stdout
+    r = _graphe(hote, "expliquer", "T-0001")
+    assert "README.md" in r.stdout, r.stdout
+
+
+def test_une_section_documents_invalide_arrete_la_construction(tmp_path: Path):
+    for toml, cle in (("[documents]\nidentifiant = '('\n", "identifiant"),
+                      ("[documents]\nmotifs = 'tickets'\n", "motifs"), ("documents = 1\n", "documents")):
+        hote = _hote(tmp_path, {"outils.py": APPELE, "graphe.toml": toml})
+        r = _graphe(hote, "construire")
+        assert r.returncode == 1 and cle in r.stderr and "Traceback" not in r.stderr, r.stderr

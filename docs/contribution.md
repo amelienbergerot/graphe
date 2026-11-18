@@ -5,7 +5,7 @@ Les lecteurs et les extensions locales n'ont qu'une interface : une fonction `co
 ## L'assemblage
 
 1. Les lecteurs (`python`, `godot`, `php`) contribuent, puis les extensions déclarées `avec_les_lecteurs`. Leurs nœuds entrent ensemble, triés par l'id, après les reprises.
-2. Le cœur enrichit le graphe : étendues, commentaires, textes affichés, variables de module, documents, etc. Un texte affiché est le seul groupe du motif `texte_affiche` de `graphe.toml` (par exemple `'\btr\("([^"]*)"'`) ; sans motif, le cœur n'en cherche pas.
+2. Le cœur enrichit le graphe : étendues, commentaires, textes affichés, variables de module, documents, etc. Un texte affiché est le seul groupe du motif `texte_affiche` de `graphe.toml` (par exemple `'\btr\("([^"]*)"'`) ; sans motif, le cœur n'en cherche pas. Les documents sont les Markdown de l'hôte, ou ceux que désigne la liste `[documents] motifs` (comme `exclure`). Celui dont le nom commence par un identifiant (`[documents] identifiant`, une expression régulière, `\bT-\d{4}\b` par défaut) est un ticket, d'id `ticket_<identifiant>` ; les autres sont des `document`.
 3. Les autres extensions locales contribuent une à une, dans l'ordre où `graphe.toml` les déclare. Chacune voit le graphe que les précédentes ont laissé.
 
 Un lien dont un bout manque au graphe ne crée pas de nœud. Il est compté comme **pendant** : `graphe verifier` échoue alors, et `construire` affiche les premiers.
@@ -23,13 +23,13 @@ avec_les_lecteurs = true              # facultatif : contribuer avec les lecteur
 
 Une extension `avec_les_lecteurs` contribue comme un lecteur : elle voit le graphe vide, et ses nœuds passent par le cœur, qui leur donne une fin, un commentaire et, pour un corps, ses lignes. C'est le cas d'un corps découpé dans un autre, comme la branche d'une commande dans la fonction qui aiguille. Elle seule peut rendre des reprises.
 
-Une extension après le cœur voit ce qu'il a ajouté : la `fin` de chaque corps, ses `textes`, les tickets. Un même fichier peut être déclaré deux fois, avec et sans `avec_les_lecteurs` : il sait laquelle des deux contribue par `projet.configuration["avec_les_lecteurs"]`. Une seule des deux rend des `sites`, sinon la seconde remplace la couverture de la première.
+Une extension après le cœur voit ce qu'il a ajouté : la `fin` de chaque corps, ses `textes`, les documents. Un même fichier peut être déclaré deux fois, avec et sans `avec_les_lecteurs` : il sait laquelle des deux contribue par `projet.configuration["avec_les_lecteurs"]`. Une seule des deux rend des `sites`, sinon la seconde remplace la couverture de la première.
 
-Une extension qui ajoute des nœuds hors du code (des conseils, un journal) leur donne leur propre communauté par `graphe.toml`, comme le cœur le fait pour ses tickets et ses valeurs :
+Une extension qui ajoute des nœuds hors du code (des conseils, un journal) leur donne leur propre communauté par `graphe.toml`, comme le cœur le fait pour ses tickets, ses valeurs et ses documents :
 
 ```toml
 [communautes]
-a_part = { conseil = "conseils" }   # sorte -> nom de la communauté, après les tickets et les valeurs
+a_part = { conseil = "conseils" }   # sorte -> nom de la communauté, après les tickets, les valeurs et les documents
 sans_prefixe = ["src/"]             # facultatif : retirés du nom d'une communauté
 ```
 
