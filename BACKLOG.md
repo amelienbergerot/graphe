@@ -17,6 +17,37 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   (or a query that answers from the old graph and says so) would avoid it.
   T-0026: 45 s, then a cache of each Python file's definitions (about
   4.6 s less); the layout outside the queries is the lever left.
+- **A host in another language gets no graph.** (All hosts, 2026-11-18,
+  the user's request) Only Python, GDScript, PHP and JS/TS/Svelte have a
+  reader: a Java, C#, Go, Rust... host is grep only. Decided in a grilling
+  session: a generic reader first, every link by name, for many languages
+  at once; a dedicated reader for one language only when this backlog shows
+  the generic one falls short on a real host (as ADR 0002 does for the
+  TypeScript compiler). First languages: Java, C#, Go, Rust, Ruby, C, C++,
+  Swift, Kotlin, by queries of ours, specified per language in
+  `docs/readers.md`; their grammars pinned in the main dependencies. A call is
+  linked only when its name has a single definition, the others counted as
+  not attributed. A language is done on a public sample host: builds, 0
+  dangling, `check` coverage, 3 queries compared with grep (ADR 0003). The
+  sample hosts, pinned, in `docs/sample-hosts.md`, summed up in the README:
+  protobuf, libsignal, gitea (and Django). Design: in progress.
+- **PHP's pattern reader may be worse than the generic one.** (4cast,
+  2026-11-18, the readers' grilling) Once the generic reader exists, compare
+  it with `graphe_php.py` on 4cast; replace the pattern reader only if the
+  generic one does at least as well.
+- **Only its author can install the tool.** (All hosts, 2026-11-18, the
+  user's request) The install depends on `E:/dev/graphe`, an editable
+  `uv tool install` and PowerShell (README); ADR 0001 says "for a single
+  user". The direction is other people's repositories: a published package,
+  any OS, and ADR 0001 revisited. A separate effort, after the readers; until
+  then a reader holds nothing specific to this machine.
+- **The links a framework creates are outside the graph.** (All hosts,
+  2026-11-18, the user's request) A Django URL to its view, a JSX
+  `<Component/>`, a Spring injection, a Rails route: no call carries them.
+  Neither the core, nor a reader (one language), nor a local extension (one
+  host): a notion to name. Its own session, after the readers. The bridges
+  between languages belong with it (JNI, FFI, protobuf's generated code):
+  the generic reader never links a call by name across languages (ADR 0003).
 
 ## Settled
 

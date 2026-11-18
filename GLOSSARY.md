@@ -16,6 +16,14 @@ _Avoid_: kernel, engine
 What reads the files of one language and draws nodes and links from them.
 _Avoid_: parser, extractor, analyzer
 
+**Generic reader**:
+A reader that serves many languages the same way: their definitions, and their calls linked by the name alone.
+_Avoid_: fallback reader, basic reader
+
+**Dedicated reader**:
+A reader written for one language, which follows its imports and its receivers to link a call to its definition with certainty.
+_Avoid_: full reader, native reader
+
 **Local extension**:
 An enrichment specific to one host project, stored in that host's repository and declared by its configuration.
 _Avoid_: plugin, add-on
