@@ -17,3 +17,4 @@ BACKLOG.md (4cast): `let { onouvrir } = $props()` at the top of the `<script>`; 
 
 - The names a module declares (`_declared` of the module, minus its definitions and imports) hide like a function's: a called prop, or a module's `const f = async () => ...` inside a block, is `local`. 4cast: `unknown` 13 -> 4 (left: `super()`, two IIFEs, `taches[k]()`), `local` 53 -> 62. dpe: `unknown` 46 -> 23, `ambiguous` 9 -> 0 (`tools/capture_ecran.mjs` declares its own `evaluer`), `local` 362 -> 394.
 - **Grid Zero** (snapshot to retake at the end of the batch): its coverage `js` only, `unknown` 4 -> 2, `local` 2; no node, no link.
+- Grid Zero's snapshot retaken once for the batch, on the user's decision (Grid Zero 31a1317).

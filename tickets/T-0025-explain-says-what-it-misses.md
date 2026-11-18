@@ -19,3 +19,4 @@ BACKLOG.md (Django): `explain query.py::QuerySet.filter` gives 3 callers, grep h
 - `build` keeps the sites `assemble` returns: `unattributed` in graphe.json, per name of a function or a method of ours, the calls whose verdict is `ambiguous`, `unknown`, `absent`, `attribute`, `member` or `external?`. `explain` (under "what calls it") and `callers` add "+ N calls named `f` the graph could not attribute: grep them"; SKILL.md says so.
 - **Django**: `explain query.py::QuerySet.filter`: 3 callers, then "+ 2595 calls named `filter` ...".
 - **Grid Zero** (snapshot to retake at the end of the batch): the key `unattributed` is new (`degager`: 1, `delester`: 1, ...).
+- Grid Zero's snapshot retaken once for the batch, on the user's decision (Grid Zero 31a1317).

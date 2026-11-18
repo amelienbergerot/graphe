@@ -22,3 +22,4 @@ BACKLOG.md (Django): 2943 Python files, 48 s per build, and an edit not yet comm
   1. an incremental build: only the files that changed are read again. The Python reader resolves types across modules, so it is a cache per file plus a resolution redone in full: a large change.
   2. the layout outside the queries: a query that rebuilds writes graphe.json without x, y, and `graphe build` (the hooks) computes them: about 12 s less per stale query on Django, the snapshot of Grid Zero without x, y.
   3. nothing: 45 s on a repository of Django's size, the hooks rebuild after each commit.
+- **The user's decision** (2026-11-18): nothing for now; none of the hosts is of Django's size (Grid Zero builds in about 6 s). The ticket stays open, to take up when one is.
