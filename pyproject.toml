@@ -5,7 +5,7 @@ description = "The code graph of a host project: what calls what, what cites wha
 # scipy (the layout of large graphs) does not exist yet for 3.15.
 requires-python = "==3.14.*"
 # Pinned: the communities (Louvain) and the positions of Grid Zero's reference test depend on them.
-dependencies = ["networkx==3.6.1", "numpy==2.4.4", "scipy==1.18.1"]
+dependencies = ["networkx==3.6.1", "numpy==2.4.4", "scipy==1.18.1", "tree-sitter==0.26.1", "tree-sitter-javascript==0.25.0"]
 
 [project.scripts]
 graphe = "graphe:main"
@@ -19,7 +19,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 package-dir = { "" = "src" }
-py-modules = ["graphe", "graphe_root", "graphe_python", "graphe_godot", "graphe_php", "graphe_core"]
+py-modules = ["graphe", "graphe_root", "graphe_python", "graphe_godot", "graphe_php", "graphe_js", "graphe_core"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

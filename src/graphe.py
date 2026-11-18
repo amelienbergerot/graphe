@@ -13,8 +13,9 @@ A node is designated by its id, its name (`help`, `Class.method`),
 preloads its script (`Script.function`).
 
 The readers: graphe_python.py (the ast, calls resolved by types),
-graphe_godot.py (GDScript, by patterns) and graphe_php.py (its functions and
-the actions of a `switch ($action)`). The core, graphe_core.py, then
+graphe_godot.py (GDScript, by patterns), graphe_php.py (its functions and
+the actions of a `switch ($action)`) and graphe_js.py (`.js`, `.mjs`, by
+tree-sitter: calls resolved by the name and by the imports). The core, graphe_core.py, then
 reads the text: the end of each function and class, the texts it displays
 (the `displayed_text` pattern of graphe.toml), its comment, module variables
 and who reads them, and the documents (the host's Markdown, `[documents]` of
@@ -61,6 +62,7 @@ import networkx as nx
 
 import graphe_core
 import graphe_godot
+import graphe_js
 import graphe_php
 import graphe_python
 import graphe_root
@@ -108,7 +110,8 @@ def _commit() -> str | None:
 
 
 # Each reader under the name of its graphe.toml section: the key of its configuration and of its coverage.
-READERS = {"python": graphe_python.contribute, "godot": graphe_godot.contribute, "php": graphe_php.contribute}
+READERS = {"python": graphe_python.contribute, "godot": graphe_godot.contribute, "php": graphe_php.contribute,
+           "js": graphe_js.contribute}
 NODE_FIELDS = ("id", "label", "kind", "source_file", "source_location", "name")
 LINK_FIELDS = ("source", "target", "relation", "confidence", "source_file", "source_location", "context")
 

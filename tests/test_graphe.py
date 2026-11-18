@@ -375,3 +375,80 @@ def test_undirected_the_path_prefers_the_code(capsys):
     g.remove_edge("b", "c")
     assert graphe.path(g, "a", "d", undirected=True) == 0
     assert "value_x" in capsys.readouterr().out
+
+
+# T-0014: the JS reader, on a small sample project.
+JS = {
+    "src/zones.mjs": "export function zoneFromCode(code) {\n  return code\n}\n",
+    "src/compute.mjs": textwrap.dedent("""\
+        import { zoneFromCode as zone } from './zones.mjs'
+        import Builder from './builder.mjs'
+
+        export function compute(dpe) {
+          const b = new Builder()
+          b.build(zone(dpe.code))
+          return total(b)
+        }
+
+        const total = (b) => b.sum
+        """),
+    "src/builder.mjs": textwrap.dedent("""\
+        export default class Builder {
+          build(zone) {
+            return this.check(zone)
+          }
+
+          check(zone) {
+            return zone
+          }
+        }
+        """),
+}
+
+
+def _js(tmp_path: Path, files: dict[str, str]):
+    import graphe_js
+    for rel, text in files.items():
+        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / rel).write_text(text, encoding="utf-8")
+    return graphe_js.Reader([tmp_path / rel for rel in sorted(files)], root=tmp_path)
+
+
+def test_the_js_reader_follows_named_and_default_imports_and_method_calls(tmp_path: Path):
+    read = _js(tmp_path, JS)
+    links = {(e["source"], e["target"], e["relation"], e["confidence"]) for e in read.links}
+    names = {n["id"]: n["name"] for n in read.nodes}
+    assert names["src_builder_builder_build"] == "Builder.build"
+    assert ("src_compute", "src_zones", "imports", "EXTRACTED") in links
+    assert ("src_compute_compute", "src_zones_zonefromcode", "calls", "EXTRACTED") in links  # named, aliased
+    assert ("src_compute_compute", "src_builder_builder", "calls", "EXTRACTED") in links  # new on a default import
+    assert ("src_compute_compute", "src_compute_total", "calls", "EXTRACTED") in links  # a local arrow function
+    assert ("src_builder_builder_build", "src_builder_builder_check", "calls", "EXTRACTED") in links  # this.check()
+    # b.build(): the receiver's type is unknown, the method is ours by its name alone
+    assert ("src_compute_compute", "src_builder_builder_build", "calls", "INFERRED") in links
+
+
+def test_the_js_reader_follows_re_exports_and_classifies_its_calls(tmp_path: Path):
+    read = _js(tmp_path, {
+        **JS,
+        "src/index.mjs": "export { zoneFromCode } from './zones.mjs'\nexport * from './compute.mjs'\n",
+        "app.js": textwrap.dedent("""\
+            import * as engine from './src/index.mjs'
+            import { zoneFromCode } from './src/index.mjs'
+            import { calcul_3cl } from '@open3cl/engine'
+
+            function main() {
+              engine.compute({})
+              zoneFromCode(1)
+              calcul_3cl({})
+              Math.max(1, 2)
+              const xs = [1].map(String)
+            }
+            """),
+    })
+    links = {(e["source"], e["target"], e["confidence"]) for e in read.links if e["relation"] == "calls"}
+    assert ("app_main", "src_compute_compute", "EXTRACTED") in links  # export * from, then a namespace
+    assert ("app_main", "src_zones_zonefromcode", "EXTRACTED") in links  # export { } from
+    verdicts = {s["text"]: s["verdict"] for s in read.sites if s["file"] == "app.js"}
+    assert verdicts == {"engine.compute": "ours", "zoneFromCode": "ours", "calcul_3cl": "external",
+                        "Math.max": "global", "[1].map": "member"}

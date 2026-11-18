@@ -373,7 +373,7 @@ def test_the_grid_zero_extension_links_the_state_the_actions_the_hints_and_the_j
     assert {t for s, t in links if s == "iteration_7"} == {"ticket_t_0998", "ticket_t_0999"}
     names, community_of = data["communities"], {n["id"]: n["community"] for n in data["nodes"]}
     assert names[str(community_of["iteration_7"])] == "journal" and names[str(community_of["hint_lecon_0"])] == "hints"
-    assert set(data["coverage"]) == {"python", "godot", "dangling"}  # no server: no sites
+    assert set(data["coverage"]) == {"python", "godot", "js", "dangling"}  # no server: no sites
 
 
 # T-0010: every Markdown file is a document; a document cites a node it names and another by its identifier.
@@ -421,3 +421,16 @@ def test_an_invalid_documents_section_stops_the_build(tmp_path: Path):
         host = _host(tmp_path, {"outils.py": CALLEE, "graphe.toml": toml})
         r = _run(host, "build")
         assert r.returncode == 1 and key in r.stderr and "Traceback" not in r.stderr, r.stderr
+
+
+def test_a_js_host_answers_explain_with_its_callers_and_tickets(tmp_path: Path):
+    """T-0014: a .mjs function, its caller through an import, the ticket that names it."""
+    host = _host(tmp_path, {
+        "src/zones.mjs": "// T-0007: the climate zone\nexport function zoneFromCode(code) {\n  return code\n}\n",
+        "src/compute.mjs": "import { zoneFromCode } from './zones.mjs'\n\nexport function compute(d) {\n"
+                           "  return zoneFromCode(d)\n}\n",
+        "tickets/T-0007-zones.md": "# Zones\n\n`zoneFromCode` reads the code.\n",
+    }, tracked=".")
+    r = _run(host, "explain", "zoneFromCode")
+    assert r.returncode == 0, r.stderr
+    assert "compute" in r.stdout and "T-0007" in r.stdout, r.stdout

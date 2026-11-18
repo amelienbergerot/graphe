@@ -21,6 +21,22 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
 - **The tests that compare a whole message** stay outside the graph.
   (Grid Zero) The tests are excluded from it.
 
+- **The methods of an object literal are not nodes.** (dpe, 2026-11-18, T-0014)
+  dpe's UI tests build a page object (`return { async saisir(id, v) {...} }`)
+  and call `p.saisir()`, `p.clic()`, `p.ep()`, `p.stocke()`: about 150 member
+  calls classified `member`, linked to nothing. The imports would not catch
+  them (the object is returned, not exported); the types would (ADR 0002).
+  The JS reader could make a node of such a method, then link `x.m()` by the
+  name as it does for class methods.
+- **A call in a test's callback belongs to the file.** (dpe, 2026-11-18, T-0014)
+  `test('...', () => { compute(...) })`: the caller is `compute.test.mjs`,
+  not the test, which is not a node. `explain compute` lists 20-odd test
+  files rather than the tests.
+- **A re-exported npm name is `absent`, not `external`.** (dpe, 2026-11-18,
+  T-0014) `ui_helpers.mjs` re-exports `VirtualConsole` from `jsdom`;
+  `new VirtualConsole()` in `ui.test.mjs` follows the import to a name of
+  ours that is not defined. One site; nothing missed.
+
 ## Settled
 
 Settled together (2026-11-05, T-0354):
