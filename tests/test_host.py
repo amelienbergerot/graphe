@@ -142,6 +142,14 @@ def test_install_sets_the_hooks_and_ignores_the_output_only_once(tmp_path: Path)
     assert _hooks(host) == before
 
 
+def test_help_after_a_command_prints_the_help_and_runs_nothing(tmp_path: Path):
+    # An agent that tries `graphe install --help` must not install the hooks.
+    host = _host(tmp_path, {"outils.py": CALLEE})
+    r = _run(host, "install", "--help")
+    assert r.returncode == 0 and "graphe install" in r.stdout
+    assert _hooks(host) == {} and not (host / ".gitignore").exists()
+
+
 def test_install_recognises_the_output_already_ignored(tmp_path: Path):
     host = _host(tmp_path, {"outils.py": CALLEE, ".gitignore": "# le graphe\ngraphe/*\n"})
     assert _run(host, "install").returncode == 0

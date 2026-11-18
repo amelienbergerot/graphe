@@ -802,6 +802,9 @@ def main(arguments: list[str] | None = None) -> int:
     if not sys.stdout.isatty():
         sys.stdout.reconfigure(encoding="utf-8")
     command, rest = (arguments[0], arguments[1:]) if arguments else ("", [])
+    if "--help" in rest or "-h" in rest:  # `install --help` used to install the hooks
+        print(__doc__)
+        return 0
     positionals = [a for i, a in enumerate(rest) if not a.startswith("--")
                    and not (i and rest[i - 1] == "--depth")]
     if command == "build":
