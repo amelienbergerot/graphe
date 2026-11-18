@@ -31,9 +31,13 @@ PARSERS = {".js": JS, ".mjs": JS, ".ts": TS, ".svelte": TS}
 # The suffixes a relative specifier may leave out (`./lib/eau` is `./lib/eau.ts`); a component is imported with its
 # `.svelte`. shortcut: neither `.tsx` nor NodeNext's `./x.js` for `x.ts`; to add when a host has some.
 SUFFIXES = (".js", ".mjs", ".ts")
-# shortcut: by a pattern, so a `</script>` in a string of the script ends it, and the markup's `{...}` are not read
-# (BACKLOG.md, 4cast); to parse the markup when its calls are needed.
+# shortcut: by a pattern, so a `</script>` in a string of the script ends it; to parse the markup if a host trips on it.
 SCRIPT = re.compile(rb"<script\b[^>]*>(.*?)</script>", re.S)
+# T-0022: what the markup's expressions are not read in: the script, the style, the comments.
+NOT_MARKUP = re.compile(rb"<(script|style)\b[^>]*>.*?</\1>|<!--.*?-->", re.S)
+# The keyword of a block, cut before its expression is kept (`{#if x}`: `x`); `{:else}`, `{/if}`, `{#snippet ...}`
+# keep nothing. `{#each xs as x}` keeps `xs`.
+KEYWORDS = (b"#if ", b"#each ", b"#await ", b"#key ", b":else if ", b"@html ", b"@render ", b"@debug ", b"@")
 FUNCTIONS = {"function_declaration", "generator_function_declaration"}
 FUNCTION_VALUES = {"arrow_function", "function_expression", "generator_function", "function"}
 CLASSES = {"class_declaration", "abstract_class_declaration", "class"}
@@ -156,13 +160,37 @@ def _returned_object(function):
 
 
 def _source(path: Path) -> bytes:
-    """A file's code: a `.svelte` component's `<script>` blocks, the rest blanked out byte for byte (lines kept)."""
+    """A file's code: a `.svelte` component's `<script>` blocks, and the expressions of its markup (T-0022) as
+    statements of the module, `{f(x)}` read ` f(x);`; the rest blanked out byte for byte (lines kept)."""
     data = path.read_bytes()
     if path.suffix != ".svelte":
         return data
     kept = bytearray(re.sub(rb"[^\n]", b" ", data))
     for m in SCRIPT.finditer(data):
         kept[m.start(1):m.end(1)] = m.group(1)
+    skipped = [m.span() for m in NOT_MARKUP.finditer(data)]
+    i = 0
+    while (i := data.find(b"{", i)) >= 0:
+        if (inside := next((end for start, end in skipped if start <= i < end), None)) is not None:
+            i = inside
+            continue
+        depth, j = 0, i  # shortcut: a brace in a string of the expression miscounts; to tokenize if a host has one
+        while j < len(data) and not (data[j] == ord("}") and depth == 1):
+            depth += {ord("{"): 1, ord("}"): -1}.get(data[j], 0)
+            j += 1
+        start = i + 1
+        keyword = next((k for k in KEYWORDS if data.startswith(k, start)), None)
+        if keyword is not None:
+            start += len(keyword)  # `{@const x = f()}` keeps `const x = f()`
+        if data[i + 1:i + 2] in (b"#", b":", b"/") and keyword is None:
+            start = j  # `{:else}`, `{/if}`, `{#snippet ...}`: nothing
+        end = j
+        if keyword == b"#each " and (cut := data.find(b" as ", start, j)) >= 0:
+            end = cut
+        kept[start:end] = data[start:end]
+        if j < len(data):
+            kept[j] = ord(";")
+        i = j + 1
     return bytes(kept)
 
 
@@ -397,6 +425,11 @@ class Reader:
                     self._call(m, owner, cls, hidden, types, callee, node)
                 if callee is not None and callee.type == "identifier" and _text(callee) in TESTS:
                     self._test(m, owner, node)
+            elif node.type == "expression_statement" and len(node.named_children) == 1 \
+                    and node.named_children[0].type == "identifier" and _text(node.named_children[0]) not in hidden:
+                # T-0022: a bare name, a handler of the markup (`onclick={fermer}`): a reference, not a call
+                if isinstance(target := self._binding(m, _text(node.named_children[0])), str) and target != owner:
+                    self._link(owner, target, "references", m.rel, node)
             stack.extend((c, owner, cls, hidden, types) for c in reversed(node.named_children))
 
     def _test(self, m: Module, owner: str, node) -> None:

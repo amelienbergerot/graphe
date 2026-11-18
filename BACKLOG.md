@@ -21,13 +21,6 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
 - **The tests that compare a whole message** stay outside the graph. [T-0029, wontfix]
   (Grid Zero) The tests are excluded from it.
 
-- **The calls in a Svelte component's markup are not read.** [T-0022] (4cast,
-  2026-11-18, T-0015) Only the `<script>` goes to the grammar; the markup is
-  blanked out. About 213 calls in the markup of 17 components
-  (`onclick={() => rafraichir(1)}`, `{jourCourt(j.date)}`) are missed: 36 of
-  the 77 component functions have no caller. The reader could parse each
-  `{...}` of the markup as an expression, its calls belonging to the file.
-  A component used as `<Mini />` is only an `imports` link, never a call.
 - **A function named with its arguments is not linked.** [T-0024] (4cast,
   2026-11-18, T-0015) Issue 48 writes `` `ndviRecent(geometrie, aujourdhui)` ``:
   the core's backticks take `name` and `name()` only, so `explain
@@ -55,6 +48,13 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
 
 Settled by tickets (2026-11-18):
 
+- **The calls in a Svelte component's markup are not read.** [T-0022] (4cast,
+  2026-11-18, T-0015) Only the `<script>` goes to the grammar; the markup is
+  blanked out. About 213 calls in the markup of 17 components
+  (`onclick={() => rafraichir(1)}`, `{jourCourt(j.date)}`) are missed: 36 of
+  the 77 component functions have no caller. The reader could parse each
+  `{...}` of the markup as an expression, its calls belonging to the file.
+  A component used as `<Mini />` is only an `imports` link, never a call.
 - **A call in a test's callback belongs to the file.** [T-0021] (dpe, 2026-11-18, T-0014)
   `test('...', () => { compute(...) })`: the caller is `compute.test.mjs`,
   not the test, which is not a node. `explain compute` lists 20-odd test

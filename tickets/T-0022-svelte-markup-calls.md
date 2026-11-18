@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: closed
 Type: task
 Part of: T-0001
 Created: 2026-11-18
@@ -11,5 +11,10 @@ BACKLOG.md (4cast): only the `<script>` goes to the grammar; the markup is blank
 
 ## Acceptance criteria
 
-- [ ] A function of the `<script>` called in the markup has the component as caller.
-- [ ] 4cast's coverage noted here.
+- [x] A function of the `<script>` called in the markup has the component as caller.
+- [x] 4cast's coverage noted here.
+
+## Comments
+
+- `_source` keeps each `{...}` of the markup at its place, the braces read as a space and a `;`: ' f(x);', a statement of the module, its calls the component's (its file node). The keyword of a block is cut (`{#if x}`, `{:else if x}`, `{#each xs as x}` keeps `xs`, `{@const c = f()}` keeps `const c = f()`); `{:else}`, `{/if}`, `{#snippet}` keep nothing; neither `<script>`, `<style>` nor comments. A bare name as a statement (`onclick={fermer}`, a prop `onouvrir={ouvrir}`) is a `references`. Shortcut: a brace in a string of an expression miscounts.
+- **4cast**: 2537 -> 2717 sites, `ours` 658 -> 731; the component functions without a caller (calls or references) 36 of 77 -> 6 of 80: Chart.js plugins' `beforeDatasetsDraw` (an object passed to the library), `pointillesSiPrevu`, `chargerParcelles`, `lireChampDepuisCarte`. Grid Zero: nothing more than T-0019's coverage.

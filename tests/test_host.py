@@ -595,3 +595,21 @@ def test_a_test_callback_is_a_node_named_by_its_title(tmp_path: Path):
     r = _run(host, "explain", "f")
     assert r.returncode == 0, r.stderr
     assert "  calls (2)\n    test/f.test.mjs: f doubles:4, f again:9\n" in r.stdout, r.stdout
+
+
+def test_the_calls_in_a_svelte_markup_belong_to_the_component(tmp_path: Path):
+    """T-0022: 4cast's `onclick={() => rafraichir(1)}`, `{jourCourt(j.date)}`, `{#if ...}`, `{#each ... as j}`."""
+    host = _host(tmp_path, {
+        "src/Carte.svelte": "<script lang=\"ts\">\n  function rafraichir(n: number) {\n    return n\n  }\n"
+                            "  function jourCourt(d: string) {\n    return d\n  }\n  function pret() {\n    return true\n  }\n"
+                            "  function liste() {\n    return []\n  }\n  function fermer() {}\n</script>\n\n"
+                            "<button onclick={fermer}>x</button>\n"
+                            "{#if pret()}\n  {#each liste() as j (j.id)}\n    {@const c = jourCourt(j.date)}\n    <p>{c}</p>\n  {/each}\n"
+                            "{:else}\n  <button onclick={() => rafraichir(1)} style=\"a\">ok</button>\n{/if}\n\n"
+                            "<style>\n  p { color: red; }\n</style>\n",
+    }, tracked=".")
+    for name in ("rafraichir", "jourCourt", "pret", "liste"):
+        r = _run(host, "explain", name)
+        assert r.returncode == 0 and "  calls (1)\n    src/Carte.svelte\n" in r.stdout, (name, r.stdout, r.stderr)
+    r = _run(host, "explain", "fermer")  # a handler passed by its name
+    assert "  references (1)\n    src/Carte.svelte\n" in r.stdout, r.stdout
