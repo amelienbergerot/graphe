@@ -94,7 +94,9 @@ def _store(entry: Path, value: tuple) -> None:
     temporary = entry.with_suffix(f".{os.getpid()}.tmp")
     try:
         data = pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL)
-        entry.parent.mkdir(parents=True, exist_ok=True)
+        if not entry.parent.is_dir():  # outside git even in a host without `graphe install` (pytest's way)
+            entry.parent.mkdir(parents=True)
+            (entry.parent / ".gitignore").write_text("*\n", encoding="utf-8")
         temporary.write_bytes(data)
         os.replace(temporary, entry)
     # shortcut: a tree too deep for pickle is read again at each build; raise the recursion limit if one is slow.
