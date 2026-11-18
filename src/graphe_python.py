@@ -110,6 +110,10 @@ class Reader:
         for f in self.functions:
             self.by_name[f.name].append(f)
         self.class_names = {c.name for c in self.classes}
+        # T-0026: what holds a nested class, a table rather than a scan of every class per class (Django: 1.7 s)
+        self._holders: dict[tuple, str] = {}
+        for holder in [*self.classes, *self.functions]:
+            self._holders.setdefault((id(holder.module), holder.qualname), holder.id)
         self.nodes: list[dict] = []
         self.links: list[dict] = []
         self.sites: list[dict] = []
@@ -227,8 +231,9 @@ class Reader:
             elif i == 0 and f.cls is not None and f.parent is None and "staticmethod" not in f.decorators:
                 f.locals[p.arg].append(
                     (f.cls, "class" if "classmethod" in f.decorators else "instance", f, start))
-        globals_ = {name for n in self._own_nodes(f.node) if isinstance(n, ast.Global) for name in n.names}
-        for node in self._own_nodes(f.node):
+        own = list(self._own_nodes(f.node))  # T-0026: walked once, not twice (Django: 4.4 million nodes)
+        globals_ = {name for n in own if isinstance(n, ast.Global) for name in n.names}
+        for node in own:
             if isinstance(node, (ast.Import, ast.ImportFrom)):
                 for local, imp in self._import_entries(f.module, node).items():
                     f.locals[local].append((imp, "import", f, (node.lineno, None)))
@@ -688,14 +693,8 @@ class Reader:
             self._types(f.node.returns, f.id, f, f.module)
 
     def _parent_id(self, c: Class) -> str:
-        parent = c.qualname.rsplit(".", 1)[0]
-        for other in self.classes:
-            if other.module is c.module and other.qualname == parent:
-                return other.id
-        for f in self.functions:
-            if f.module is c.module and f.qualname == parent:
-                return f.id
-        return c.module.id
+        """The class, else the function, that holds a nested class (the first of the same qualname)."""
+        return self._holders.get((id(c.module), c.qualname.rsplit(".", 1)[0]), c.module.id)
 
     def _walk(self, nodes: list, owner: str, f: Function | None, m: Module) -> None:
         stack = [(n, owner) for n in reversed(nodes)]
