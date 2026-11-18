@@ -30,7 +30,25 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   not attributed. A language is done on a public sample host: builds, 0
   dangling, `check` coverage, 3 queries compared with grep (ADR 0003). The
   sample hosts, pinned, in `docs/sample-hosts.md`, summed up in the README:
-  protobuf, libsignal, gitea (and Django). Design: in progress.
+  protobuf, libsignal, gitea (and Django). T-0030; Go is read since T-0031
+  (gitea), the other languages follow in T-0032 to T-0038.
+- **A Go file in Go 1.26's syntax is skipped whole.** (gitea, sample host,
+  2026-11-19, T-0031) `tree-sitter-go` 0.25.0, the last on PyPI, knows
+  neither `new(expr)` nor generic methods (`func (f *Flash) Error[T ...]`):
+  47 of gitea's 3199 Go files have an error node and are skipped, 15 of them
+  outside the tests. A definition in such a file is lost everywhere:
+  `ctx.ServerErrorAuto` (`services/context/context_response.go`) is
+  `external` at its 1226 calls; `DecodeJSON` has 533 callers' calls, grep
+  155 more in skipped files. A newer grammar, or reading the valid part of a
+  tree with errors, would avoid it.
+- **The generic reader cannot tell a Go package's function from another's.**
+  (gitea, sample host, 2026-11-19, T-0031) `pkg.F()` is a send linked by the
+  name alone: 27174 calls are `ambiguous` (`t.Context` 3885, `MakeRequest`
+  1871, `NewRequest` 1647, `ctx.Tr` 849) and 23957 `common` (`t.Run`,
+  `fmt.Errorf`, `log.Error`, `filepath.Join`), against 52902 linked by name.
+  Go's imports name the package of `pkg.F()` for sure: a dedicated Go reader
+  (ADR 0003) would link most of them, and would leave `strings.Join` out of
+  the host's `Join` without a common name.
 - **PHP's pattern reader may be worse than the generic one.** (4cast,
   2026-11-18, the readers' grilling) Once the generic reader exists, compare
   it with `graphe_php.py` on 4cast; replace the pattern reader only if the

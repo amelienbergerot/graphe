@@ -19,3 +19,16 @@ Without an allow rule, each `graphe` query asks for approval (and a headless `cl
 Then, in each host repository, `graphe install` sets the git hooks that rebuild the graph.
 
 The gaps the graph leaves go in `BACKLOG.md`, naming the host.
+
+## Readers
+
+The languages the graph reads, and how each is read: `docs/readers.md`.
+
+## Tested on
+
+Public sample hosts, pinned in `docs/sample-hosts.md`. Measures only: the build on this machine (Windows, median of three, warm), one query against grep's lines for the same name.
+
+| Host | Languages | Files | Build | One query, compared with grep |
+|---|---|---|---|---|
+| Django | Python, JavaScript | 7104 (2943 `.py`) | 54.8 s | `explain django/shortcuts.py::get_object_or_404`: 5 callers, 839 bytes; grep `get_object_or_404(`: 21 lines, 2130 bytes |
+| gitea | Go, TypeScript | 6431 (3199 `.go`) | 31.4 s | `explain GetRepositoryByID`: 72 callers by name, 1770 bytes; grep `GetRepositoryByID(`: 80 lines in 63 files, 7813 bytes |

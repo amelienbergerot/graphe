@@ -24,3 +24,7 @@ A Rust host gets a graph with no configuration: `explain`, `callers`, `path` and
 ## Blocked by
 
 T-0031.
+
+## Comments
+
+- **From T-0031's review** (2026-11-19), Rust's query and `RUST.common` are in `graphe_generic.py`, proven on one snippet; probed, not yet fixed: a `struct T` and its `impl T` in two files are two class nodes (the merge is per file), so `T {}` is linked to neither; `impl Tr for &'a T` is not matched (no `reference_type`), its functions are free functions; `impl Tr for Vec<T>` draws a class `Vec`; `crate::m::f()` and `Self::f()` are `@send`, so a common name is never linked even by its path; the common names are guessed, to tune on the sample host.

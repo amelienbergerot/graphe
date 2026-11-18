@@ -25,3 +25,7 @@ A Java host gets a graph with no configuration: `explain`, `callers`, `path` and
 ## Blocked by
 
 T-0031.
+
+## Comments
+
+- **From T-0031's review** (2026-11-19), Java's query and `JAVA.common` are in `graphe_generic.py`, proven on one snippet; probed, not yet fixed: the overloads `o(int)` and `o(String)` are two `A.o`, so every call to an overloaded method is `ambiguous`; an anonymous class (`new Runnable() { public void run() {...} }`) is not a `@class`, its methods take the outer class's name (`A.run_2`); a nested class is named by its own name, `X.Builder` and `Y.Builder` of one file are one node; the common names are guessed, to tune on the sample host.

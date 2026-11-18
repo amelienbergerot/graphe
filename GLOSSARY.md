@@ -24,6 +24,10 @@ _Avoid_: fallback reader, basic reader
 A reader written for one language, which follows its imports and its receivers to link a call to its definition with certainty.
 _Avoid_: full reader, native reader
 
+**Common name**:
+A method name so frequent outside the host (`Join`, `get`, `push`) that the generic reader never links a call on a receiver to it by name; such a call counts as not attributed.
+_Avoid_: stop word, blacklist
+
 **Local extension**:
 An enrichment specific to one host project, stored in that host's repository and declared by its configuration.
 _Avoid_: plugin, add-on
