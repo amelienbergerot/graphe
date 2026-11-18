@@ -12,3 +12,7 @@ BACKLOG.md (Grid Zero): which scenarios make the forecaster's aid act depends on
 ## Acceptance criteria
 
 - Not to be done.
+
+## Comments
+
+- Wontfix: out of the graph by T-0001's decision; the backlog entry moves to Settled.

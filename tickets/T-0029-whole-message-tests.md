@@ -12,3 +12,7 @@ BACKLOG.md (Grid Zero). T-0001, Out of scope: "the tests that compare a whole me
 ## Acceptance criteria
 
 - Not to be done.
+
+## Comments
+
+- Wontfix: out of the graph by T-0001's decision; the backlog entry moves to Settled.

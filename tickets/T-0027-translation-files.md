@@ -12,3 +12,7 @@ BACKLOG.md (Grid Zero): `godot/i18n/*.po` are read by grep. T-0001, Out of scope
 ## Acceptance criteria
 
 - Not to be done.
+
+## Comments
+
+- Wontfix: out of the graph by T-0001's decision; the backlog entry moves to Settled.

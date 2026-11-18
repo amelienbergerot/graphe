@@ -10,27 +10,28 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
 
 ## Open
 
-- **The translation files are outside the graph.** [T-0027, wontfix] (Grid Zero, 2026-11-02)
-  - `godot/i18n/*.po` are read by grep. Probably to be kept that way:
-    `tools/i18n.py etat` already says what is missing.
-- **A "where does X work" question needs a bench, not a query.** [T-0028, wontfix]
-  (Grid Zero, 2026-11-02, prévisionniste) To know in which scenarios the aid
-  acts, every scenario had to be played. The graph says who reads
-  `PREVISIONNISTE`, not which data make it active (a weather window that
-  contains line incidents). To be kept outside the graph.
-- **The tests that compare a whole message** stay outside the graph. [T-0029, wontfix]
-  (Grid Zero) The tests are excluded from it.
-
 - **On a large repository, a stale query waits for a whole build.** [T-0026] (Django,
   sample host, 2026-11-18, T-0016) 2943 Python files: 48 s per build, and
   one edit not yet committed is enough to make the graph stale. The Python
   reader takes most of it now. A rebuild of only the files that changed
   (or a query that answers from the old graph and says so) would avoid it.
+  T-0026: 45 s now; the levers left (incremental build, layout outside
+  the queries) wait for the user's decision.
 
 ## Settled
 
 Settled by tickets (2026-11-18):
 
+- **The tests that compare a whole message** stay outside the graph. [T-0029, wontfix]
+  (Grid Zero) The tests are excluded from it.
+- **A "where does X work" question needs a bench, not a query.** [T-0028, wontfix]
+  (Grid Zero, 2026-11-02, prévisionniste) To know in which scenarios the aid
+  acts, every scenario had to be played. The graph says who reads
+  `PREVISIONNISTE`, not which data make it active (a weather window that
+  contains line incidents). To be kept outside the graph.
+- **The translation files are outside the graph.** [T-0027, wontfix] (Grid Zero, 2026-11-02)
+  - `godot/i18n/*.po` are read by grep. Probably to be kept that way:
+    `tools/i18n.py etat` already says what is missing.
 - **`explain` does not say what it misses.** [T-0025] (Django, sample host,
   2026-11-18, T-0016) `explain query.py::QuerySet.filter` gives 3 callers,
   but grep finds hundreds of `.filter(` calls: a manager
