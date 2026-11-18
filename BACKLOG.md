@@ -26,6 +26,11 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   one edit not yet committed is enough to make the graph stale. The Python
   reader takes most of it now. A rebuild of only the files that changed
   (or a query that answers from the old graph and says so) would avoid it.
+
+## Settled
+
+Settled by tickets (2026-11-18):
+
 - **`explain` does not say what it misses.** [T-0025] (Django, sample host,
   2026-11-18, T-0016) `explain query.py::QuerySet.filter` gives 3 callers,
   but grep finds hundreds of `.filter(` calls: a manager
@@ -33,11 +38,6 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   know. The graph could count the unresolved calls by name in each body
   (the `check` sites have them) and show "plus N `.filter()` not
   attributed" so that the agent knows when to grep.
-
-## Settled
-
-Settled by tickets (2026-11-18):
-
 - **A function named with its arguments is not linked.** [T-0024] (4cast,
   2026-11-18, T-0015) Issue 48 writes `` `ndviRecent(geometrie, aujourdhui)` ``:
   the core's backticks take `name` and `name()` only, so `explain

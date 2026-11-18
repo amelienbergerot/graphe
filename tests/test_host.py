@@ -633,3 +633,16 @@ def test_a_document_names_a_function_written_with_its_arguments(tmp_path: Path):
                  tracked=".")
     r = _run(host, "explain", "aider")
     assert r.returncode == 0 and "  names (1) [by name]\n    T-0001\n" in r.stdout, r.stdout + r.stderr
+
+
+def test_explain_says_how_many_calls_of_its_name_it_could_not_attribute(tmp_path: Path):
+    """T-0025: Django's `Model.objects.filter()`: the receiver's type is unknown, two methods bear the name."""
+    host = _host(tmp_path, {"requete.py": "class Requete:\n    def filtrer(self):\n        return 1\n\n\n"
+                                          "class Autre:\n    def filtrer(self):\n        return 2\n\n\n"
+                                          "def f(x, y):\n    x.filtrer()\n    return y.filtrer()\n"}, tracked=".")
+    line = "  + 2 calls named `filtrer` the graph could not attribute: grep them\n"
+    for arguments in (("explain", "Requete.filtrer"), ("callers", "Requete.filtrer")):
+        r = _run(host, *arguments)
+        assert r.returncode == 0 and line in r.stdout, (arguments, r.stdout, r.stderr)
+    r = _run(host, "explain", "f")
+    assert "could not attribute" not in r.stdout, r.stdout  # nothing missed for a name nobody calls

@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: closed
 Type: task
 Part of: T-0001
 Created: 2026-11-18
@@ -11,5 +11,11 @@ BACKLOG.md (Django): `explain query.py::QuerySet.filter` gives 3 callers, grep h
 
 ## Acceptance criteria
 
-- [ ] `explain` of a method called on an unknown receiver says how many calls of its name are not attributed.
-- [ ] SKILL.md says what the line means.
+- [x] `explain` of a method called on an unknown receiver says how many calls of its name are not attributed.
+- [x] SKILL.md says what the line means.
+
+## Comments
+
+- `build` keeps the sites `assemble` returns: `unattributed` in graphe.json, per name of a function or a method of ours, the calls whose verdict is `ambiguous`, `unknown`, `absent`, `attribute`, `dynamic`, `member` or `external?`. `explain` (under "what calls it") and `callers` add "+ N calls named `f` the graph could not attribute: grep them"; SKILL.md says so.
+- **Django**: `explain query.py::QuerySet.filter`: 3 callers, then "+ 2595 calls named `filter` ...".
+- **Grid Zero** (snapshot to retake at the end of the batch): the key `unattributed` is new (`degager`: 1, `delester`: 1, ... the commands its tests send).

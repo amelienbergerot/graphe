@@ -370,15 +370,38 @@ def _write(path: Path, text: str) -> None:
     os.replace(f.name, path)
 
 
+# T-0025: the verdicts of a call no link leads from: a name of ours, perhaps, but the reader could not tell which.
+UNATTRIBUTED = {"ambiguous", "unknown", "absent", "attribute", "dynamic", "member", "external?"}
+
+
+def _unattributed(graph: nx.DiGraph, sites: dict[str, list[dict]]) -> dict[str, int]:
+    """The calls not attributed, by the name of a function or a method of ours (`filter`): what grep would find and
+    the graph does not."""
+    ours = {graph.nodes[n]["name"].rsplit(".", 1)[-1] for n in graph if graph.nodes[n]["kind"] in ("function", "method")}
+    counted = Counter(s["name"] for site_list in sites.values() for s in site_list
+                      if s.get("verdict") in UNATTRIBUTED and s.get("name") in ours)
+    return dict(sorted(counted.items()))
+
+
+def _missed(graph: nx.DiGraph, n: str) -> None:
+    """T-0025: the line that tells the agent when to grep."""
+    d = graph.nodes[n]
+    name = d["name"].rsplit(".", 1)[-1]
+    count = graph.graph["unattributed"].get(name, 0) if d["kind"] in ("function", "method") else 0
+    if count:
+        print(f"  + {count} calls named `{name}` the graph could not attribute: grep them")
+
+
 def build(quiet: bool = False) -> int:
     start = time.monotonic()
     OUTPUT.mkdir(exist_ok=True)
-    graph, coverage, dangling, _ = assemble()
+    graph, coverage, dangling, sites = assemble()
     community_of, names = communities(graph)
     positions = layout(graph, community_of)
     data = {
         "built": time.strftime("%Y-%m-%d %H:%M:%S"), "built_s": time.time(), "commit": _commit(),
         "coverage": coverage, "communities": {str(i): name for i, name in names.items()},
+        "unattributed": _unattributed(graph, sites),
         "nodes": [{**graph.nodes[n], "community": community_of[n], "x": positions[n][0], "y": positions[n][1]}
                   for n in graph.nodes],
         "links": [{"source": s, "target": t, "relations": sorted(d["relations"]), "confidence": d["confidence"],
@@ -567,7 +590,7 @@ def load(as_is: bool = False) -> nx.DiGraph:
         print("(the graph is older than the code or the tool: rebuilding)", file=sys.stderr)
         build(quiet=True)
     data = json.loads(JSON.read_bytes())
-    graph = nx.DiGraph(communities=data["communities"])
+    graph = nx.DiGraph(communities=data["communities"], unattributed=data.get("unattributed", {}))
     for n in data["nodes"]:
         graph.add_node(n["id"], **n)
     for e in data["links"]:
@@ -735,6 +758,8 @@ def explain(graph: nx.DiGraph, x: str, all_: bool, code: bool = False) -> int:
                 print(f"    {line}")
             if limit and len(by_relation[r]) > limit:
                 print(f"    ... and {len(by_relation[r]) - limit} more (--all)")
+        if title == "what calls it":
+            _missed(graph, n)
     return 0
 
 
@@ -758,6 +783,7 @@ def callers(graph: nx.DiGraph, x: str, depth: int) -> int:
         front = following
     if len(seen) == 1:
         print("nothing calls it (in what the graph sees)")
+    _missed(graph, n)
     return 0
 
 

@@ -15,7 +15,7 @@ description: Locate code with the `graphe` command before grep or reading files 
    - `graphe path A B` - how A leads to B; `--undirected` when the direction is unknown.
    - `graphe search PATTERN` - by name, then by displayed texts and comments.
 2. Designate X by its name (`step`), `Class.method`, `file::name` (`engine.py::step`), its id, or in GDScript `Script.function` (the constant that preloads the script). A file by its path (`simulation/core/engine.py`). When a name is ambiguous, the answer lists the candidates, each by the text that designates it alone: type that text.
-3. The answers list the neighbours one line per file, `file: Class.method:line, ...`, and the tickets by their identifier. Designate the next one as `file::Class.method` (`engine.py::Engine.step`), or a file by its path. `[by name]` on a relation, or `?` after a neighbour, marks a link the reader guessed from the name alone.
+3. The answers list the neighbours one line per file, `file: Class.method:line, ...`, and the tickets by their identifier. Designate the next one as `file::Class.method` (`engine.py::Engine.step`), or a file by its path. `[by name]` on a relation, or `?` after a neighbour, marks a link the reader guessed from the name alone. "+ N calls named `f` the graph could not attribute: grep them" means what it says: the graph's callers are not all of them (a receiver of unknown type, a name several classes bear), grep `f(` for the rest.
 4. Read only the lines the answer points to.
 
 The graph rebuilds itself when the code or the tool is newer than it: trust the answer. Done when the answer names the code you need, or when it falls short (next section).
