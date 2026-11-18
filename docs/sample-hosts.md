@@ -6,6 +6,7 @@ To replay a measure, clone at the pinned commit, then build:
 
 ```powershell
 git init <host>; cd <host>
+git config core.longpaths true   # Windows: gitea's paths reach 190 characters
 git remote add origin <URL>
 git fetch --depth 1 origin <commit>; git checkout FETCH_HEAD
 graphe build; graphe check
