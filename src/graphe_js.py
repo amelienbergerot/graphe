@@ -49,6 +49,9 @@ GLOBALS = {"Array", "Boolean", "Date", "Error", "Map", "Number", "Object", "Prom
            "process", "localStorage", "navigator", "crypto", "performance", "Buffer", "Float32Array",
            "addEventListener", "scrollTo", "matchMedia",
            "$state", "$derived", "$effect", "$props", "$bindable", "$inspect", "$host"}  # Svelte's runes
+# T-0021: the functions of node:test, vitest and jest whose callback is a test, named by its title. shortcut: neither
+# `test.only` nor `describe.each`; to add when a host has some.
+TESTS = {"test", "it", "describe"}
 # shortcut: a chain of re-exports longer than this is not followed (and a cycle stops there); to raise if a host
 # re-exports deeper.
 DEPTH = 8
@@ -392,7 +395,24 @@ class Reader:
                 callee = node.child_by_field_name("function" if node.type == "call_expression" else "constructor")
                 if callee is not None:
                     self._call(m, owner, cls, hidden, types, callee, node)
+                if callee is not None and callee.type == "identifier" and _text(callee) in TESTS:
+                    self._test(m, owner, node)
             stack.extend((c, owner, cls, hidden, types) for c in reversed(node.named_children))
+
+    def _test(self, m: Module, owner: str, node) -> None:
+        """T-0021: `test('title', () => {...})`: a node named by its title, held by `owner` (its file, its
+        `describe`); the calls of the callback are its own."""
+        if isinstance(self._binding(m, _text(node.child_by_field_name("function"))), str):
+            return  # a `test` of ours
+        arguments = node.child_by_field_name("arguments")
+        title = next((a for a in arguments.named_children if a.type in ("string", "template_string")), None)
+        callback = next((a for a in arguments.named_children if a.type in FUNCTION_VALUES), None)
+        if title is None or callback is None:
+            return
+        line = node.start_point[0] + 1
+        tid = self._node(f"{m.id}_test_{line}", _text(title)[1:-1], "test", m.rel, line, _text(title)[1:-1])
+        self._link(owner, tid, "contains", m.rel, node)
+        m.owners[(callback.start_byte, callback.end_byte)] = (tid, None)
 
     def _typed(self, m: Module, scope) -> dict[str, str]:
         """T-0020: the variables of a scope assigned `new C()` or `[await] f()`, C a class of ours or f a function

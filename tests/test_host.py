@@ -582,3 +582,16 @@ def test_the_methods_of_an_object_literal_and_of_a_typed_variable_are_sure(tmp_p
     for expected in ("page.mjs: ouvrir:1, ouvrir.saisir:3, ouvrir.clic:6", "faux.mjs: Faux.de:2", "outils.mjs: outils.mesurer:2"):
         assert expected in r.stdout, r.stdout
     assert "by name" not in r.stdout, r.stdout
+
+
+def test_a_test_callback_is_a_node_named_by_its_title(tmp_path: Path):
+    """T-0021: dpe's `test('...', () => { compute(...) })`: the caller is the test, not its file."""
+    host = _host(tmp_path, {
+        "src/f.mjs": "export function f() {\n  return 1\n}\n",
+        "test/f.test.mjs": "import { test, describe, it } from 'node:test'\nimport { f } from '../src/f.mjs'\n\n"
+                           "test('f doubles', () => {\n  f()\n})\n\ndescribe('group', () => {\n"
+                           "  it('f again', async () => f())\n})\n",
+    }, tracked=".")
+    r = _run(host, "explain", "f")
+    assert r.returncode == 0, r.stderr
+    assert "  calls (2)\n    test/f.test.mjs: f doubles:4, f again:9\n" in r.stdout, r.stdout

@@ -21,10 +21,6 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
 - **The tests that compare a whole message** stay outside the graph. [T-0029, wontfix]
   (Grid Zero) The tests are excluded from it.
 
-- **A call in a test's callback belongs to the file.** [T-0021] (dpe, 2026-11-18, T-0014)
-  `test('...', () => { compute(...) })`: the caller is `compute.test.mjs`,
-  not the test, which is not a node. `explain compute` lists 20-odd test
-  files rather than the tests.
 - **The calls in a Svelte component's markup are not read.** [T-0022] (4cast,
   2026-11-18, T-0015) Only the `<script>` goes to the grammar; the markup is
   blanked out. About 213 calls in the markup of 17 components
@@ -59,6 +55,10 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
 
 Settled by tickets (2026-11-18):
 
+- **A call in a test's callback belongs to the file.** [T-0021] (dpe, 2026-11-18, T-0014)
+  `test('...', () => { compute(...) })`: the caller is `compute.test.mjs`,
+  not the test, which is not a node. `explain compute` lists 20-odd test
+  files rather than the tests.
 - **The test harness's methods are linked by the name.** [T-0020] (4cast,
   2026-11-18, T-0015) `faux.de()`, `faux.vider()`... in `tests/api` (31
   sites, `ours?`): the right method, but INFERRED. Same cause as the methods
