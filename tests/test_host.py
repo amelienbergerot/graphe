@@ -550,3 +550,14 @@ def test_a_name_reexported_from_a_package_is_external(tmp_path: Path):
     }, tracked=".")
     r = _run(host, "check")
     assert "== js: 2 sites classified {'external': 2}" in r.stdout, r.stdout + r.stderr
+
+
+def test_a_svelte_prop_called_is_local(tmp_path: Path):
+    """T-0019: 4cast's `let { onouvrir } = $props()`, then `onouvrir()`."""
+    host = _host(tmp_path, {
+        "src/Fiche.svelte": "<script lang=\"ts\">\n  let { onouvrir } = $props()\n\n"
+                            "  function ouvrir() {\n    onouvrir()\n  }\n</script>\n\n<button>ok</button>\n",
+    }, tracked=".")
+    r = _run(host, "check")
+    assert "== js: 2 sites classified" in r.stdout and "'local': 1" in r.stdout, r.stdout + r.stderr
+    assert "unknown" not in r.stdout, r.stdout

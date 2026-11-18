@@ -39,10 +39,6 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   the 77 component functions have no caller. The reader could parse each
   `{...}` of the markup as an expression, its calls belonging to the file.
   A component used as `<Mini />` is only an `imports` link, never a call.
-- **A Svelte prop called is `unknown`.** [T-0019] (4cast, 2026-11-18, T-0015)
-  `let { onouvrir } = $props()` declares it at the top of the component,
-  which `_declared` does not see (functions only): `onfini()`, `onouvrir()`,
-  `onchoix()`, about ten sites. Nothing missed, the verdict only.
 - **The test harness's methods are linked by the name.** [T-0020] (4cast,
   2026-11-18, T-0015) `faux.de()`, `faux.vider()`... in `tests/api` (31
   sites, `ours?`): the right method, but INFERRED. Same cause as the methods
@@ -74,6 +70,10 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
 
 Settled by tickets (2026-11-18):
 
+- **A Svelte prop called is `unknown`.** [T-0019] (4cast, 2026-11-18, T-0015)
+  `let { onouvrir } = $props()` declares it at the top of the component,
+  which `_declared` does not see (functions only): `onfini()`, `onouvrir()`,
+  `onchoix()`, about ten sites. Nothing missed, the verdict only.
 - **A re-exported npm name is `absent`, not `external`.** [T-0018] (dpe, 2026-11-18,
   T-0014) `ui_helpers.mjs` re-exports `VirtualConsole` from `jsdom`;
   `new VirtualConsole()` in `ui.test.mjs` follows the import to a name of

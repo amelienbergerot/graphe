@@ -327,7 +327,9 @@ class Reader:
     # ---------- the calls
 
     def _calls(self, m: Module) -> None:
-        stack = [(m.tree.root_node, m.id, None, frozenset())]
+        # T-0019: the module's own variables (a Svelte prop, `let { onouvrir } = $props()`) hide like a function's;
+        # its definitions and imports stay bindings.
+        stack = [(m.tree.root_node, m.id, None, frozenset(_declared(m.tree.root_node) - m.bindings.keys()))]
         while stack:
             node, owner, cls, hidden = stack.pop()
             owner, cls = m.owners.get((node.start_byte, node.end_byte), (owner, cls))
