@@ -438,3 +438,23 @@ def test_a_js_host_answers_explain_with_its_callers_and_tickets(tmp_path: Path):
                                 (("search", "zone"), "zoneFromCode")):
         r = _run(host, *arguments)
         assert r.returncode == 0 and expected in r.stdout, (arguments, r.stdout, r.stderr)
+
+
+def test_a_svelte_host_answers_path_and_explain_with_its_issues(tmp_path: Path):
+    """T-0015: from a Svelte component to the TS function it calls; issues named `NN-slug.md`, cited `ticket NN`."""
+    host = _host(tmp_path, {
+        "src/lib/eau.ts": "// La reserve du sol (ticket 34).\nexport function reserve(pluie: number): number {\n"
+                          "  return pluie\n}\n",
+        "src/Tuile.svelte": "<script lang=\"ts\">\n  import { reserve } from './lib/eau'\n\n"
+                            "  function rafraichir(p: number) {\n    return reserve(p)\n  }\n</script>\n\n"
+                            "<button onclick={() => rafraichir(1)}>ok</button>\n",
+        "issues/34-reserve-du-sol.md": "# La reserve du sol\n",
+        "issues/35-fiche.md": "# La fiche\n\nApres le ticket 34.\n",
+        "graphe.toml": r"[documents]" "\n" r"identifier = '(?i)(?<=\bticket )\d{2}\b|^\d{2}(?=-)'" "\n",
+    }, tracked=".")
+    r = _run(host, "path", "rafraichir", "reserve")
+    assert r.returncode == 0 and "calls" in r.stdout, r.stdout + r.stderr
+    r = _run(host, "explain", "reserve")
+    assert r.returncode == 0 and "rafraichir" in r.stdout and "La reserve du sol" in r.stdout, r.stdout
+    r = _run(host, "explain", "34")
+    assert "35" in r.stdout, r.stdout  # an issue cites another

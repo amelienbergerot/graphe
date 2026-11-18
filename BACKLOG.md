@@ -36,6 +36,31 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   T-0014) `ui_helpers.mjs` re-exports `VirtualConsole` from `jsdom`;
   `new VirtualConsole()` in `ui.test.mjs` follows the import to a name of
   ours that is not defined. One site; nothing missed.
+- **The calls in a Svelte component's markup are not read.** (4cast,
+  2026-11-18, T-0015) Only the `<script>` goes to the grammar; the markup is
+  blanked out. About 213 calls in the markup of 17 components
+  (`onclick={() => rafraichir(1)}`, `{jourCourt(j.date)}`) are missed: 36 of
+  the 77 component functions have no caller. The reader could parse each
+  `{...}` of the markup as an expression, its calls belonging to the file.
+  A component used as `<Mini />` is only an `imports` link, never a call.
+- **A Svelte prop called is `unknown`.** (4cast, 2026-11-18, T-0015)
+  `let { onouvrir } = $props()` declares it at the top of the component,
+  which `_declared` does not see (functions only): `onfini()`, `onouvrir()`,
+  `onchoix()`, about ten sites. Nothing missed, the verdict only.
+- **The test harness's methods are linked by the name.** (4cast,
+  2026-11-18, T-0015) `faux.de()`, `faux.vider()`... in `tests/api` (31
+  sites, `ours?`): the right method, but INFERRED. Same cause as the methods
+  of an object literal (dpe, above).
+- **A function named with its arguments is not linked.** (4cast,
+  2026-11-18, T-0015) Issue 48 writes `` `ndviRecent(geometrie, aujourdhui)` ``:
+  the core's backticks take `name` and `name()` only, so `explain
+  ndviRecent` names no issue. 4 such citations in 4cast. Taking any
+  `(...)` would change Grid Zero's links (its snapshot).
+- **A PHP file's top-level calls belong to nothing.** (4cast, 2026-11-18,
+  T-0015) `api/index.php` routes at the top of the file (`route_zones($db,
+  ...)`, `match` on `$chemin`): the PHP reader reads calls only in bodies, so
+  `explain route_zones` shows no caller. The JS reader gives them to the
+  file node; the PHP reader could do the same.
 
 ## Settled
 

@@ -1,4 +1,5 @@
-"""The host's JavaScript in the code graph (T-0014): `.js` and `.mjs`, read by tree-sitter (ADR 0002).
+"""The host's JavaScript in the code graph (T-0014): `.js` and `.mjs`, read by tree-sitter (ADR 0002); `.ts` and the
+`<script>` of a `.svelte` component (T-0015) by the TypeScript grammar, the markup blanked out to keep the lines.
 
 - a node per file, per top-level function (`function f`, `const f = () =>`), per class and per method
   (`Class.method`); the calls in a nested function belong to the function that contains it;
@@ -9,7 +10,7 @@
   methods only has that name, or for a name defined once in the host. A parameter or a variable of the function
   hides an import of the same name: its calls are `local`.
 
-The ids carry the extension (`src_zones_mjs`): `zones.py` is the Python reader's `src_zones`.
+The ids carry the extension (`src_zones_mjs`, `src_tableau_svelte`): `zones.py` is the Python reader's `src_zones`.
 """
 
 from __future__ import annotations
@@ -22,11 +23,20 @@ from typing import NamedTuple
 
 import tree_sitter
 import tree_sitter_javascript
+import tree_sitter_typescript
 
-PARSER = tree_sitter.Parser(tree_sitter.Language(tree_sitter_javascript.language()))
+JS = tree_sitter.Parser(tree_sitter.Language(tree_sitter_javascript.language()))
+TS = tree_sitter.Parser(tree_sitter.Language(tree_sitter_typescript.language_typescript()))
+PARSERS = {".js": JS, ".mjs": JS, ".ts": TS, ".svelte": TS}
+# The suffixes a relative specifier may leave out (`./lib/eau` is `./lib/eau.ts`); a component is imported with its
+# `.svelte`. shortcut: neither `.tsx` nor NodeNext's `./x.js` for `x.ts`; to add when a host has some.
+SUFFIXES = (".js", ".mjs", ".ts")
+# shortcut: by a pattern, so a `</script>` in a string of the script ends it, and the markup's `{...}` are not read
+# (BACKLOG.md, 4cast); to parse the markup when its calls are needed.
+SCRIPT = re.compile(rb"<script\b[^>]*>(.*?)</script>", re.S)
 FUNCTIONS = {"function_declaration", "generator_function_declaration"}
 FUNCTION_VALUES = {"arrow_function", "function_expression", "generator_function", "function"}
-CLASSES = {"class_declaration", "class"}
+CLASSES = {"class_declaration", "abstract_class_declaration", "class"}
 SCOPES = FUNCTIONS | FUNCTION_VALUES | {"method_definition"}
 PATTERNS = {"formal_parameters", "object_pattern", "array_pattern", "rest_pattern"}
 # shortcut: a hand-kept list of the language's and the platform's names, called without being ours (a verdict, not
@@ -36,7 +46,9 @@ GLOBALS = {"Array", "Boolean", "Date", "Error", "Map", "Number", "Object", "Prom
            "setTimeout", "setInterval", "clearTimeout", "clearInterval", "structuredClone", "queueMicrotask",
            "encodeURIComponent", "decodeURIComponent", "Intl", "Blob", "TextEncoder", "TextDecoder", "Uint8Array",
            "requestAnimationFrame", "alert", "confirm", "console", "Math", "JSON", "Reflect", "document", "window",
-           "process", "localStorage", "navigator", "crypto", "performance", "Buffer"}
+           "process", "localStorage", "navigator", "crypto", "performance", "Buffer", "Float32Array",
+           "addEventListener", "scrollTo", "matchMedia",
+           "$state", "$derived", "$effect", "$props", "$bindable", "$inspect", "$host"}  # Svelte's runes
 # shortcut: a chain of re-exports longer than this is not followed (and a cycle stops there); to raise if a host
 # re-exports deeper.
 DEPTH = 8
@@ -76,6 +88,8 @@ def _names(pattern) -> set[str]:
     """The names a parameter or a declaration binds (`a`, `{ b, c: d }`, `[e = 1]`, `...f`)."""
     if pattern.type in ("identifier", "shorthand_property_identifier_pattern"):
         return {_text(pattern)}
+    if pattern.type in ("required_parameter", "optional_parameter"):  # TypeScript's, typed
+        return _names(pattern.child_by_field_name("pattern"))
     if pattern.type in ("assignment_pattern", "object_assignment_pattern"):
         return _names(pattern.child_by_field_name("left"))
     if pattern.type == "pair_pattern":
@@ -106,9 +120,20 @@ def _declared(scope) -> set[str]:
     return found
 
 
+def _source(path: Path) -> bytes:
+    """A file's code: a `.svelte` component's `<script>` blocks, the rest blanked out byte for byte (lines kept)."""
+    data = path.read_bytes()
+    if path.suffix != ".svelte":
+        return data
+    kept = bytearray(re.sub(rb"[^\n]", b" ", data))
+    for m in SCRIPT.finditer(data):
+        kept[m.start(1):m.end(1)] = m.group(1)
+    return bytes(kept)
+
+
 def contribute(project) -> dict:
     """The JS reader's contribution (docs/contribution.md): a site per call."""
-    reader = Reader(sorted(project.files(".js") + project.files(".mjs")), project.root)
+    reader = Reader(sorted(p for suffix in PARSERS for p in project.files(suffix)), project.root)
     return {"nodes": reader.nodes, "links": reader.links, "sites": reader.sites}
 
 
@@ -133,7 +158,7 @@ class Reader:
         self.modules: dict[str, Module] = {}
         for path in paths:
             rel = path.relative_to(root).as_posix()
-            self.modules[rel] = Module(rel, PARSER.parse(path.read_bytes()))
+            self.modules[rel] = Module(rel, PARSERS[path.suffix].parse(_source(path)))
         self.ids: set[str] = set()
         self.methods: dict[str, list[str]] = defaultdict(list)  # method name -> ids
         self.by_name: dict[str, list[str]] = defaultdict(list)  # top-level function or class name -> ids
@@ -229,8 +254,11 @@ class Reader:
             return name
         methods = self.class_methods[nid] = {}
         heritage = next((c for c in node.named_children if c.type == "class_heritage"), None)
-        if heritage is not None and heritage.named_children and heritage.named_children[0].type == "identifier":
-            self.bases[nid] = (m, _text(heritage.named_children[0]))
+        base = heritage.named_children[0] if heritage is not None and heritage.named_children else None
+        if base is not None and base.type == "extends_clause":  # TypeScript's
+            base = base.child_by_field_name("value")
+        if base is not None and base.type == "identifier":
+            self.bases[nid] = (m, _text(base))
         for c in node.child_by_field_name("body").named_children:
             if c.type == "method_definition":
                 method = _text(c.child_by_field_name("name"))
@@ -248,7 +276,7 @@ class Reader:
         if not spec.startswith("."):
             return None
         path = posixpath.normpath(posixpath.join(posixpath.dirname(m.rel), spec))
-        for candidate in (path, path + ".js", path + ".mjs", path + "/index.js", path + "/index.mjs"):
+        for candidate in (path, *(path + s for s in SUFFIXES), *(f"{path}/index{s}" for s in SUFFIXES)):
             if candidate in self.modules:
                 return candidate
         return None

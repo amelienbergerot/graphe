@@ -76,12 +76,14 @@ def extent(lines: list[str], start: int) -> int:
     """The last line (1 = the first of the file) of the block that starts at
     `start`: before the first non-blank line, outside a comment, that comes
     back to the indentation of `start` or less. A closing `}` or `)` at that
-    indentation belongs to the block."""
+    indentation belongs to the block, and a `{` alone on its line right after
+    the signature."""
     if start < 1 or start > len(lines):
         return start
     base = _indent(lines[start - 1])
     end = start
     open_ = lines[start - 1].count("(") - lines[start - 1].count(")")
+    body = False  # a line of the body seen
     for i in range(start, len(lines)):
         line = lines[i]
         if open_ > 0:  # a signature over several lines
@@ -92,10 +94,13 @@ def extent(lines: list[str], start: int) -> int:
         if not s or _comment(line) is not None and _indent(line) > base:
             continue
         if _indent(line) <= base:
+            if s == "{" and _indent(line) == base and not body:  # the brace on its own line (PHP's PSR-12)
+                end = i + 1
+                continue
             if s[0] in "})]" and _indent(line) == base:
                 end = i + 1
             break
-        end = i + 1
+        end, body = i + 1, True
     return end
 
 

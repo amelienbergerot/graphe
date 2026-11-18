@@ -306,8 +306,8 @@ class Reader:
             return ("class", m.classes[name])
         if name in m.imports:
             return self._import(m, m.imports[name], name)
-        if name in m.variables:
-            return self._from_sources(m.variables[name], None, m)
+        if name in m.variables:  # guarded like a local: `l = l[1:]` at the top of a module
+            return self._guard(("variable", m.id, name), lambda: self._from_sources(m.variables[name], None, m))
         if name in BUILTINS:
             return ("external", name)
         return None

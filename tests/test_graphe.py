@@ -136,6 +136,13 @@ def test_properties_nested_functions_local_imports_and_callbacks(reader):
     assert (f"{M}moteur_pas", f"{M}cle") in _links(reader, "references")
 
 
+def test_a_module_variable_computed_from_itself_ends(tmp_path: Path):
+    """T-0015, 4cast's script: `for l in rows: l = l[1:]` at the top of a module looped the typing forever."""
+    path = tmp_path / "script.py"
+    path.write_text("rows = [[1]]\nfor l in rows:\n    l = l[1:]\n    l.count(1)\n", encoding="utf-8")
+    graphe_python.Reader([path], root=tmp_path)
+
+
 def test_an_object_outside_the_repository_does_not_take_our_names(reader):
     """m.start() on a re.Match: a name that Flotte.start bears, on a
     receiver that comes from elsewhere - no link, not even by the name."""
@@ -166,6 +173,11 @@ function gz_valider($x) {
     return $x;
 }
 
+function gz_noter($x): int
+{
+    return gz_valider($x);
+}
+
 switch ($action) {
     case 'liste':
     case 'relister':
@@ -184,6 +196,7 @@ def test_the_php_reader_reads_functions_actions_and_calls(tmp_path: Path):
     links = {(e["source"], e["target"], e["relation"]) for e in read.links}
     f = "web_api"
     assert (f"{f}_gz_lire", f"{f}_gz_valider", "calls") in links
+    assert (f"{f}_gz_noter", f"{f}_gz_valider", "calls") in links  # T-0015: the brace on its own line (4cast)
     # two cases in a row: the first leads to the second, which bears the body
     assert (graphe_php.action_id(f, "liste"), graphe_php.action_id(f, "relister"), "dispatches") in links
     assert (graphe_php.action_id(f, "relister"), f"{f}_gz_lire", "calls") in links
@@ -207,6 +220,8 @@ def test_extent_and_notes_of_a_body():
     assert gc.extent(lines, 4) == 9
     assert gc.notes(lines, 4) == "Le pas du moteur, en deux lignes."
     assert gc.extent(PHP.splitlines(), 3) == 5  # the closing brace belongs to the block
+    assert gc.extent(PHP.splitlines(), 11) == 14  # the opening one too, on its own line after the signature
+    assert gc.extent(["def f():", "    return 1", "{", "  'a': 1", "}"], 1) == 2  # not after a body
 
 
 def _enrich(g, root: Path) -> None:
@@ -505,3 +520,56 @@ def test_the_js_reader_keeps_ids_apart_and_links_only_what_it_knows(tmp_path: Pa
     assert sure == {"lib_mjs_g"}, sure  # util.g(): util is an object, not the module; g() is the local arrow
     make = next(n["id"] for n in read.nodes if n["name"] == "Box.make" and n["source_location"] == "L9")
     assert calls[(make, "shapes_js_base_area")] == "EXTRACTED"  # this.area(), inherited
+
+
+TS = {
+    "src/lib/eau.ts": textwrap.dedent("""\
+        import { Base } from './base'
+        export type Etat = 'sec' | 'confort'
+
+        export function reserve(pluie: number, { ru }: { ru: number } = { ru: 50 }): Etat {
+          return pluie > ru ? 'confort' : 'sec'
+        }
+
+        export class Bilan extends Base implements Etat {
+          jour(p?: number): Etat {
+            return this.mesure(p!)
+          }
+        }
+        """),
+    "src/lib/base.ts": "export abstract class Base {\n  mesure(p: number): Etat {\n    return reserve(p)\n  }\n}\n",
+    "src/Tuile.svelte": textwrap.dedent("""\
+        <script lang="ts">
+          import { reserve, type Etat } from './lib/eau'
+          let { pluie }: { pluie: number } = $props()
+          let etat = $derived(reserve(pluie))
+
+          function rafraichir(reserve: (p: number) => Etat): Etat {
+            return reserve(1)
+          }
+
+          function calcul(p: number): Etat {
+            return reserve(p)
+          }
+        </script>
+
+        <p onclick={() => rafraichir(1)}>{etat}</p>
+        """),
+}
+
+
+def test_the_js_reader_reads_typescript_and_the_script_of_a_svelte_component(tmp_path: Path):
+    """T-0015: a Svelte component's function calls a TS function through an import."""
+    read = _js(tmp_path, TS)
+    links = {(e["source"], e["target"], e["relation"], e["confidence"]) for e in read.links}
+    lines = {n["id"]: n["source_location"] for n in read.nodes}
+    assert ("src_tuile_svelte", "src_lib_eau_ts", "imports", "EXTRACTED") in links  # './lib/eau': the .ts
+    assert ("src_tuile_svelte_calcul", "src_lib_eau_ts_reserve", "calls", "EXTRACTED") in links
+    assert ("src_tuile_svelte", "src_lib_eau_ts_reserve", "calls", "EXTRACTED") in links  # $derived(...) at the top
+    assert ("src_lib_eau_ts_bilan_jour", "src_lib_base_ts_base_mesure", "calls", "EXTRACTED") in links  # this, inherited
+    assert lines["src_tuile_svelte_calcul"] == "L10"  # the markup does not move the lines
+    calls = {(e["source"], e["target"]) for e in read.links if e["relation"] == "calls"}
+    assert ("src_tuile_svelte_rafraichir", "src_lib_eau_ts_reserve") not in calls  # its parameter hides the import
+    verdicts = {(s["file"], s["text"]): s["verdict"] for s in read.sites}
+    assert verdicts[("src/Tuile.svelte", "$props")] == "global"  # a rune: Svelte's
+    assert verdicts[("src/Tuile.svelte", "$derived")] == "global"
