@@ -10,63 +10,63 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
 
 ## Open
 
-- **The translation files are outside the graph.** (Grid Zero, 2026-11-02)
+- **The translation files are outside the graph.** [T-0027, wontfix] (Grid Zero, 2026-11-02)
   - `godot/i18n/*.po` are read by grep. Probably to be kept that way:
     `tools/i18n.py etat` already says what is missing.
-- **A "where does X work" question needs a bench, not a query.**
+- **A "where does X work" question needs a bench, not a query.** [T-0028, wontfix]
   (Grid Zero, 2026-11-02, prévisionniste) To know in which scenarios the aid
   acts, every scenario had to be played. The graph says who reads
   `PREVISIONNISTE`, not which data make it active (a weather window that
   contains line incidents). To be kept outside the graph.
-- **The tests that compare a whole message** stay outside the graph.
+- **The tests that compare a whole message** stay outside the graph. [T-0029, wontfix]
   (Grid Zero) The tests are excluded from it.
 
-- **The methods of an object literal are not nodes.** (dpe, 2026-11-18, T-0014)
+- **The methods of an object literal are not nodes.** [T-0020] (dpe, 2026-11-18, T-0014)
   dpe's UI tests build a page object (`return { async saisir(id, v) {...} }`)
   and call `p.saisir()`, `p.clic()`, `p.ep()`, `p.stocke()`: about 150 member
   calls classified `member`, linked to nothing. The imports would not catch
   them (the object is returned, not exported); the types would (ADR 0002).
   The JS reader could make a node of such a method, then link `x.m()` by the
   name as it does for class methods.
-- **A call in a test's callback belongs to the file.** (dpe, 2026-11-18, T-0014)
+- **A call in a test's callback belongs to the file.** [T-0021] (dpe, 2026-11-18, T-0014)
   `test('...', () => { compute(...) })`: the caller is `compute.test.mjs`,
   not the test, which is not a node. `explain compute` lists 20-odd test
   files rather than the tests.
-- **A re-exported npm name is `absent`, not `external`.** (dpe, 2026-11-18,
+- **A re-exported npm name is `absent`, not `external`.** [T-0018] (dpe, 2026-11-18,
   T-0014) `ui_helpers.mjs` re-exports `VirtualConsole` from `jsdom`;
   `new VirtualConsole()` in `ui.test.mjs` follows the import to a name of
   ours that is not defined. One site; nothing missed.
-- **The calls in a Svelte component's markup are not read.** (4cast,
+- **The calls in a Svelte component's markup are not read.** [T-0022] (4cast,
   2026-11-18, T-0015) Only the `<script>` goes to the grammar; the markup is
   blanked out. About 213 calls in the markup of 17 components
   (`onclick={() => rafraichir(1)}`, `{jourCourt(j.date)}`) are missed: 36 of
   the 77 component functions have no caller. The reader could parse each
   `{...}` of the markup as an expression, its calls belonging to the file.
   A component used as `<Mini />` is only an `imports` link, never a call.
-- **A Svelte prop called is `unknown`.** (4cast, 2026-11-18, T-0015)
+- **A Svelte prop called is `unknown`.** [T-0019] (4cast, 2026-11-18, T-0015)
   `let { onouvrir } = $props()` declares it at the top of the component,
   which `_declared` does not see (functions only): `onfini()`, `onouvrir()`,
   `onchoix()`, about ten sites. Nothing missed, the verdict only.
-- **The test harness's methods are linked by the name.** (4cast,
+- **The test harness's methods are linked by the name.** [T-0020] (4cast,
   2026-11-18, T-0015) `faux.de()`, `faux.vider()`... in `tests/api` (31
   sites, `ours?`): the right method, but INFERRED. Same cause as the methods
   of an object literal (dpe, above).
-- **A function named with its arguments is not linked.** (4cast,
+- **A function named with its arguments is not linked.** [T-0024] (4cast,
   2026-11-18, T-0015) Issue 48 writes `` `ndviRecent(geometrie, aujourdhui)` ``:
   the core's backticks take `name` and `name()` only, so `explain
   ndviRecent` names no issue. 4 such citations in 4cast. Taking any
   `(...)` would change Grid Zero's links (its snapshot).
-- **A PHP file's top-level calls belong to nothing.** (4cast, 2026-11-18,
+- **A PHP file's top-level calls belong to nothing.** [T-0023] (4cast, 2026-11-18,
   T-0015) `api/index.php` routes at the top of the file (`route_zones($db,
   ...)`, `match` on `$chemin`): the PHP reader reads calls only in bodies, so
   `explain route_zones` shows no caller. The JS reader gives them to the
   file node; the PHP reader could do the same.
-- **On a large repository, a stale query waits for a whole build.** (Django,
+- **On a large repository, a stale query waits for a whole build.** [T-0026] (Django,
   sample host, 2026-11-18, T-0016) 2943 Python files: 48 s per build, and
   one edit not yet committed is enough to make the graph stale. The Python
   reader takes most of it now. A rebuild of only the files that changed
   (or a query that answers from the old graph and says so) would avoid it.
-- **`explain` does not say what it misses.** (Django, sample host,
+- **`explain` does not say what it misses.** [T-0025] (Django, sample host,
   2026-11-18, T-0016) `explain query.py::QuerySet.filter` gives 3 callers,
   but grep finds hundreds of `.filter(` calls: a manager
   (`Model.objects.filter`) is a receiver whose type the reader does not
