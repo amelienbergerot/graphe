@@ -17,6 +17,7 @@ from __future__ import annotations
 import ast
 import builtins
 import re
+import sys
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -94,7 +95,11 @@ class Reader:
         self.modules: dict[str, Module] = {}
         for path in paths if paths is not None else files():
             rel = path.relative_to(root).as_posix()
-            tree = ast.parse(path.read_bytes(), filename=rel)
+            try:
+                tree = ast.parse(path.read_bytes(), filename=rel)
+            except (SyntaxError, ValueError) as e:  # ValueError: a null byte
+                print(f"graphe: {rel} does not parse, skipped ({e})", file=sys.stderr)
+                continue
             m = Module(_id(rel.removesuffix(".py")), _module_name(rel), rel, tree)
             self.modules[m.name] = m
         self.functions: list[Function] = []

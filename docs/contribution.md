@@ -62,11 +62,11 @@ It is a dictionary. Each key is optional.
 | Field | Required | What it is |
 |---|---|---|
 | `id` | always | A unique identifier in the graph (`outils_aider`). |
-| `label` | new node | What the queries display (`aider()`). |
+| `label` | new node | What `explain` displays at the head of its answer (`aider()`). |
 | `kind` | new node | `file`, `function`, `method`, `class`, `field`, `command`, `action`, `signal`, … or a kind specific to the extension. |
 | `source_file` | new node | The path relative to the root, with `/`. |
 | `source_location` | new node | The line, in the form `"L12"`. |
-| `name` | new node | The name by which the node is designated (`aider`, `Class.method`). |
+| `name` | new node | The name by which the node is designated (`aider`, `Class.method`), and shown among the neighbours of another. |
 | others | no | Free attributes. The core reads some: `texts` (a list, shown by "displays:"), `notes` (a comment), `end` (the last line, for `--source`). |
 
 A node returned with an id that already exists **merges** its attributes into that node: only `id` is then required, and each attribute returned replaces the old one. A new node lacks a required field? The build stops, with a message that names the contributor and the id.

@@ -61,6 +61,18 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   ...)`, `match` on `$chemin`): the PHP reader reads calls only in bodies, so
   `explain route_zones` shows no caller. The JS reader gives them to the
   file node; the PHP reader could do the same.
+- **On a large repository, a stale query waits for a whole build.** (Django,
+  sample host, 2026-11-18, T-0016) 2943 Python files: 48 s per build, and
+  one edit not yet committed is enough to make the graph stale. The Python
+  reader takes most of it now. A rebuild of only the files that changed
+  (or a query that answers from the old graph and says so) would avoid it.
+- **`explain` does not say what it misses.** (Django, sample host,
+  2026-11-18, T-0016) `explain query.py::QuerySet.filter` gives 3 callers,
+  but grep finds hundreds of `.filter(` calls: a manager
+  (`Model.objects.filter`) is a receiver whose type the reader does not
+  know. The graph could count the unresolved calls by name in each body
+  (the `check` sites have them) and show "plus N `.filter()` not
+  attributed" so that the agent knows when to grep.
 
 ## Settled
 

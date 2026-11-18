@@ -64,6 +64,15 @@ def test_graphe_toml_excludes_folders_and_files_without_a_reader_are_ignored(tmp
     assert _files_read(host) == {"outils.py", "travail.py", "paquet/brouillon/garde.py"}
 
 
+def test_a_file_that_does_not_parse_is_skipped_and_named(tmp_path: Path):
+    # T-0016: Django tracks a test file written to fail parsing; one such file must not stop the build.
+    host = _host(tmp_path, {"outils.py": CALLEE, "travail.py": CALLER, "casse.py": "1syntax_error\n"})
+    r = _run(host, "build")
+    assert r.returncode == 0, r.stderr
+    assert "casse.py" in r.stderr
+    assert _files_read(host) == {"outils.py", "travail.py"}
+
+
 # T-0005: an external program (Godot, for the GDScript reader) is looked for in graphe.toml, then the PATH.
 SCRIPT_GD = "extends Node\n\n\nfunc _ready():\n\tadd_child(Node.new())\n"
 
@@ -198,7 +207,7 @@ def test_a_local_extension_adds_a_node_and_enriches_an_existing_node(tmp_path: P
     assert r.returncode == 0, r.stderr
     assert "aider()" in r.stdout and "abime" not in r.stdout
     assert "displays: Bonjour" in r.stdout
-    assert "exige (1)" in r.stdout and "politesse (regles.txt:1)" in r.stdout
+    assert "exige (1)" in r.stdout and "regles.txt: politesse:1" in r.stdout
     assert "travailler" in r.stdout  # what the reader had linked stays
     r = _run(host, "explain", "politesse")
     assert r.returncode == 0 and "[regle]" in r.stdout, r.stdout
@@ -307,7 +316,7 @@ def test_a_host_with_its_displayed_text_pattern_finds_its_texts(tmp_path: Path):
     (host / "graphe.toml").write_text(r"""displayed_text = '\bdire\("([^"]*)"'""", encoding="utf-8")
     r = _run(host, "search", "bienvenue")
     assert r.returncode == 0, r.stdout + r.stderr
-    assert "outils_accueillir" in r.stdout and 'displays "Bienvenue au port"' in r.stdout
+    assert "outils.py: accueillir:1" in r.stdout and 'displays "Bienvenue au port"' in r.stdout
 
 
 def test_a_text_pattern_without_a_group_stops_the_build(tmp_path: Path):
@@ -408,7 +417,7 @@ def test_without_configuration_every_markdown_file_is_a_document(tmp_path: Path)
                             "README.md": "Le travail : `travailler`, voir T-0001.\n",
                             "tickets/T-0001-aide.md": "# L'aide\n"})
     r = _run(host, "search", "readme")
-    assert r.returncode == 0 and "document_readme_md" in r.stdout, r.stdout + r.stderr
+    assert r.returncode == 0 and "  README.md\n" in r.stdout, r.stdout + r.stderr
     r = _run(host, "path", "README.md", "aider")  # the document names `travailler`, which calls aider
     assert r.returncode == 0 and "names" in r.stdout and "calls" in r.stdout, r.stdout
     r = _run(host, "explain", "T-0001")
@@ -458,3 +467,28 @@ def test_a_svelte_host_answers_path_and_explain_with_its_issues(tmp_path: Path):
     assert r.returncode == 0 and "rafraichir" in r.stdout and "La reserve du sol" in r.stdout, r.stdout
     r = _run(host, "explain", "34")
     assert "35" in r.stdout, r.stdout  # an issue cites another
+
+
+def test_answers_name_each_neighbour_as_the_agent_designates_it_next(tmp_path: Path):
+    """T-0016: neighbours by file, `Class.method:line`; tickets by their identifier; an ambiguous name by `file::name`."""
+    host = _host(tmp_path, {
+        "flotte.py": "class Flotte:\n    def avancer(self):\n        return 1\n\n\n"
+                     "class Reparations:\n    def avancer(self):\n        return 2\n\n\n"
+                     "def tout(f: Flotte, r: Reparations):\n    f.avancer()\n    r.avancer()\n",
+        "tickets/T-0001-tout.md": "# Tout\n\n`tout` avance tout.\n",
+        "paquet/moteur.py": "def vitesse():\n    return 3\n\n\nclass Moteur:\n    def vitesse(self):\n        return 4\n",
+    }, tracked=".")
+    r = _run(host, "explain", "paquet/moteur.py")  # a file as the answers print it
+    assert r.returncode == 0 and "[file]" in r.stdout, r.stdout
+    r = _run(host, "explain", "moteur.py::vitesse")  # the exact name, not Moteur.vitesse too
+    assert r.returncode == 0 and "[function]" in r.stdout, r.stdout
+    r = _run(host, "explain", "tout")
+    assert r.returncode == 0, r.stderr
+    assert "    flotte.py: Flotte.avancer:2, Reparations.avancer:7\n" in r.stdout, r.stdout
+    assert "  names (1) [by name]\n    T-0001\n" in r.stdout and "tickets/T-0001-tout.md" not in r.stdout, r.stdout
+    r = _run(host, "explain", "avancer")
+    assert "  Flotte.avancer  flotte.py:2\n" in r.stdout, r.stdout
+    r = _run(host, "callers", "flotte.py::Flotte.avancer")
+    assert "  flotte.py: tout:11\n" in r.stdout, r.stdout
+    r = _run(host, "search", "avancer")
+    assert "  flotte.py: Flotte.avancer:2, Reparations.avancer:7\n" in r.stdout, r.stdout

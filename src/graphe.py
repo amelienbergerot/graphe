@@ -46,6 +46,7 @@ from __future__ import annotations
 
 import copy
 import importlib.util
+import itertools
 import json
 import math
 import os
@@ -91,8 +92,8 @@ def _communities_config() -> tuple[dict[str, str], list[str]]:
 
 def _sources() -> list[Path]:
     """T-0009: all the host's files, not only the readers' (an extension reads what it wants)."""
-    return [p for p in graphe_root.files("") + [ROOT / CONFIGURATION]
-            + [ROOT / e.get("path", "") for e in _declared_extensions()] if p.is_file()]
+    return graphe_root.files("") + [p for p in [ROOT / CONFIGURATION]  # files() tests is_file already
+                                    + [ROOT / e.get("path", "") for e in _declared_extensions()] if p.is_file()]
 
 
 def _tool() -> list[Path]:
@@ -291,6 +292,45 @@ def _short(file: str, prefixes: list[str]) -> str:
     return file.rsplit(".", 1)[0]
 
 
+# T-0016: above it, spring_layout costs minutes (Django: 270 s for 19 communities of 1000 to 4800 nodes). The
+# hosts' communities stay below (Grid Zero: 539 at most): their layout does not move.
+LARGE_COMMUNITY = 1000
+
+
+def _sunflower(graph: nx.DiGraph, group: list[str]) -> dict[str, tuple[float, float]]:
+    """The nodes on a sunflower spiral in the unit disc, in the order of their files: a file's nodes side by side."""
+    ordered = sorted(group, key=lambda n: (graph.nodes[n]["source_file"], n))
+    golden = math.pi * (3 - math.sqrt(5))
+    return {n: (math.sqrt((k + 0.5) / len(ordered)) * math.cos(k * golden),
+                math.sqrt((k + 0.5) / len(ordered)) * math.sin(k * golden)) for k, n in enumerate(ordered)}
+
+
+def _first_free(placed: list[tuple[float, float, float]], radius: float, smallest: float,
+                open_from: int) -> tuple[tuple[float, float], int]:
+    """The first step of the spiral, from `open_from`, where a disc of `radius` overlaps none of those placed; and
+    the new `open_from`. T-0016: numpy discards by batches the steps surely blocked (with a margin over its
+    rounding), the others are decided by the exact test, in order: the place is the same. The steps blocked even
+    for the `smallest` disc stay blocked for every disc to come (the radii only decrease): they are not walked
+    again (Django's 919 communities: from 65 s to a few)."""
+    import numpy as np  # here: the queries do not pay for it
+
+    discs = np.array(placed)
+    for start in itertools.count(open_from, 1024):
+        steps = np.arange(start, start + 1024)
+        distance = 2.0 * np.sqrt(steps + 1) * 3.0
+        gap = np.hypot(distance * np.cos(steps * 0.5) - discs[:, 0, None],
+                       distance * np.sin(steps * 0.5) - discs[:, 1, None]) - discs[:, 2, None]
+        if start == open_from:
+            forever = (gap < smallest + 1.0 - 1e-6).any(axis=0)
+            open_from += 1024 if forever.all() else int(np.argmin(forever))
+        for step in np.flatnonzero(~(gap < radius + 1.0 - 1e-6).any(axis=0)) + start:
+            angle, distance = int(step) * 0.5, 2.0 * math.sqrt(int(step) + 1) * 3.0
+            center = (distance * math.cos(angle), distance * math.sin(angle))
+            if all(math.dist(center, (x, y)) >= r + radius + 1.0 for x, y, r in placed):
+                return center, open_from
+    raise AssertionError("unreachable: the spiral leaves every disc behind")
+
+
 def layout(graph: nx.DiGraph, community_of: dict[str, int]) -> dict[str, tuple[float, float]]:
     """Each community laid out alone in a disc, the discs set in a spiral
     from the largest to the smallest: much faster than a whole layout
@@ -300,26 +340,23 @@ def layout(graph: nx.DiGraph, community_of: dict[str, int]) -> dict[str, tuple[f
         members[i].append(n)
     placed: list[tuple[float, float, float]] = []
     positions = {}
+    smallest, open_from = math.sqrt(min(map(len, members.values()), default=1)) * 1.6 + 1.0, 0
     for i in sorted(members, key=lambda i: (-len(members[i]), i)):
         radius = math.sqrt(len(members[i])) * 1.6 + 1.0
-        if not placed:
-            center = (0.0, 0.0)
-        else:
-            step = 0
-            while True:
-                angle, distance = step * 0.5, 2.0 * math.sqrt(step + 1) * 3.0
-                center = (distance * math.cos(angle), distance * math.sin(angle))
-                if all(math.dist(center, (x, y)) >= r + radius + 1.0 for x, y, r in placed):
-                    break
-                step += 1
+        center = (0.0, 0.0)
+        if placed:
+            center, open_from = _first_free(placed, radius, smallest, open_from)
         placed.append((*center, radius))
         # T-0381: not graph.subgraph(), which walks its nodes in the order of a set (the luck of hashing)
         group = sorted(members[i])
-        inside = set(group)
-        sub = nx.Graph()
-        sub.add_nodes_from(group)
-        sub.add_edges_from((s, t) for s, t in graph.edges(group) if t in inside)
-        local = nx.spring_layout(sub, seed=0, iterations=60) if len(members[i]) > 1 else {members[i][0]: (0, 0)}
+        if len(group) > LARGE_COMMUNITY:
+            local = _sunflower(graph, group)
+        else:
+            inside = set(group)
+            sub = nx.Graph()
+            sub.add_nodes_from(group)
+            sub.add_edges_from((s, t) for s, t in graph.edges(group) if t in inside)
+            local = nx.spring_layout(sub, seed=0, iterations=60) if len(members[i]) > 1 else {members[i][0]: (0, 0)}
         for n, (x, y) in local.items():
             positions[n] = (round(center[0] + x * radius * 0.92, 2), round(center[1] + y * radius * 0.92, 2))
     return positions
@@ -561,8 +598,12 @@ def find(graph: nx.DiGraph, text: str) -> list[str]:
     for n, d in graph.nodes(data=True):
         if file and not (d["source_file"].endswith(file) or file in d["source_file"]):
             continue
-        if name in (d["name"], _bare(d["label"]), d["label"]) or d["name"].endswith("." + name):
+        if name in (d["name"], _bare(d["label"]), d["label"]) or d["name"].endswith("." + name) \
+                or (d["kind"] == "file" and name == d["source_file"]):  # T-0016: a file as the answers print it
             found.append(n)
+    exact = [n for n in found if graph.nodes[n]["name"] == name]  # a method's label is `.cle()`: not exact
+    if file and len(exact) == 1:  # T-0016: in a file, `cle` is the variable, not `Gabarit.cle` too
+        return exact
     if not found and not file and "." in name:
         # `Outils.aider`: Outils preloads godot/menu/outils.gd.
         head, _, member = name.partition(".")
@@ -579,14 +620,47 @@ def _one(graph: nx.DiGraph, text: str) -> str | None:
     if not found:
         print(f"no node for {text!r} - try: graphe search {text}")
     else:
-        print(f"{text!r} designates {len(found)} nodes; narrow it by id or by file::name:")
-        for n in found:
-            print(f"  {n}  ({_location(graph, n)})")
+        print(f"{text!r} designates {len(found)} nodes; pick one:")
+        for n in found[:20]:  # each designation scans the graph: Django has 972 `__init__`
+            print(f"  {_designation(graph, n)}  {_location(graph, n)}")
+        if len(found) > 20:
+            print(f"  ... and {len(found) - 20} more: narrow it by file::name")
     return None
 
 
+def _designation(graph: nx.DiGraph, n: str) -> str:
+    """T-0016: the shortest text that designates n alone, `Class.method` or `file::name`; else its id."""
+    d = graph.nodes[n]
+    for text in (d["name"], f"{d['source_file']}::{d['name']}", f"{d['source_file']}::{_bare(d['label'])}"):
+        if find(graph, text) == [n]:
+            return text
+    return n
+
+
+def _line(graph: nx.DiGraph, n: str) -> int:
+    return int(graph.nodes[n]["source_location"].lstrip("L") or 0)
+
+
+def _by_file(graph: nx.DiGraph, nodes, suffix: dict[str, str] | None = None) -> list[str]:
+    """T-0016: nodes as the agent designates them next, one line per file (`file: Class.method:line, ...`); the
+    kinds outside the code (tickets, values) by their name alone, on one line."""
+    separate, _ = _communities_config()
+    suffix = suffix or {}
+    off, files = [], defaultdict(list)
+    for n in sorted(nodes, key=lambda n: (graph.nodes[n]["source_file"], _line(graph, n), n)):
+        d = graph.nodes[n]
+        if d["kind"] in separate:
+            off.append(d["name"] + suffix.get(n, ""))
+        else:
+            files[d["source_file"]].append(("(file)" if d["kind"] == "file" else f"{d['name']}:{_line(graph, n)}")
+                                           + suffix.get(n, ""))
+    return ([", ".join(off)] if off else []) + [file if entries == ["(file)"] else f"{file}: {', '.join(entries)}"
+                                                for file, entries in files.items()]
+
+
 def _label(graph: nx.DiGraph, n: str) -> str:
-    return f"{graph.nodes[n]['label']} ({_location(graph, n)})"
+    d = graph.nodes[n]
+    return d["source_file"] if d["kind"] == "file" else f"{d['name']} ({_location(graph, n)})"
 
 
 def path(graph: nx.DiGraph, a: str, b: str, undirected: bool) -> int:
@@ -651,10 +725,14 @@ def explain(graph: nx.DiGraph, x: str, all_: bool, code: bool = False) -> int:
                 by_relation[r].append((other, link))
         print(f"\n{title}:" + ("" if by_relation else " nothing"))
         for r in sorted(by_relation):
-            print(f"  {r} ({len(by_relation[r])})")
-            for other, link in sorted(by_relation[r], key=lambda p: _label(graph, p[0]))[:limit]:
-                sure = "" if link["confidence"] == "EXTRACTED" else " [by name]"
-                print(f"    {_label(graph, other)}{sure}")
+            inferred = {other for other, link in by_relation[r] if link["confidence"] != "EXTRACTED"}
+            every = len(inferred) == len(by_relation[r])  # the mark once, on the relation
+            print(f"  {r} ({len(by_relation[r])})" + (" [by name]" if every else
+                                                      f" [{len(inferred)} by name: ?]" if inferred else ""))
+            shown = sorted(by_relation[r], key=lambda p: (graph.nodes[p[0]]["source_file"], _line(graph, p[0])))
+            for line in _by_file(graph, [other for other, _ in shown[:limit]],
+                                 {} if every else dict.fromkeys(inferred, "?")):
+                print(f"    {line}")
             if limit and len(by_relation[r]) > limit:
                 print(f"    ... and {len(by_relation[r]) - limit} more (--all)")
     return 0
@@ -675,8 +753,8 @@ def callers(graph: nx.DiGraph, x: str, depth: int) -> int:
         if not following:
             break
         print(f"level {level} ({len(following)}):")
-        for s in sorted(following, key=lambda s: _label(graph, s)):
-            print(f"  {_label(graph, s)}")
+        for line in _by_file(graph, following):
+            print(f"  {line}")
         front = following
     if len(seen) == 1:
         print("nothing calls it (in what the graph sees)")
@@ -708,8 +786,11 @@ def search_nodes(graph: nx.DiGraph, pattern: str) -> list[tuple[str, str]]:
 
 def search(graph: nx.DiGraph, pattern: str) -> int:
     found = search_nodes(graph, pattern)
-    for n, where in found[:60]:
-        print(f"  {graph.nodes[n]['label']:40s} {_location(graph, n):45s} {n}" + (f"  ({where})" if where else ""))
+    shown = dict(found[:60])
+    by_name = [n for n, where in shown.items() if not where]  # first, as search_nodes ranks them
+    for line in _by_file(graph, by_name) + _by_file(graph, shown.keys() - set(by_name),
+                                                    {n: f" ({where})" for n, where in shown.items()}):
+        print(f"  {line}")
     print(f"{len(found)} node(s)" + (" (60 shown)" if len(found) > 60 else ""))
     return 0 if found else 1
 
