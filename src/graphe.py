@@ -796,15 +796,20 @@ def _option(arguments: list[str], name: str, default: int) -> int:
     return int(arguments[arguments.index(name) + 1]) if name in arguments else default
 
 
+FLAGS = {"--quiet", "--undirected", "--all", "--source", "--depth", "--remove"}
+
+
 def main(arguments: list[str] | None = None) -> int:
     arguments = sys.argv[1:] if arguments is None else arguments  # the `graphe` command
     # Read by another program (an agent, a pipe), cp1252 printed « D?fi ».
     if not sys.stdout.isatty():
         sys.stdout.reconfigure(encoding="utf-8")
     command, rest = (arguments[0], arguments[1:]) if arguments else ("", [])
-    if "--help" in rest or "-h" in rest:  # `install --help` used to install the hooks
+    # An unknown flag ran the command: `install --help` installed the hooks.
+    unknown = [a for a in rest if a == "-h" or (a.startswith("--") and a not in FLAGS)]
+    if unknown:
         print(__doc__)
-        return 0
+        return 0 if set(unknown) <= {"-h", "--help"} else 2
     positionals = [a for i, a in enumerate(rest) if not a.startswith("--")
                    and not (i and rest[i - 1] == "--depth")]
     if command == "build":
