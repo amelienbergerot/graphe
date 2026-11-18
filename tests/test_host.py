@@ -539,3 +539,14 @@ def test_a_relation_with_a_sure_and_a_guessed_link_marks_the_guessed_one(tmp_pat
     r = _run(host, "explain", "f")
     assert r.returncode == 0, r.stderr
     assert "  calls (2) [1 by name: ?]\n    outils.py: A.m:2?, g:6\n" in r.stdout, r.stdout
+
+
+def test_a_name_reexported_from_a_package_is_external(tmp_path: Path):
+    """T-0018: dpe's `ui_helpers.mjs` re-exports `VirtualConsole` from `jsdom`."""
+    host = _host(tmp_path, {
+        "aides.mjs": "import { Console } from 'jsdom'\nexport { Console }\nexport { Fenetre } from 'jsdom'\n",
+        "usage.mjs": "import { Console, Fenetre } from './aides.mjs'\n\nexport function f() {\n"
+                     "  new Console()\n  return Fenetre()\n}\n",
+    }, tracked=".")
+    r = _run(host, "check")
+    assert "== js: 2 sites classified {'external': 2}" in r.stdout, r.stdout + r.stderr

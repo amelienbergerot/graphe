@@ -32,10 +32,6 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   `test('...', () => { compute(...) })`: the caller is `compute.test.mjs`,
   not the test, which is not a node. `explain compute` lists 20-odd test
   files rather than the tests.
-- **A re-exported npm name is `absent`, not `external`.** [T-0018] (dpe, 2026-11-18,
-  T-0014) `ui_helpers.mjs` re-exports `VirtualConsole` from `jsdom`;
-  `new VirtualConsole()` in `ui.test.mjs` follows the import to a name of
-  ours that is not defined. One site; nothing missed.
 - **The calls in a Svelte component's markup are not read.** [T-0022] (4cast,
   2026-11-18, T-0015) Only the `<script>` goes to the grammar; the markup is
   blanked out. About 213 calls in the markup of 17 components
@@ -75,6 +71,13 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   attributed" so that the agent knows when to grep.
 
 ## Settled
+
+Settled by tickets (2026-11-18):
+
+- **A re-exported npm name is `absent`, not `external`.** [T-0018] (dpe, 2026-11-18,
+  T-0014) `ui_helpers.mjs` re-exports `VirtualConsole` from `jsdom`;
+  `new VirtualConsole()` in `ui.test.mjs` follows the import to a name of
+  ours that is not defined. One site; nothing missed.
 
 Settled together (2026-11-05, T-0354):
 

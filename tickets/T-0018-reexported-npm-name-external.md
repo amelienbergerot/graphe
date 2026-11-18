@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: closed
 Type: task
 Part of: T-0001
 Created: 2026-11-18
@@ -11,4 +11,8 @@ BACKLOG.md (dpe): `ui_helpers.mjs` re-exports `VirtualConsole` from `jsdom`; `ne
 
 ## Acceptance criteria
 
-- [ ] A name re-exported from a package and called in another file is `external` in `check`.
+- [x] A name re-exported from a package and called in another file is `external` in `check`.
+
+## Comments
+
+- The JS reader follows a re-export to a package (`export { X }` of a name imported from a package, or `export { X } from 'pkg'`): `Package`, verdict `external`. dpe: `absent` 1 -> 0, `external` 2556 -> 2557. Grid Zero: identical.

@@ -76,6 +76,10 @@ class Namespace(NamedTuple):  # what `import * as x` designates: a module of our
     module: str
 
 
+class Package(NamedTuple):  # T-0018: what a name imported from a package designates, re-exported or not
+    name: str
+
+
 def _id(rel: str) -> str:
     return re.sub(r"\W", "_", rel).lower()
 
@@ -281,26 +285,31 @@ class Reader:
                 return candidate
         return None
 
-    def _export(self, rel: str | None, name: str, depth: int = 0) -> str | Namespace | None:
-        """What the module `rel` exports under `name`: a node, a namespace; re-exports followed."""
+    def _export(self, rel: str | None, name: str, depth: int = 0) -> str | Namespace | Package | None:
+        """What the module `rel` exports under `name`: a node, a namespace, a package's name; re-exports followed."""
         m = self.modules.get(rel)
         if m is None or depth > DEPTH:
             return None
         e = m.exports.get(name)
         if isinstance(e, Local):
             return self._binding(m, e.name, depth)
+        if isinstance(e, From) and e.module is None:
+            return Package(e.name)
         if isinstance(e, From):
-            return Namespace(e.module) if e.name == "*" and e.module else self._export(e.module, e.name, depth + 1)
+            return Namespace(e.module) if e.name == "*" else self._export(e.module, e.name, depth + 1)
         for star in m.stars:
             if found := self._export(star, name, depth + 1):
                 return found
         return None
 
-    def _binding(self, m: Module, name: str, depth: int = 0) -> str | Namespace | None:
-        """What a top-level name of `m` designates: a node of ours, a namespace of ours, else None."""
+    def _binding(self, m: Module, name: str, depth: int = 0) -> str | Namespace | Package | None:
+        """What a top-level name of `m` designates: a node of ours, a namespace of ours, a package's name, else
+        None."""
         b = m.bindings.get(name)
         if isinstance(b, Def):
             return b.id
+        if isinstance(b, Import) and b.module is None:
+            return Package(b.name)
         if isinstance(b, Import) and b.module:
             return Namespace(b.module) if b.name == "*" else self._export(b.module, b.name, depth + 1)
         return None
@@ -340,8 +349,8 @@ class Reader:
                 verdict = "local"
             elif b is not None:
                 target = self._binding(m, name)
+                verdict = "ours" if isinstance(target, str) else "external" if isinstance(target, Package) else "absent"
                 target = target if isinstance(target, str) else None
-                verdict = "ours" if target else "external" if isinstance(b, Import) and b.module is None else "absent"
             elif name in GLOBALS:
                 verdict = "global"
             elif len(ours := self.by_name.get(name, [])) == 1:
@@ -361,6 +370,8 @@ class Reader:
                 if isinstance(holder, Namespace):
                     target = self._export(holder.module, name)
                     target = target if isinstance(target, str) else None
+                elif isinstance(holder, Package):
+                    verdict = "external"
                 elif holder:  # a class: `Class.m()`; anything else is an object, its methods by the name
                     target = self._method(holder, name)
             elif known and _text(receiver) in GLOBALS:
