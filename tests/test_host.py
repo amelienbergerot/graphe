@@ -646,3 +646,21 @@ def test_explain_says_how_many_calls_of_its_name_it_could_not_attribute(tmp_path
         assert r.returncode == 0 and line in r.stdout, (arguments, r.stdout, r.stderr)
     r = _run(host, "explain", "f")
     assert "could not attribute" not in r.stdout, r.stdout  # nothing missed for a name nobody calls
+
+
+def test_the_svelte_markup_reader_holds_on_awaits_line_breaks_and_unknown_tags(tmp_path: Path):
+    """T-0022, after the review: `{#await p then v}`, a keyword before a line break, `{@attach}`, and an
+    expression left open do not break the component's script."""
+    host = _host(tmp_path, {
+        "src/Fiche.svelte": "<script lang=\"ts\">\n  function charger() {\n    return 1\n  }\n"
+                            "  function voir(x: number) {\n    return x\n  }\n  function infobulle() {}\n</script>\n\n"
+                            "{#await charger() then v}\n  <p>{voir(v)}</p>\n{/await}\n{#if\n  voir(2)}\n  <i {@attach infobulle()}></i>\n{/if}\n"
+                            "<p>{voir(3)</p>\n<style>\n  p { color: red; }\n</style>\n",
+        "test/t.mjs": "export function f(it) {\n  return new it('x', () => 1)\n}\n",
+    }, tracked=".")
+    r = _run(host, "check")
+    assert r.returncode == 0, r.stdout + r.stderr
+    r = _run(host, "explain", "voir")
+    assert "  calls (1)\n    src/Fiche.svelte\n" in r.stdout, r.stdout
+    r = _run(host, "explain", "charger")
+    assert "  calls (1)\n    src/Fiche.svelte\n" in r.stdout, r.stdout

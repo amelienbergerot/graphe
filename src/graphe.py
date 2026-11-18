@@ -758,8 +758,7 @@ def explain(graph: nx.DiGraph, x: str, all_: bool, code: bool = False) -> int:
                 print(f"    {line}")
             if limit and len(by_relation[r]) > limit:
                 print(f"    ... and {len(by_relation[r]) - limit} more (--all)")
-        if title == "what calls it":
-            _missed(graph, n)
+    _missed(graph, n)  # under "what calls it", the last
     return 0
 
 

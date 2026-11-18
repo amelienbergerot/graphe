@@ -1,14 +1,17 @@
-"""The host's JavaScript in the code graph (T-0014): `.js` and `.mjs`, read by tree-sitter (ADR 0002); `.ts` and the
-`<script>` of a `.svelte` component (T-0015) by the TypeScript grammar, the markup blanked out to keep the lines.
+"""The host's JavaScript in the code graph (T-0014): `.js` and `.mjs`, read by tree-sitter (ADR 0002); `.ts` and a
+`.svelte` component (T-0015) by the TypeScript grammar: its `<script>`, and the expressions of its markup as
+statements of the module, their calls the component's (T-0022); the rest blanked out to keep the lines.
 
 - a node per file, per top-level function (`function f`, `const f = () =>`), per class and per method
-  (`Class.method`); the calls in a nested function belong to the function that contains it;
+  (`Class.method`), per method of an object literal a function returns or a module's `const` holds (T-0020), per
+  test (`test('title', () => ...)`, T-0021); the calls in a nested function belong to the function that contains it;
 - the imports of our files (relative specifiers, re-exports followed): `imports` between files, and a call to an
-  imported name leads to its definition;
+  imported name leads to its definition; a name of a package, re-exported or not, is `external` (T-0018);
 - a call is sure (EXTRACTED) by a top-level definition, an import, a namespace (`import * as`, `export * as`),
-  `this.m()` in a class or its parents, or `Class.m()`; by the name alone (INFERRED) for `x.m()` when one of our
-  methods only has that name, or for a name defined once in the host. A parameter or a variable of the function
-  hides an import of the same name: its calls are `local`.
+  `this.m()` in a class or its parents, `Class.m()`, or `x.m()` when x was assigned `new C()` or `[await] f()`
+  (T-0020); by the name alone (INFERRED) for `x.m()` when one of our class methods only has that name, or for a
+  name defined once in the host. A parameter or a variable of the function or of the module hides an import of
+  the same name: its calls are `local`. A bare name of ours as a statement (`onclick={fermer}`) is a `references`.
 
 The ids carry the extension (`src_zones_mjs`, `src_tableau_svelte`): `zones.py` is the Python reader's `src_zones`.
 """
@@ -35,9 +38,11 @@ SUFFIXES = (".js", ".mjs", ".ts")
 SCRIPT = re.compile(rb"<script\b[^>]*>(.*?)</script>", re.S)
 # T-0022: what the markup's expressions are not read in: the script, the style, the comments.
 NOT_MARKUP = re.compile(rb"<(script|style)\b[^>]*>.*?</\1>|<!--.*?-->", re.S)
-# The keyword of a block, cut before its expression is kept (`{#if x}`: `x`); `{:else}`, `{/if}`, `{#snippet ...}`
-# keep nothing. `{#each xs as x}` keeps `xs`.
-KEYWORDS = (b"#if ", b"#each ", b"#await ", b"#key ", b":else if ", b"@html ", b"@render ", b"@debug ", b"@")
+# The keyword of a block or a tag, cut before its expression is kept (`{#if x}`: `x`; `{@const c = f()}`:
+# `const c = f()`); `{#each xs as x}` and `{#await p then v}` keep `xs` and `p`. Any other `{#`, `{:`, `{/`, `{@`
+# (`{:else}`, `{/if}`, `{#snippet ...}`) keeps nothing.
+KEYWORD = re.compile(rb"(#if|#each|#await|#key|:else\s+if|@html|@render|@attach|@debug)\b\s*|@(?=const\b)")
+CUT = re.compile(rb"\s(?:as|then|catch)\s")
 FUNCTIONS = {"function_declaration", "generator_function_declaration"}
 FUNCTION_VALUES = {"arrow_function", "function_expression", "generator_function", "function"}
 CLASSES = {"class_declaration", "abstract_class_declaration", "class"}
@@ -147,16 +152,23 @@ def _returned_object(function):
             value = node.named_children[0]
             while value.type == "parenthesized_expression" and value.named_children:
                 value = value.named_children[0]
-            if value.type == "object":
-                return value
-            if value.type == "identifier":
-                returned.append(_text(value))
+            returned.append(value)
         elif node.type == "variable_declarator" and (value := node.child_by_field_name("value")) is not None \
                 and value.type == "object" and node.child_by_field_name("name").type == "identifier":
             objects[_text(node.child_by_field_name("name"))] = value
         if node.type not in SCOPES:
             stack.extend(node.named_children)
-    return next((objects[name] for name in returned if name in objects), None)
+    for value in sorted(returned, key=lambda v: v.start_byte):  # the first return of the source
+        if value.type == "object":
+            return value
+        if value.type == "identifier" and _text(value) in objects:
+            return objects[_text(value)]
+    return None
+
+
+def _callee(call):
+    """What a call or a `new` calls."""
+    return call.child_by_field_name("constructor" if call.type == "new_expression" else "function")
 
 
 def _source(path: Path) -> bytes:
@@ -178,18 +190,16 @@ def _source(path: Path) -> bytes:
         while j < len(data) and not (data[j] == ord("}") and depth == 1):
             depth += {ord("{"): 1, ord("}"): -1}.get(data[j], 0)
             j += 1
+        if j == len(data):
+            break  # an expression never closed: nothing of it, nor of what follows
         start = i + 1
-        keyword = next((k for k in KEYWORDS if data.startswith(k, start)), None)
-        if keyword is not None:
-            start += len(keyword)  # `{@const x = f()}` keeps `const x = f()`
-        if data[i + 1:i + 2] in (b"#", b":", b"/") and keyword is None:
-            start = j  # `{:else}`, `{/if}`, `{#snippet ...}`: nothing
-        end = j
-        if keyword == b"#each " and (cut := data.find(b" as ", start, j)) >= 0:
-            end = cut
+        if keyword := KEYWORD.match(data, start):
+            start = keyword.end()
+        elif data[start:start + 1] in (b"#", b":", b"/", b"@"):
+            start = j
+        end = cut.start() if keyword and (cut := CUT.search(data, start, j)) else j
         kept[start:end] = data[start:end]
-        if j < len(data):
-            kept[j] = ord(";")
+        kept[j] = ord(";")
         i = j + 1
     return bytes(kept)
 
@@ -353,7 +363,8 @@ class Reader:
             if body.type == "class_body":
                 self.methods[method].append(mid)
             methods.setdefault(method, mid)  # a getter and its setter: the first
-            m.owners[(c.start_byte, c.end_byte)] = (mid, nid)
+            arrow = c.type == "pair" and c.child_by_field_name("value").type == "arrow_function"
+            m.owners[(c.start_byte, c.end_byte)] = (mid, None if arrow else nid)  # an arrow's `this` is not nid
 
     def _module(self, m: Module, source) -> str | None:
         """The file of ours that a relative specifier designates (`./zones.mjs`, `../lib`), else None."""
@@ -420,10 +431,11 @@ class Reader:
                 hidden = hidden | declared
                 types = {k: v for k, v in types.items() if k not in declared} | self._typed(m, node)
             if node.type in ("call_expression", "new_expression"):
-                callee = node.child_by_field_name("function" if node.type == "call_expression" else "constructor")
+                callee = _callee(node)
                 if callee is not None:
                     self._call(m, owner, cls, hidden, types, callee, node)
-                if callee is not None and callee.type == "identifier" and _text(callee) in TESTS:
+                if node.type == "call_expression" and callee is not None and callee.type == "identifier" \
+                        and _text(callee) in TESTS and _text(callee) not in hidden:
                     self._test(m, owner, node)
             elif node.type == "expression_statement" and len(node.named_children) == 1 \
                     and node.named_children[0].type == "identifier" and _text(node.named_children[0]) not in hidden:
@@ -457,8 +469,7 @@ class Reader:
             if node.type == "variable_declarator" and (value := node.child_by_field_name("value")) is not None:
                 if value.type == "await_expression" and value.named_children:
                     value = value.named_children[0]
-                callee = value.child_by_field_name("constructor" if value.type == "new_expression" else "function") \
-                    if value.type in ("new_expression", "call_expression") else None
+                callee = _callee(value) if value.type in ("new_expression", "call_expression") else None
                 name = node.child_by_field_name("name")
                 if callee is not None and callee.type == "identifier" and name.type == "identifier":
                     holder = self._binding(m, _text(callee))
