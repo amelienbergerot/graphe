@@ -123,3 +123,5 @@ Le graphe devient un outil installé une fois, en commande globale (`graphe`), q
 ## Comments
 
 **2026-11-17, après T-0002.** Le test de référence compare le graphe d'un arbre figé (l'étiquette `graphe-reference` de Grid Zero), pas celui de l'arbre de travail, qui change à chaque commit et contient l'outil lui-même. Le tri a changé la partition des communautés, pas seulement leur numérotation : l'instantané pris après le tri fait foi. Les dépendances de l'outil comprennent scipy (la disposition des grands graphes).
+
+**2026-11-18, après T-0010.** L'instantané de Grid Zero est repris une seconde fois, avant le passage à l'anglais. Un document cite un ticket par son identifiant, et Grid Zero garde ses tickets pour documents : ses tickets se citent donc entre eux, quelle que soit la restriction. Restreindre aux tickets ne garde donc pas tout le graphe. La différence, vérifiée à la main : 1902 liens `cite` d'un ticket à un autre, et les positions (x, y) des 379 tickets. Aucune communauté du code ne change. Sur décision de l'utilisateur, le nouvel instantané (Grid Zero, T-0387) fait foi.

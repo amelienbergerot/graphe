@@ -32,7 +32,7 @@ _À éviter_ : déplacement, réattribution
 
 **Document** :
 Un fichier Markdown du projet hôte, qui cite des nœuds et d'autres documents.
-_À éviter_ : ticket (un ticket est un document parmi d'autres)
+_À éviter_ : ticket pour tout document (un ticket est un document qui a un identifiant)
 
 **Identifiant** [identifier] :
 Ce qui désigne un document dans un texte (`T-0012`), et par quoi commence le nom de son fichier. Son motif se règle dans `graphe.toml`. Un document qui a un identifiant est un **ticket** (sa sorte de nœud).
