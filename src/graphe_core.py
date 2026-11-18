@@ -48,7 +48,7 @@ PY_ALIAS = re.compile(r"^\s*(?:from\s+([\w.]+)\s+import\s+(\w+)(?:\s+as\s+(\w+))
 PY_QUALIFIED = re.compile(r"\b([a-z_]\w*)\.(\w+)\b")
 # T-0010: a document's default identifier (`[documents] identifier`), that of tickets.
 IDENTIFIER = r"\bT-\d{4}\b"
-NAMED = re.compile(r"`([A-Za-z_][\w.]*?)(?:\(\))?`")
+NAMED = re.compile(r"`([A-Za-z_][\w.]*?)(?:\([^`]*\))?`")  # `f`, `f()`, and `f(a, b)` (T-0024)
 PY_VARIABLE = re.compile(r"^([A-Za-z_]\w*)\s*(?::[^=]+)?=(?!=)")
 GD_VARIABLE = re.compile(r"^(?:static\s+)?(const|var)\s+(\w+)\b(.*)$")
 PRELOAD = re.compile(r'^const\s+(\w+)\s*=\s*preload\("res://([^"]+\.gd)"\)', re.M)

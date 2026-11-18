@@ -21,11 +21,6 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
 - **The tests that compare a whole message** stay outside the graph. [T-0029, wontfix]
   (Grid Zero) The tests are excluded from it.
 
-- **A function named with its arguments is not linked.** [T-0024] (4cast,
-  2026-11-18, T-0015) Issue 48 writes `` `ndviRecent(geometrie, aujourdhui)` ``:
-  the core's backticks take `name` and `name()` only, so `explain
-  ndviRecent` names no issue. 4 such citations in 4cast. Taking any
-  `(...)` would change Grid Zero's links (its snapshot).
 - **On a large repository, a stale query waits for a whole build.** [T-0026] (Django,
   sample host, 2026-11-18, T-0016) 2943 Python files: 48 s per build, and
   one edit not yet committed is enough to make the graph stale. The Python
@@ -43,6 +38,11 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
 
 Settled by tickets (2026-11-18):
 
+- **A function named with its arguments is not linked.** [T-0024] (4cast,
+  2026-11-18, T-0015) Issue 48 writes `` `ndviRecent(geometrie, aujourdhui)` ``:
+  the core's backticks take `name` and `name()` only, so `explain
+  ndviRecent` names no issue. 4 such citations in 4cast. Taking any
+  `(...)` would change Grid Zero's links (its snapshot).
 - **A PHP file's top-level calls belong to nothing.** [T-0023] (4cast, 2026-11-18,
   T-0015) `api/index.php` routes at the top of the file (`route_zones($db,
   ...)`, `match` on `$chemin`): the PHP reader reads calls only in bodies, so

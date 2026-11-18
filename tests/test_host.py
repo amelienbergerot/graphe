@@ -625,3 +625,11 @@ def test_a_php_file_calls_from_its_top_level(tmp_path: Path):
     assert r.returncode == 0 and "  calls (1)\n    api/index.php\n" in r.stdout, r.stdout + r.stderr
     r = _run(host, "explain", "aide")  # a body's call stays its own
     assert "  calls (1)\n    api/index.php: route_zones:5\n" in r.stdout, r.stdout
+
+
+def test_a_document_names_a_function_written_with_its_arguments(tmp_path: Path):
+    """T-0024: 4cast's issue 48 writes `ndviRecent(geometrie, aujourdhui)`."""
+    host = _host(tmp_path, {"outils.py": CALLEE, "tickets/T-0001-aide.md": "# Aide\n\n`aider(1, 2)` aide.\n"},
+                 tracked=".")
+    r = _run(host, "explain", "aider")
+    assert r.returncode == 0 and "  names (1) [by name]\n    T-0001\n" in r.stdout, r.stdout + r.stderr

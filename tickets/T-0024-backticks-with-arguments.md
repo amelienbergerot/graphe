@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: closed
 Type: task
 Part of: T-0001
 Created: 2026-11-18
@@ -11,4 +11,9 @@ BACKLOG.md (4cast): issue 48 writes `` `ndviRecent(geometrie, aujourdhui)` ``; t
 
 ## Acceptance criteria
 
-- [ ] A document that names `` `f(a, b)` `` cites f.
+- [x] A document that names `` `f(a, b)` `` cites f.
+
+## Comments
+
+- The core's `NAMED` takes `f(a, b)` too, whatever is between the parentheses (no backtick). **4cast**: `explain ndviRecent` names issue 48.
+- **Grid Zero** (snapshot to retake at the end of the batch): 37 `names` links more, from tickets that write a function with its arguments (`ticket_t_0013 -> simulation_grid_network_build_network`, ...).
