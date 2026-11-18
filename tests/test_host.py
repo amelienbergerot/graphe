@@ -434,3 +434,7 @@ def test_a_js_host_answers_explain_with_its_callers_and_tickets(tmp_path: Path):
     r = _run(host, "explain", "zoneFromCode")
     assert r.returncode == 0, r.stderr
     assert "compute" in r.stdout and "T-0007" in r.stdout, r.stdout
+    for arguments, expected in ((("callers", "zoneFromCode"), "compute"), (("path", "compute", "zoneFromCode"), "zoneFromCode"),
+                                (("search", "zone"), "zoneFromCode")):
+        r = _run(host, *arguments)
+        assert r.returncode == 0 and expected in r.stdout, (arguments, r.stdout, r.stderr)

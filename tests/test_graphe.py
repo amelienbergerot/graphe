@@ -418,14 +418,14 @@ def test_the_js_reader_follows_named_and_default_imports_and_method_calls(tmp_pa
     read = _js(tmp_path, JS)
     links = {(e["source"], e["target"], e["relation"], e["confidence"]) for e in read.links}
     names = {n["id"]: n["name"] for n in read.nodes}
-    assert names["src_builder_builder_build"] == "Builder.build"
-    assert ("src_compute", "src_zones", "imports", "EXTRACTED") in links
-    assert ("src_compute_compute", "src_zones_zonefromcode", "calls", "EXTRACTED") in links  # named, aliased
-    assert ("src_compute_compute", "src_builder_builder", "calls", "EXTRACTED") in links  # new on a default import
-    assert ("src_compute_compute", "src_compute_total", "calls", "EXTRACTED") in links  # a local arrow function
-    assert ("src_builder_builder_build", "src_builder_builder_check", "calls", "EXTRACTED") in links  # this.check()
+    assert names["src_builder_mjs_builder_build"] == "Builder.build"
+    assert ("src_compute_mjs", "src_zones_mjs", "imports", "EXTRACTED") in links
+    assert ("src_compute_mjs_compute", "src_zones_mjs_zonefromcode", "calls", "EXTRACTED") in links  # named, aliased
+    assert ("src_compute_mjs_compute", "src_builder_mjs_builder", "calls", "EXTRACTED") in links  # new on a default import
+    assert ("src_compute_mjs_compute", "src_compute_mjs_total", "calls", "EXTRACTED") in links  # a local arrow function
+    assert ("src_builder_mjs_builder_build", "src_builder_mjs_builder_check", "calls", "EXTRACTED") in links  # this.check()
     # b.build(): the receiver's type is unknown, the method is ours by its name alone
-    assert ("src_compute_compute", "src_builder_builder_build", "calls", "INFERRED") in links
+    assert ("src_compute_mjs_compute", "src_builder_mjs_builder_build", "calls", "INFERRED") in links
 
 
 def test_the_js_reader_follows_re_exports_and_classifies_its_calls(tmp_path: Path):
@@ -447,8 +447,61 @@ def test_the_js_reader_follows_re_exports_and_classifies_its_calls(tmp_path: Pat
             """),
     })
     links = {(e["source"], e["target"], e["confidence"]) for e in read.links if e["relation"] == "calls"}
-    assert ("app_main", "src_compute_compute", "EXTRACTED") in links  # export * from, then a namespace
-    assert ("app_main", "src_zones_zonefromcode", "EXTRACTED") in links  # export { } from
+    assert ("app_js_main", "src_compute_mjs_compute", "EXTRACTED") in links  # export * from, then a namespace
+    assert ("app_js_main", "src_zones_mjs_zonefromcode", "EXTRACTED") in links  # export { } from
     verdicts = {s["text"]: s["verdict"] for s in read.sites if s["file"] == "app.js"}
     assert verdicts == {"engine.compute": "ours", "zoneFromCode": "ours", "calcul_3cl": "external",
                         "Math.max": "global", "[1].map": "member"}
+
+
+def test_the_js_reader_keeps_ids_apart_and_links_only_what_it_knows(tmp_path: Path):
+    read = _js(tmp_path, {
+        "lib.mjs": textwrap.dedent("""\
+            export function f() {}
+            export function g() {}
+            export const util = { f: () => 1 }
+            """),
+        "index.mjs": "export * as lib from './lib.mjs'\n",
+        "shapes.js": textwrap.dedent("""\
+            export class Base {
+              area() { return 0 }
+            }
+
+            export class Box extends Base {
+              get size() { return 1 }
+              set size(v) {}
+              static make() { return new Box() }
+              make() { return this.area() }
+              #h() {}
+              h() { this.#h() }
+            }
+
+            function Foo() {}
+            function foo() {}
+            """),
+        "shapes.mjs": "export function area() {}\n",
+        "use.mjs": textwrap.dedent("""\
+            import { f, util } from './lib.mjs'
+            import { lib } from './index.mjs'
+
+            export function run(f) {
+              f()
+              util.g()
+              lib.g()
+              const g = () => 1
+              g()
+            }
+            """),
+    })
+    ids = [n["id"] for n in read.nodes]
+    assert len(ids) == len(set(ids)), sorted(i for i in ids if ids.count(i) > 1)
+    assert {"lib_mjs", "shapes_js", "shapes_mjs"} <= set(ids)  # the extension too: x.py is the Python reader's
+    calls = {(e["source"], e["target"]): e["confidence"] for e in read.links if e["relation"] == "calls"}
+    run = "use_mjs_run"
+    assert ("use_mjs_run", "lib_mjs_f") not in calls  # f is the parameter, not the import
+    assert ("use_mjs_run", "lib_mjs_g") in calls  # lib.g(): export * as lib, then a named import
+    assert calls[(run, "lib_mjs_g")] == "EXTRACTED"
+    sure = {t for (s, t), c in calls.items() if s == run and c == "EXTRACTED"}
+    assert sure == {"lib_mjs_g"}, sure  # util.g(): util is an object, not the module; g() is the local arrow
+    make = next(n["id"] for n in read.nodes if n["name"] == "Box.make" and n["source_location"] == "L9")
+    assert calls[(make, "shapes_js_base_area")] == "EXTRACTED"  # this.area(), inherited
