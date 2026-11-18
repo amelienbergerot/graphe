@@ -439,8 +439,8 @@ def test_the_js_reader_follows_named_and_default_imports_and_method_calls(tmp_pa
     assert ("src_compute_mjs_compute", "src_builder_mjs_builder", "calls", "EXTRACTED") in links  # new on a default import
     assert ("src_compute_mjs_compute", "src_compute_mjs_total", "calls", "EXTRACTED") in links  # a local arrow function
     assert ("src_builder_mjs_builder_build", "src_builder_mjs_builder_check", "calls", "EXTRACTED") in links  # this.check()
-    # b.build(): the receiver's type is unknown, the method is ours by its name alone
-    assert ("src_compute_mjs_compute", "src_builder_mjs_builder_build", "calls", "INFERRED") in links
+    # b.build(): b = new Builder(), its type known (T-0020)
+    assert ("src_compute_mjs_compute", "src_builder_mjs_builder_build", "calls", "EXTRACTED") in links
 
 
 def test_the_js_reader_follows_re_exports_and_classifies_its_calls(tmp_path: Path):

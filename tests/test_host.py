@@ -561,3 +561,24 @@ def test_a_svelte_prop_called_is_local(tmp_path: Path):
     r = _run(host, "check")
     assert "== js: 2 sites classified" in r.stdout and "'local': 1" in r.stdout, r.stdout + r.stderr
     assert "unknown" not in r.stdout, r.stdout
+
+
+def test_the_methods_of_an_object_literal_and_of_a_typed_variable_are_sure(tmp_path: Path):
+    """T-0020: dpe's page object (`const p = await ouvrir()`, then `p.saisir()`), 4cast's harness
+    (`const faux = new FauxAmont()`, then `faux.de()`), a module's object (`outils.m()`)."""
+    host = _host(tmp_path, {
+        "page.mjs": "export function ouvrir() {\n  return {\n    saisir(v) {\n      return v\n    },\n"
+                    "    clic: () => 1,\n  }\n}\n",
+        "autre.mjs": "export function autre() {\n  return { saisir() {}, clic() {} }\n}\n",  # the same names
+        "faux.mjs": "export class Faux {\n  de() {}\n}\nexport class Vrai {\n  de() {}\n}\n",
+        "outils.mjs": "export const outils = {\n  mesurer() {},\n}\n",
+        "essai.mjs": "import { ouvrir } from './page.mjs'\nimport { Faux } from './faux.mjs'\n"
+                     "import { outils } from './outils.mjs'\n\nconst faux = new Faux()\n\n"
+                     "export async function essai() {\n  const p = await ouvrir()\n  p.saisir(1)\n  p.clic()\n"
+                     "  faux.de()\n  outils.mesurer()\n}\n",
+    }, tracked=".")
+    r = _run(host, "explain", "essai")
+    assert r.returncode == 0, r.stderr
+    for expected in ("page.mjs: ouvrir:1, ouvrir.saisir:3, ouvrir.clic:6", "faux.mjs: Faux.de:2", "outils.mjs: outils.mesurer:2"):
+        assert expected in r.stdout, r.stdout
+    assert "by name" not in r.stdout, r.stdout

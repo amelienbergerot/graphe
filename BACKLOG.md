@@ -21,13 +21,6 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
 - **The tests that compare a whole message** stay outside the graph. [T-0029, wontfix]
   (Grid Zero) The tests are excluded from it.
 
-- **The methods of an object literal are not nodes.** [T-0020] (dpe, 2026-11-18, T-0014)
-  dpe's UI tests build a page object (`return { async saisir(id, v) {...} }`)
-  and call `p.saisir()`, `p.clic()`, `p.ep()`, `p.stocke()`: about 150 member
-  calls classified `member`, linked to nothing. The imports would not catch
-  them (the object is returned, not exported); the types would (ADR 0002).
-  The JS reader could make a node of such a method, then link `x.m()` by the
-  name as it does for class methods.
 - **A call in a test's callback belongs to the file.** [T-0021] (dpe, 2026-11-18, T-0014)
   `test('...', () => { compute(...) })`: the caller is `compute.test.mjs`,
   not the test, which is not a node. `explain compute` lists 20-odd test
@@ -39,10 +32,6 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   the 77 component functions have no caller. The reader could parse each
   `{...}` of the markup as an expression, its calls belonging to the file.
   A component used as `<Mini />` is only an `imports` link, never a call.
-- **The test harness's methods are linked by the name.** [T-0020] (4cast,
-  2026-11-18, T-0015) `faux.de()`, `faux.vider()`... in `tests/api` (31
-  sites, `ours?`): the right method, but INFERRED. Same cause as the methods
-  of an object literal (dpe, above).
 - **A function named with its arguments is not linked.** [T-0024] (4cast,
   2026-11-18, T-0015) Issue 48 writes `` `ndviRecent(geometrie, aujourdhui)` ``:
   the core's backticks take `name` and `name()` only, so `explain
@@ -70,6 +59,17 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
 
 Settled by tickets (2026-11-18):
 
+- **The test harness's methods are linked by the name.** [T-0020] (4cast,
+  2026-11-18, T-0015) `faux.de()`, `faux.vider()`... in `tests/api` (31
+  sites, `ours?`): the right method, but INFERRED. Same cause as the methods
+  of an object literal (dpe, above).
+- **The methods of an object literal are not nodes.** [T-0020] (dpe, 2026-11-18, T-0014)
+  dpe's UI tests build a page object (`return { async saisir(id, v) {...} }`)
+  and call `p.saisir()`, `p.clic()`, `p.ep()`, `p.stocke()`: about 150 member
+  calls classified `member`, linked to nothing. The imports would not catch
+  them (the object is returned, not exported); the types would (ADR 0002).
+  The JS reader could make a node of such a method, then link `x.m()` by the
+  name as it does for class methods.
 - **A Svelte prop called is `unknown`.** [T-0019] (4cast, 2026-11-18, T-0015)
   `let { onouvrir } = $props()` declares it at the top of the component,
   which `_declared` does not see (functions only): `onfini()`, `onouvrir()`,

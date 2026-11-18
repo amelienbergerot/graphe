@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: closed
 Type: task
 Part of: T-0001
 Created: 2026-11-18
@@ -11,5 +11,12 @@ BACKLOG.md (dpe, 4cast): a page object (`return { async saisir(id, v) {...} }`, 
 
 ## Acceptance criteria
 
-- [ ] A method of an object literal returned by a function is a node; `p.m()` calls it (INFERRED when the name is unique).
-- [ ] dpe's and 4cast's coverage noted here.
+- [x] A method of an object literal returned by a function is a node; `p.m()` calls it (INFERRED when the name is unique).
+- [x] dpe's and 4cast's coverage noted here.
+
+## Comments
+
+- The JS reader (`_members`, shared with the classes): the methods of an object literal returned by a function (`return {...}`, `() => ({...})`, `const p = {...}; return p`) are nodes `f.m`, held by f; a module's `const outils = {...}` is a node of kind `object`. A variable assigned `new C()` or `[await] f()` takes C's or f's methods (`_typed`, a scope's own, the inner hiding the outer): `p.saisir()`, `faux.de()` are EXTRACTED. An object's methods are never linked by the name alone: dpe's fake objects define `click`, `getItem`, which the DOM's calls would take (tried: 47 `ours?` and 72 more `ambiguous`, all wrong).
+- **dpe**: `ours` 2425 -> 2658, `member` 2140 -> 1907, `ours?`, `ambiguous` 0. **4cast**: `ours?` 31 -> 0, `ours` 627 -> 658 (`faux = new FauxAmont()`). Grid Zero: nothing more than T-0019's coverage.
+- `tests/test_graphe.py`: `b = new Builder(); b.build()` was INFERRED, the test said so; now EXTRACTED.
+

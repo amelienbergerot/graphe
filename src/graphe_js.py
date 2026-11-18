@@ -124,6 +124,34 @@ def _declared(scope) -> set[str]:
     return found
 
 
+def _returned_object(function):
+    """T-0020: the object literal a function returns (`return {...}`, `() => ({...})`), outside its nested
+    functions; else None."""
+    body = function.child_by_field_name("body")
+    stack = [body] if body is not None and body.type == "statement_block" else []
+    while body is not None and body.type == "parenthesized_expression" and body.named_children:
+        body = body.named_children[0]
+    if body is not None and body.type == "object":
+        return body
+    objects, returned = {}, []  # `const p = {...}; ... return p` (dpe's ui_mode.test.mjs)
+    while stack:
+        node = stack.pop()
+        if node.type == "return_statement" and node.named_children:
+            value = node.named_children[0]
+            while value.type == "parenthesized_expression" and value.named_children:
+                value = value.named_children[0]
+            if value.type == "object":
+                return value
+            if value.type == "identifier":
+                returned.append(_text(value))
+        elif node.type == "variable_declarator" and (value := node.child_by_field_name("value")) is not None \
+                and value.type == "object" and node.child_by_field_name("name").type == "identifier":
+            objects[_text(node.child_by_field_name("name"))] = value
+        if node.type not in SCOPES:
+            stack.extend(node.named_children)
+    return next((objects[name] for name in returned if name in objects), None)
+
+
 def _source(path: Path) -> bytes:
     """A file's code: a `.svelte` component's `<script>` blocks, the rest blanked out byte for byte (lines kept)."""
     data = path.read_bytes()
@@ -242,6 +270,14 @@ class Reader:
                 if d.type == "variable_declarator" and name is not None and name.type == "identifier" \
                         and value is not None and value.type in FUNCTION_VALUES | CLASSES:
                     names.append(self._define(m, _text(name), value, head=d))
+                elif d.type == "variable_declarator" and name is not None and name.type == "identifier" \
+                        and value is not None and value.type == "object":  # T-0020: `const outils = { m() {} }`
+                    nid = self._node(f"{m.id}_{_text(name).lower()}", _text(name), "object", m.rel,
+                                     d.start_point[0] + 1, _text(name))
+                    self._link(m.id, nid, "contains", m.rel, d)
+                    m.bindings[_text(name)] = Def(nid)
+                    self._members(m, nid, _text(name), value)
+                    names.append(_text(name))
         return names
 
     def _define(self, m: Module, name: str, node, head=None) -> str:
@@ -255,24 +291,38 @@ class Reader:
         self.by_name[name].append(nid)
         m.owners[(node.start_byte, node.end_byte)] = (nid, nid if is_class else None)
         if not is_class:
+            if (returned := _returned_object(node)) is not None:  # T-0020: dpe's page objects
+                self._members(m, nid, name, returned)
             return name
-        methods = self.class_methods[nid] = {}
         heritage = next((c for c in node.named_children if c.type == "class_heritage"), None)
         base = heritage.named_children[0] if heritage is not None and heritage.named_children else None
         if base is not None and base.type == "extends_clause":  # TypeScript's
             base = base.child_by_field_name("value")
         if base is not None and base.type == "identifier":
             self.bases[nid] = (m, _text(base))
-        for c in node.child_by_field_name("body").named_children:
+        self._members(m, nid, name, node.child_by_field_name("body"))
+        return name
+
+    def _members(self, m: Module, nid: str, name: str, body) -> None:
+        """The methods of a class body or of an object literal (T-0020: `m() {}`, `m: () => ...`), nodes held by
+        `nid`: `this.m()` inside them is `nid`'s. An object's methods are reached by its type only, never by the name
+        alone: dpe's fake objects have `click`, `getItem`, which the DOM's would take."""
+        methods = self.class_methods.setdefault(nid, {})
+        for c in body.named_children:
             if c.type == "method_definition":
                 method = _text(c.child_by_field_name("name"))
-                mid = self._node(f"{nid}_{method.lower().lstrip('#')}", f"{name}.{method}()", "method", m.rel,
-                                 c.start_point[0] + 1, f"{name}.{method}")
-                self._link(nid, mid, "contains", m.rel, c)
+            elif c.type == "pair" and (value := c.child_by_field_name("value")) is not None \
+                    and value.type in FUNCTION_VALUES:
+                method = _text(c.child_by_field_name("key")).strip("'\"")
+            else:
+                continue
+            mid = self._node(f"{nid}_{method.lower().lstrip('#')}", f"{name}.{method}()", "method", m.rel,
+                             c.start_point[0] + 1, f"{name}.{method}")
+            self._link(nid, mid, "contains", m.rel, c)
+            if body.type == "class_body":
                 self.methods[method].append(mid)
-                methods.setdefault(method, mid)  # a getter and its setter: the first
-                m.owners[(c.start_byte, c.end_byte)] = (mid, nid)
-        return name
+            methods.setdefault(method, mid)  # a getter and its setter: the first
+            m.owners[(c.start_byte, c.end_byte)] = (mid, nid)
 
     def _module(self, m: Module, source) -> str | None:
         """The file of ours that a relative specifier designates (`./zones.mjs`, `../lib`), else None."""
@@ -329,20 +379,46 @@ class Reader:
     def _calls(self, m: Module) -> None:
         # T-0019: the module's own variables (a Svelte prop, `let { onouvrir } = $props()`) hide like a function's;
         # its definitions and imports stay bindings.
-        stack = [(m.tree.root_node, m.id, None, frozenset(_declared(m.tree.root_node) - m.bindings.keys()))]
+        root = m.tree.root_node
+        stack = [(root, m.id, None, frozenset(_declared(root) - m.bindings.keys()), self._typed(m, root))]
         while stack:
-            node, owner, cls, hidden = stack.pop()
+            node, owner, cls, hidden, types = stack.pop()
             owner, cls = m.owners.get((node.start_byte, node.end_byte), (owner, cls))
             if node.type in SCOPES:
-                hidden = hidden | _declared(node)
+                declared = _declared(node)
+                hidden = hidden | declared
+                types = {k: v for k, v in types.items() if k not in declared} | self._typed(m, node)
             if node.type in ("call_expression", "new_expression"):
                 callee = node.child_by_field_name("function" if node.type == "call_expression" else "constructor")
                 if callee is not None:
-                    self._call(m, owner, cls, hidden, callee, node)
-            stack.extend((c, owner, cls, hidden) for c in reversed(node.named_children))
+                    self._call(m, owner, cls, hidden, types, callee, node)
+            stack.extend((c, owner, cls, hidden, types) for c in reversed(node.named_children))
 
-    def _call(self, m: Module, owner: str, cls: str | None, hidden: frozenset, callee, node) -> None:
-        """A call from `owner`: its link, and its site. `hidden`: the names its functions declare."""
+    def _typed(self, m: Module, scope) -> dict[str, str]:
+        """T-0020: the variables of a scope assigned `new C()` or `[await] f()`, C a class of ours or f a function
+        of ours that returns an object literal: name -> what holds their methods."""
+        found = {}
+        stack = list(scope.named_children)
+        while stack:
+            node = stack.pop()
+            if node.type == "variable_declarator" and (value := node.child_by_field_name("value")) is not None:
+                if value.type == "await_expression" and value.named_children:
+                    value = value.named_children[0]
+                callee = value.child_by_field_name("constructor" if value.type == "new_expression" else "function") \
+                    if value.type in ("new_expression", "call_expression") else None
+                name = node.child_by_field_name("name")
+                if callee is not None and callee.type == "identifier" and name.type == "identifier":
+                    holder = self._binding(m, _text(callee))
+                    if isinstance(holder, str) and holder in self.class_methods:
+                        found[_text(name)] = holder
+            if node.type not in SCOPES:
+                stack.extend(node.named_children)
+        return found
+
+    def _call(self, m: Module, owner: str, cls: str | None, hidden: frozenset, types: dict[str, str], callee,
+              node) -> None:
+        """A call from `owner`: its link, and its site. `hidden`: the names its functions declare; `types`: the
+        variables whose methods are known (T-0020)."""
         target, sure, verdict = None, True, "unknown"
         name = _text(callee)
         if callee.type == "identifier":
@@ -363,7 +439,9 @@ class Reader:
             receiver, name = callee.child_by_field_name("object"), _text(callee.child_by_field_name("property"))
             known = receiver.type == "identifier" and _text(receiver) not in hidden
             b = m.bindings.get(_text(receiver)) if known else None
-            if receiver.type == "this" and cls:
+            if receiver.type == "identifier" and _text(receiver) in types:
+                target = self._method(types[_text(receiver)], name)
+            elif receiver.type == "this" and cls:
                 target = self._method(cls, name)
             elif isinstance(b, Import) and b.module is None:
                 verdict = "external"
