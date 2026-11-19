@@ -6,7 +6,8 @@ blanked first. The reading, the owner of a call, the `Class.method` naming and t
 The queries follow one capture convention (docs/readers.md): `@function`, `@method`, `@class`, each with its
 `@name`; `@call` for `f()`, `@send` for `x.m()`; `@reference` for `new C()`, `extends C`; `@receiver` for a method's
 type when it is declared outside it (Go). A use belongs to the innermost definition that contains it; a function in
-a `@class` is its method; a method's class is its `@receiver`, or else the innermost `@class` that contains it.
+a `@class` is its method; a method's class is its `@receiver`, or else the innermost `@class` that contains it; a
+`@class` in a `@class` is `Outer.Inner` (T-0043), its methods `Outer.Inner.m`.
 
 - a node per file, function, method (`Class.method`) and class; the definitions of one kind and name in a file are one
   (Rust's `struct T` and its `impl T`, Java's overloads); the ids carry the extension (`a_t_go`);
@@ -508,8 +509,9 @@ def read(language: Language, file: str, source: bytes) -> tuple[list[Definition]
     definitions, uses = [], []
     # A file's definitions of one kind and name are one: Rust's `struct T` and its `impl T`, Java's overloads.
     # shortcut: the line (and the extent) is the first one's; to give the node every line if `explain --source`
-    # needs the others. shortcut: nested classes of one name (`X.Builder`, `Y.Builder`) and their methods are one
-    # too; to name a nested class by its outer one if a host needs them apart.
+    # needs the others. A class in a class is `Outer.Inner` (T-0043), so `X.Builder` and `Y.Builder` stay apart.
+    # shortcut: an anonymous class is no class, its methods the enclosing class's (`A.run`); to make its body a
+    # `@class` if a host needs them apart.
     by_kind_name: dict[tuple[str, str], Definition] = {}
     stack: list[tuple[int, Definition]] = []  # the open definitions: (their end, them)
     # By position, an outer node before the inner one it starts with (`f(g())`), a definition before a use there.
@@ -522,9 +524,11 @@ def read(language: Language, file: str, source: bytes) -> tuple[list[Definition]
             uses.append(Use(role, name, line, stack[-1][1] if stack else None, re.sub(r"\s+", "", used)[:60]))
             continue
         kind = role
-        if role != "class":
-            cls = receiver.text.decode("utf-8", "replace") if receiver is not None else \
-                next((d.name for _, d in reversed(stack) if d.kind == "class"), None)
+        cls = receiver.text.decode("utf-8", "replace") if receiver is not None else \
+            next((d.name for _, d in reversed(stack) if d.kind == "class"), None)
+        if role == "class":
+            name = f"{cls}.{name}" if cls else name
+        else:
             kind, name = ("method", f"{cls}.{name}") if cls else ("function", name)
         if (kind, name) not in by_kind_name:
             by_kind_name[kind, name] = Definition(kind, name, line)
@@ -574,7 +578,8 @@ def contribute(language: Language, project) -> dict:
                         d.name) for d in definitions}
         in_file = {d.name: held[d] for d in definitions if d.kind == "class"}
         for d in definitions:
-            (classes[d.name] if d.kind == "class" else callables[d.name.rsplit(".", 1)[-1]]).append(held[d])
+            # by the bare name a use carries: `Inner` for `Outer.Inner`, `m` for `T.m`
+            (classes if d.kind == "class" else callables)[d.name.rsplit(".", 1)[-1]].append(held[d])
             # a method's class holds it when it is defined in the same file (Go's type is often in another one)
             cls = d.name.rsplit(".", 1)[0] if d.kind == "method" else None
             link(in_file.get(cls, fid), held[d], "contains", rel, d.line)

@@ -80,14 +80,11 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   implementations of `CodedInputStream.pushLimit`. Linking the call to the
   abstract method needs its node and the receiver's type: a dedicated Java
   reader (ADR 0003).
-- **Java's nested and anonymous classes lose their outer name.** (protobuf,
-  sample host, 2026-11-19, T-0033) A nested class is named by its own name:
-  59 class declarations share their name with another of their file (each
-  generated message's `Builder`), and are one class, their methods of one
-  name one method. The 325 methods of an anonymous class are the enclosing
-  class's (`A.run`). Naming a nested class `Outer.Inner` would keep them
-  apart. C# likewise (T-0035): each generated message's nested `Types` class
-  is one `Types` per file (18 files).
+- **Java's anonymous classes lose their methods to the enclosing class.**
+  (protobuf, sample host, 2026-11-19, T-0033) The 325 methods of an
+  anonymous class (`new Runnable() { public void run() {..} }`) are the
+  enclosing class's (`A.run`). Making the anonymous body a class would keep
+  them apart. Its nested classes are `Outer.Inner` since T-0043 (Settled).
 - **A C amalgamation makes every name it repeats ambiguous.** (protobuf,
   sample host, 2026-11-19, T-0034) `php/ext/google/protobuf/php-upb.{c,h}`
   and `ruby/ext/google/protobuf_c/ruby-upb.{c,h}` are upb's sources
@@ -211,6 +208,18 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
 
 Settled by tickets (2026-11-19):
 
+- **Java's nested classes lose their outer name.** [T-0043] (protobuf,
+  sample host, 2026-11-19, T-0033) A nested class was named by its own name:
+  each generated message's `Builder` of one file was one class, their
+  methods of one name one method; C#'s `Types` likewise (T-0035). A class in
+  a class is `Outer.Inner` since T-0043, in every language of the generic
+  reader: protobuf's Java `Builder` 29 -> 74 classes, C#'s `Types` apart in
+  10 files, Kotlin's sealed `Success` in libsignal (34). The price: longer
+  names in the answers (`callers ByteString.copyFromUtf8` 9569 -> 11526
+  bytes, `Proto3GencodeTestProto.TestMessage.Builder.getXBytes`), and a
+  method declared outside its nested class is `Inner.m` (C++'s
+  `Outer::Inner::m`, 108 on protobuf; Kotlin's extensions, 29 on libsignal;
+  `shortcut:`).
 - **Kotlin's calls to its host's Java are not linked.** [T-0042] (libsignal,
   sample host, 2026-11-19, T-0038) 488 of the 1822 Kotlin sites `external`
   named a definition of libsignal's Java (`nativeHandle` 71, `makeCancelable`

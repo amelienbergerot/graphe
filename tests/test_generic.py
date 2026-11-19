@@ -5,6 +5,9 @@ from __future__ import annotations
 import textwrap
 from pathlib import Path
 
+import networkx as nx
+
+import graphe
 import graphe_generic
 from graphe_generic import C, CSHARP, GO, JAVA, JVM, KOTLIN, RUBY, RUST, SWIFT
 
@@ -194,6 +197,31 @@ def test_java_overloads_are_one_method_and_a_scoped_type_is_its_last_name():
                     ("reference", "MessageOrBuilder", 12, "AOrBuilder")}
 
 
+def test_a_java_nested_class_is_outer_dot_inner_and_an_anonymous_ones_methods_are_its_enclosing_classs():
+    """protobuf (T-0043): each generated message's `Builder` is `Message.Builder`, else the `Builder`s of one file are
+    one class; an anonymous class is still no class (a `shortcut:`)."""
+    definitions, uses = _read(JAVA, "src/Outer.java", """        class Outer {
+            void m() { new Inner(); new Runnable() { public void run() { go(); } }; }
+
+            static class Inner {
+                void m() { helper(); }
+
+                class Deeper {
+                    Deeper() {}
+                }
+            }
+        }
+
+        class Top {}
+        """)
+    assert definitions == {("class", "Outer", 1), ("method", "Outer.m", 2), ("method", "Outer.run", 2),
+                           ("class", "Outer.Inner", 4), ("method", "Outer.Inner.m", 5),
+                           ("class", "Outer.Inner.Deeper", 7), ("method", "Outer.Inner.Deeper.Deeper", 8),
+                           ("class", "Top", 13)}
+    assert uses == {("reference", "Inner", 2, "Outer.m"), ("reference", "Runnable", 2, "Outer.m"),
+                    ("call", "go", 2, "Outer.run"), ("call", "helper", 5, "Outer.Inner.m")}
+
+
 def test_a_cpp_method_defined_outside_its_class_is_named_by_its_innermost_scope():
     """protobuf (T-0034): `ns::Foo::Bar`, `Foo<T>::Bar`, a constructor, a destructor, an operator; a prototype and a
     method declared in its class are not definitions; a file with a macro the grammar does not know is read; an
@@ -269,6 +297,24 @@ def test_a_csharp_class_its_members_and_both_kinds_of_call():
                     ("reference", "Q", 11, "R")}
 
 
+def test_a_csharp_nested_class_is_outer_dot_inner():
+    """protobuf (T-0043): each generated message's `Types` is `Message.Types`, else the `Types` of one file are one."""
+    definitions, uses = _read(CSHARP, "src/Person.cs", """        namespace N {
+        public sealed partial class Person {
+            public static partial class Types {
+                public enum PhoneType { Mobile }
+                public sealed partial class PhoneNumber {
+                    public void M() { F(); }
+                }
+            }
+        }
+        }
+        """)
+    assert definitions == {("class", "Person", 2), ("class", "Person.Types", 3), ("class", "Person.Types.PhoneType", 4),
+                           ("class", "Person.Types.PhoneNumber", 5), ("method", "Person.Types.PhoneNumber.M", 6)}
+    assert uses == {("call", "F", 6, "Person.Types.PhoneNumber.M")}
+
+
 def test_a_csharp_property_is_the_method_c_dot_p_owning_its_accessors_calls():
     """protobuf (T-0041): a generated setter's `CheckNotNull` is `Person.Name`'s, not `Person`'s; `=> expr` and
     `get => expr` too. An auto-property is a node with no call; its initial value's call is its own. An interface's or
@@ -340,13 +386,16 @@ def test_a_ruby_class_its_methods_and_its_explicit_calls():
         end
         def top; end
         """)
-    assert definitions == {("class", "Protobuf", 1), ("class", "C", 2), ("method", "C.initialize", 3),
-                           ("method", "C.s", 4), ("method", "C.x=", 5), ("method", "C.t", 7), ("class", "Any", 10),
-                           ("method", "Any.pack", 11), ("method", "Protobuf.encode", 13), ("function", "top", 15)}
-    assert uses == {("reference", "B", 2, "C"), ("call", "b", 3, "C.initialize"), ("call", "d", 3, "C.initialize"),
-                    ("send", "c", 3, "C.initialize"), ("send", "f", 3, "C.initialize"),
-                    ("send", "new", 3, "C.initialize"), ("reference", "Bar", 3, "C.initialize"),
-                    ("send", "z", 7, "C.t"), ("send", "class_eval", 10, "Any")}
+    # a class in a module is `Module.Class` (T-0043), the module by its last name
+    assert definitions == {("class", "Protobuf", 1), ("class", "Protobuf.C", 2), ("method", "Protobuf.C.initialize", 3),
+                           ("method", "Protobuf.C.s", 4), ("method", "Protobuf.C.x=", 5), ("method", "Protobuf.C.t", 7),
+                           ("class", "Protobuf.Any", 10), ("method", "Protobuf.Any.pack", 11),
+                           ("method", "Protobuf.encode", 13), ("function", "top", 15)}
+    init = "Protobuf.C.initialize"
+    assert uses == {("reference", "B", 2, "Protobuf.C"), ("call", "b", 3, init), ("call", "d", 3, init),
+                    ("send", "c", 3, init), ("send", "f", 3, init), ("send", "new", 3, init),
+                    ("reference", "Bar", 3, init), ("send", "z", 7, "Protobuf.C.t"),
+                    ("send", "class_eval", 10, "Protobuf.Any")}
 
 
 def test_a_ruby_local_variable_is_no_call():
@@ -618,3 +667,46 @@ def test_a_kotlin_call_to_a_java_method_is_linked_and_the_reverse(tmp_path: Path
         ("src_foo_kt_bar_m", "src_foo_java_foo_nativehandle", "calls"),
         ("src_foo_kt_bar_m", "src_foo_java_foo", "references"),
         ("src_foo_java_foo_usekotlin", "src_foo_kt_fromkotlin", "calls")}
+
+
+def test_two_nested_builders_of_one_file_are_two_nodes_and_a_call_both_define_is_ambiguous(tmp_path: Path):
+    """protobuf (T-0043): `Foo.Builder.build` and `Bar.Builder.build` are two methods, so `build()` is linked to
+    neither; a nested class is still referenced by its own name; `explain` designates it by either name."""
+    project = Project(tmp_path, {
+        "src/Msgs.java": """            class Foo {
+                static class Builder {
+                    Foo build() { return null; }
+                }
+            }
+
+            class Bar {
+                static class Builder {
+                    Bar build() { return null; }
+                }
+
+                static class Only {}
+
+                void use() {
+                    build();
+                    new Only();
+                }
+            }
+            """,
+    })
+    java = graphe_generic.contribute(JAVA, project)
+    names = {n["id"]: n["name"] for n in java["nodes"]}
+    assert names["src_msgs_java_foo_builder"] == "Foo.Builder" and names["src_msgs_java_bar_builder"] == "Bar.Builder"
+    assert names["src_msgs_java_foo_builder_build"] == "Foo.Builder.build"
+    assert names["src_msgs_java_bar_builder_build"] == "Bar.Builder.build"
+    links = {(e["source"], e["target"], e["relation"]) for e in java["links"]}
+    assert ("src_msgs_java_foo_builder", "src_msgs_java_foo_builder_build", "contains") in links
+    assert {(s, t, r) for s, t, r in links if r != "contains"} == {
+        ("src_msgs_java_bar_use", "src_msgs_java_bar_only", "references")}
+    assert {s["text"]: s["verdict"] for s in java["sites"]} == {"build": "ambiguous"}
+
+    graph = nx.DiGraph()
+    graph.add_nodes_from((n["id"], n) for n in java["nodes"])
+    assert graphe.find(graph, "Foo.Builder.build") == ["src_msgs_java_foo_builder_build"]
+    assert graphe.find(graph, "Builder.build") == ["src_msgs_java_bar_builder_build", "src_msgs_java_foo_builder_build"]
+    assert graphe.find(graph, "Only") == ["src_msgs_java_bar_only"]
+    assert graphe._designation(graph, "src_msgs_java_foo_builder_build") == "Foo.Builder.build"
