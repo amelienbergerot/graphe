@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: closed
 Type: spec
 Created: 2026-11-19
 
@@ -101,3 +101,7 @@ Each language is proven on a pinned public **sample host**, preferably one that 
 - Decided in a grilling session (2026-11-18 and 19): GLOSSARY.md (generic reader, dedicated reader), ADR 0003, and the BACKLOG.md entries "A host in another language gets no graph", "PHP's pattern reader may be worse than the generic one", "Only its author can install the tool", "The links a framework creates are outside the graph".
 - The first slice should prove the capture convention on Go, Rust and Java (the `@receiver`, the `impl`, a plain class) before the other languages come in.
 - Not checked: whether the nine grammars have Linux and macOS wheels (it matters to packaging), the share of generated code in protobuf, and whether libsignal and gitea clone cleanly on Windows (long paths, symbolic links).
+
+## Comments
+
+**2026-11-19, closed.** The nine languages are read, each proven on its sample host in its own ticket: Go T-0031 (gitea), Rust T-0032, Swift T-0037 and Kotlin T-0038 (libsignal), Java T-0033, C/C++ T-0034, C# T-0035 and Ruby T-0036 (protobuf). `docs/readers.md` has a section per language and one for the dedicated readers; `docs/sample-hosts.md` pins Django, gitea, libsignal and protobuf; the README's "Tested on" table holds their measures (protobuf builds in 62.7 s, no cache yet); the skill and the README point to the readers document; the grammars are pinned in `pyproject.toml`. What the generic reader misses is in BACKLOG.md, naming its host, and "A host in another language gets no graph" moves to Settled. Of the further notes: libsignal and gitea cloned and built on Windows; the Linux and macOS wheels of the grammars are still not checked, which is for the packaging effort (BACKLOG.md, "Only its author can install the tool"); the share of generated code in protobuf was not measured as a whole.

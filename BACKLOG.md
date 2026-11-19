@@ -20,24 +20,6 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   with its C/C++ (T-0034, 57327 nodes): 70.2 s, 35.1 s before; under the
   profiler the layout takes 44 of 82 s, the generic reader about 8 s for its
   1363 C/C++ files (parsing 4.9 s): no cache of its own yet.
-- **A host in another language gets no graph.** (All hosts, 2026-11-18,
-  the user's request) Only Python, GDScript, PHP and JS/TS/Svelte have a
-  reader: a Java, C#, Go, Rust... host is grep only. Decided in a grilling
-  session: a generic reader first, every link by name, for many languages
-  at once; a dedicated reader for one language only when this backlog shows
-  the generic one falls short on a real host (as ADR 0002 does for the
-  TypeScript compiler). First languages: Java, C#, Go, Rust, Ruby, C, C++,
-  Swift, Kotlin, by queries of ours, specified per language in
-  `docs/readers.md`; their grammars pinned in the main dependencies. A call is
-  linked only when its name has a single definition, the others counted as
-  not attributed. A language is done on a public sample host: builds, 0
-  dangling, `check` coverage, 3 queries compared with grep (ADR 0003). The
-  sample hosts, pinned, in `docs/sample-hosts.md`, summed up in the README:
-  protobuf, libsignal, gitea (and Django). T-0030; Go is read since T-0031
-  (gitea), Rust since T-0032 (libsignal), Java since T-0033 (protobuf), C and
-  C++ since T-0034 (protobuf), C# since T-0035 (protobuf), Ruby since
-  T-0036 (protobuf), Swift since T-0037 (libsignal), Kotlin since T-0038
-  (libsignal).
 - **A Go file in Go 1.26's syntax is skipped whole.** (gitea, sample host,
   2026-11-19, T-0031) `tree-sitter-go` 0.25.0, the last on PyPI, knows
   neither `new(expr)` nor generic methods (`func (f *Flash) Error[T ...]`):
@@ -231,6 +213,27 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   the generic reader never links a call by name across languages (ADR 0003).
 
 ## Settled
+
+Settled by tickets (2026-11-19):
+
+- **A host in another language gets no graph.** [T-0030] (All hosts, 2026-11-18,
+  the user's request) Only Python, GDScript, PHP and JS/TS/Svelte have a
+  reader: a Java, C#, Go, Rust... host is grep only. Decided in a grilling
+  session: a generic reader first, every link by name, for many languages
+  at once; a dedicated reader for one language only when this backlog shows
+  the generic one falls short on a real host (as ADR 0002 does for the
+  TypeScript compiler). First languages: Java, C#, Go, Rust, Ruby, C, C++,
+  Swift, Kotlin, by queries of ours, specified per language in
+  `docs/readers.md`; their grammars pinned in the main dependencies. A call is
+  linked only when its name has a single definition, the others counted as
+  not attributed. A language is done on a public sample host: builds, 0
+  dangling, `check` coverage, 3 queries compared with grep (ADR 0003). The
+  sample hosts, pinned, in `docs/sample-hosts.md`, summed up in the README:
+  protobuf, libsignal, gitea (and Django). T-0030; Go is read since T-0031
+  (gitea), Rust since T-0032 (libsignal), Java since T-0033 (protobuf), C and
+  C++ since T-0034 (protobuf), C# since T-0035 (protobuf), Ruby since
+  T-0036 (protobuf), Swift since T-0037 (libsignal), Kotlin since T-0038
+  (libsignal).
 
 Settled by tickets (2026-11-18):
 

@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: closed
 Type: spec
 Created: 2026-11-17
 
@@ -129,3 +129,5 @@ The graph becomes a tool installed once, as a global command (`graphe`), that se
 **2026-11-18, after T-0011.** Grid Zero's snapshot is taken a third time, with the English names (Grid Zero, T-0388). The old one, translated by T-0011's correspondence table, is identical to the new one: 258 ids renamed (`value_`, `hint_`, `_constant`), no community or position changed. The reference test holds again, now for the English names.
 
 **2026-11-18, after T-0012.** The code, the docstrings, the comments, the glossary, the ADRs, the backlog (`graphe_manques.md` becomes `BACKLOG.md`) and the open tickets are in English. Grid Zero's snapshot did not move.
+
+**2026-11-19, closed.** The six steps are done (T-0002 to T-0015) and their follow-ups closed (T-0016 to T-0025); T-0027 to T-0029 are `wontfix`. T-0026 (a large repository's rebuild) stays open by the user's decision, as its own ticket: no host of Django's size yet. The generic reader for other languages goes on under its own spec, T-0030.
