@@ -267,19 +267,23 @@ RUBY = Language("ruby", {".rb": (tree_sitter.Language(tree_sitter_ruby.language(
 # `class_declaration`, a class; a protocol is one too. An `extension C` is no class: its methods are `C`'s by
 # `@receiver` (as Go's), so that a type extended in several files stays one class and its references are linked. A
 # method is captured as a direct child of its body, the only way to tell a type's from an extension's; `init` is
-# `C.init`, a computed property `var p: T { .. }` the method `C.p` (464 on libsignal, which would leave their 670
-# calls to the class; reading `x.p` is no call, so it has no caller). A call to a capitalised name (`C(..)`,
-# `Foo.Bar(..)`) is a reference to that type, Swift's naming convention. shortcut: a nested function, an operator
-# (`static func ==`) and a subscript are no definitions, their calls their enclosing definition's; to capture them if
-# a host's `explain` needs them. The grammar reads `defer { }` as a call `defer`: no call; nor the standard
-# `withUnsafePointer(to:)`, which libsignal shadows by a method (24 bare calls, all the standard's).
-_SW_EXTENDED = ("[(user_type (type_identifier) @receiver .) "
-                "(user_type (type_identifier) @receiver . (type_arguments) .)]")
+# `C.init`, a computed property `var p: T { .. }` the method `C.p` (577 on libsignal, whose 670 calls would be their
+# class's; reading `x.p` is no call, so it has no caller). A type is named by its last name, generic or not.
+# shortcut: a nested function, an operator (`static func ==`) and a subscript are no definitions, and a stored
+# property's initial value or observers (`didSet`) call from the class; to capture them if a host's `explain` needs
+# them. shortcut: a call to a capitalised name (`C(..)`, `Foo.Bar(..)`) is a reference to that type, a lower-case one
+# a call, Swift's naming convention; to tell them apart by their definitions if a host breaks it. shortcut: the grammar
+# reads `defer { }` as a call `defer`, and the standard `withUnsafePointer(to:)` and `withUnsafeMutablePointer(to:)`
+# are linked to a host's method of that name (libsignal's, 24 bare calls all the standard's): no calls, so a host's
+# own bare function so named gets no caller; to drop them by their `to:` label if a host defines one.
+_SW_LAST = ("[(user_type (type_identifier) @{c} .) "
+            "(user_type (type_identifier) @{c} . (type_arguments) .)]")
+_SW_EXTENDED = _SW_LAST.format(c="receiver")
+_SW_TYPE = _SW_LAST.format(c="name")
 _SW_FUNCTION = ("[(function_declaration name: (simple_identifier) @name body: (_)) "
                 "(init_declaration \"init\" @name body: (_)) "
                 "(property_declaration name: (pattern bound_identifier: (simple_identifier) @name) "
                 "computed_value: (_))]")
-_SW_TYPE = "(user_type (type_identifier) @name .)"
 SWIFT_QUERY = f"""
 [(class_declaration name: (type_identifier) @name) (protocol_declaration name: (type_identifier) @name)] @class
 (source_file (function_declaration name: (simple_identifier) @name body: (_)) @function)
@@ -294,7 +298,7 @@ SWIFT_QUERY = f"""
 (call_expression (navigation_expression suffix: (navigation_suffix suffix: (simple_identifier) @name))
  (#match? @name "^[A-Z]")) @reference
 (call_expression (prefix_expression target: (simple_identifier) @name)) @send
-(constructor_expression constructed_type: (user_type (type_identifier) @name)) @reference
+(constructor_expression constructed_type: {_SW_TYPE}) @reference
 (inheritance_specifier inherits_from: {_SW_TYPE}) @reference
 """
 
@@ -311,7 +315,8 @@ SWIFT = Language("swift", {".swift": (tree_sitter.Language(tree_sitter_swift.lan
     "withUnsafeMutableBytes", "index", "firstIndex", "count", "isEmpty", "prefix", "suffix", "dropFirst", "dropLast",
     "enumerated", "zip", "makeIterator", "next", "get", "set", "value", "copyBytes"}),
     # The grammar does not parse 10 of libsignal's 218 files (parameter packs `repeat (each T)`, `case .self`,
-    # `catch E.c(_:)`, `() = try x`); read all the same, they keep every definition but nested functions.
+    # `catch E.c(_:)`, `() = try x`); read all the same, they lose no definition. shortcut: a Swift file that does
+    # not parse is not named on stderr; to name it if a host's garbage shows.
     tolerant=True)
 
 

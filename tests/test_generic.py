@@ -287,7 +287,7 @@ def test_a_ruby_local_variable_is_no_call():
 def test_a_swift_type_its_methods_and_its_calls():
     """libsignal (T-0037): a class, a struct, an enum, an actor and a protocol are classes; `init` is the method
     `C.init`, a computed property `p` the method `C.p`; `b()` is a call, `x.c()`, `y?.z()` and `.make()` are sends; a call to a capitalised name, `C(..)`,
-    `Foo.Bar(..)`, `Array<Int>()`, and an inherited type are references by the last name."""
+    `Foo.Bar(..)`, `Foo.Array<Int>()`, and an inherited type, generic too, are references by the last name."""
     definitions, uses = _read(SWIFT, "Sources/c.swift", """\
         import Foundation
         public class C: B, P {
@@ -296,7 +296,7 @@ def test_a_swift_type_its_methods_and_its_calls():
             static func s() { C.s() }
             var p: Int { g() }
         }
-        struct S { func t() { let q = C(a: 1); q.m(); Array<Int>() } }
+        struct S: Base<T> { func t() { let q = C(a: 1); q.m(); Foo.Array<Int>() } }
         protocol P { func v() }
         func top() { [1].map { $0.u() } }
         """)
@@ -306,7 +306,7 @@ def test_a_swift_type_its_methods_and_its_calls():
                     ("send", "c", 3, "C.init"), ("send", "f", 3, "C.init"), ("send", "z", 3, "C.init"),
                     ("reference", "Bar", 3, "C.init"), ("send", "make", 4, "C.m"), ("send", "s", 5, "C.s"),
                     ("call", "g", 6, "C.p"), ("reference", "C", 8, "S.t"), ("send", "m", 8, "S.t"),
-                    ("reference", "Array", 8, "S.t"), ("send", "map", 10, "top"), ("send", "u", 10, "top")}
+                    ("reference", "Base", 8, "S"), ("reference", "Array", 8, "S.t"), ("send", "map", 10, "top"), ("send", "u", 10, "top")}
 
 
 def test_a_swift_extension_is_no_class_its_methods_are_its_types():
