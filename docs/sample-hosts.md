@@ -25,8 +25,8 @@ graphe build; graphe check
 - **URL**: https://github.com/go-gitea/gitea
 - **Commit**: `c376d5d8b126a28781fffb4c8c3fc3b9deab8469` (2026-11-18).
 - **Languages**: Go (3199 of its 6431 files), TypeScript (276), JavaScript (3).
-- **`graphe.toml`**: none. The Go grammar does not parse 47 files (Go 1.26's `new(expr)`, generic methods): skipped and named at each build (BACKLOG.md).
-- **Measured by**: T-0031 (the generic reader, Go).
+- **`graphe.toml`**: none. The Go grammar does not parse 47 files (Go 1.26's `new(expr)`, generic methods): read all the same since T-0039, their 7 generic methods lost (BACKLOG.md).
+- **Measured by**: T-0031 (the generic reader, Go), T-0039 (Go `tolerant`: 0 dangling, no file skipped).
 
 ## libsignal
 

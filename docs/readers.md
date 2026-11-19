@@ -21,7 +21,7 @@ A **dedicated reader** knows its language's imports and types, and links a call 
 
 ## The generic reader
 
-`src/graphe_generic.py`. A language is data only, a `Language`: its tree-sitter grammars by file suffix, a query of ours per grammar, its **common names**, the method names never linked from a call on a receiver, and two switches for C/C++'s macros, C#'s `#if` and Swift's newer syntax: `tolerant` (a file with error nodes is read, not skipped) and `erased` (a pattern blanked before parsing; ADR 0003's amendment). The reading, the owner of a call, the `Class.method` naming and the linking are written once.
+`src/graphe_generic.py`. A language is data only, a `Language`: its tree-sitter grammars by file suffix, a query of ours per grammar, its **common names**, the method names never linked from a call on a receiver, and two switches for C/C++'s macros, C#'s `#if` and Swift's and Go's newer syntax: `tolerant` (a file with error nodes is read, not skipped) and `erased` (a pattern blanked before parsing; ADR 0003's amendment). The reading, the owner of a call, the `Class.method` naming and the linking are written once.
 
 ### The capture convention
 
@@ -66,7 +66,7 @@ Every call or send is a coverage site, with its verdict:
 | `common` | A send of a common name that the host defines. | no: counted by `explain` likewise |
 | `external` | No definition of that name in the host (the standard library, a dependency, a builtin). | no |
 
-A file that does not parse (any error node in its tree) is skipped and named on stderr; the build goes on. A `tolerant` language (C/C++, whose macros leave error nodes in valid code; C#, whose `#if` branches, both read, can; Swift, whose newer syntax the grammar lacks) reads it all the same. A host without the language's files gets no contribution at all, not even an empty coverage.
+A file that does not parse (any error node in its tree) is skipped and named on stderr; the build goes on. A `tolerant` language (C/C++, whose macros leave error nodes in valid code; C#, whose `#if` branches, both read, can; Swift and Go, whose newer syntax the grammar lacks) reads it all the same. A host without the language's files gets no contribution at all, not even an empty coverage.
 
 ### Adding a language
 
@@ -86,9 +86,12 @@ A quirk the query cannot express is a `shortcut:` in its section here. A languag
 - **Nodes**: a `function` per `func f()`; a `method` `T.M` per `func (r T) M()`, `func (r *T) M()` and their generic forms (`*T[K]`), its class the receiver's type; a `class` per type declaration (`type T struct`, `interface`, and any other `type T ...`). An interface's method specs are not nodes: each would make its implementations' name ambiguous.
 - **Links**: `f()` and `f[T](x)` are `@call`; `x.M()` and `pkg.F()` are `@send`, so a package's functions follow the common names. `T{}`, `&pkg.T{}` and an embedded field (`struct { Base }`) are `references` to `T`. All `INFERRED`.
 - **Common names**: the standard library's names that one function of gitea would collect from every `filepath.Join`, `strings.NewReader`, `strings.HasPrefix`, `log.Fatal`, xorm's `cond.And` and `sess.Exec` (measured from `graphe check` on gitea, T-0031), and the methods of Go's common interfaces (`String`, `Error`, `Close`, `Read`, `Write`, `Len`...). The list is `GO.common`.
-- **Quirks**: a type conversion `T(x)` is a call to `T`, so `external` (no function `T`). The methods of a type declared in several packages under one name are one name too (`Repository.Load...`): ambiguous unless unique.
+- **Quirks**:
+  - A type conversion `T(x)` is a call to `T`, so `external` (no function `T`). The methods of a type declared in several packages under one name are one name too (`Repository.Load...`): ambiguous unless unique.
+  - `tolerant`: grammar 0.25.0 knows neither Go 1.26's `new(expr)` nor generic methods; 47 of gitea's 3199 files have an error node, read all the same: no garbage name among their definitions (T-0039).
 - **Limits**:
-  - `shortcut:` a file with one error node is skipped whole: grammar 0.25.0 knows neither Go 1.26's `new(expr)` nor generic methods, 47 of gitea's 3199 files (BACKLOG.md); to upgrade the grammar when one does, or to read the valid part of a tree.
+  - `shortcut:` a generic method (`func (f *Flash) Error[T ...]`, 7 on gitea) is lost in its error node: no node, its calls its file's, its callers not linked to it; to upgrade the grammar when one knows them (BACKLOG.md).
+  - `shortcut:` a Go file that does not parse is not named on stderr (`tolerant`); to name it if a host's garbage shows.
   - `shortcut:` a call through a value (`handlers[name](ctx)`, a field holding a func) and a function passed as a value are not uses; to read if a host needs it.
   - `shortcut:` no imports: `pkg.F()` links to any `F` of the host, `strings.Join` included when the host defines one `Join` and `Join` is not common.
 - **Sample host**: gitea (docs/sample-hosts.md).

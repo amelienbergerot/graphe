@@ -47,6 +47,32 @@ def test_a_go_method_declared_outside_its_type_is_type_dot_method():
                     ("call", "g", 19, "f"), ("call", "h", 20, "f")}
 
 
+def test_a_go_file_in_go_1_26s_syntax_is_read_for_its_valid_part():
+    """gitea (T-0039): the grammar knows neither a generic method nor `new(expr)`; the file is read all the same. The
+    generic method is lost in the error: its call belongs to the file."""
+    definitions, uses = _read(GO, "a/flash.go", """\
+        package a
+
+        type Flash struct{}
+
+        func (f *Flash) Error[T any](msg T) {
+        \tf.set(msg)
+        }
+
+        func before() {
+        \tp := new(int64(1))
+        \tg()
+        }
+
+        func after() {
+        \th()
+        }
+        """)
+    assert definitions == {("class", "Flash", 3), ("function", "before", 9), ("function", "after", 14)}
+    assert uses == {("send", "set", 6, None), ("call", "new", 10, "before"), ("call", "g", 11, "before"),
+                    ("call", "h", 15, "after")}
+
+
 def test_a_rust_function_of_an_impl_is_a_method_of_its_type():
     definitions, uses = _read(RUST, "src/t.rs", """\
         struct T;
@@ -448,7 +474,8 @@ def test_a_call_is_linked_by_its_name_only_when_the_language_defines_it_once(tmp
     # a host without Java: no contribution at all, no coverage (T-0031)
     assert graphe_generic.contribute(JAVA, project) == {}
 
-    go = graphe_generic.contribute(GO._replace(common=frozenset({"Get"})), project)
+    # not tolerant, so that the broken file is skipped and named (Go is tolerant since T-0039)
+    go = graphe_generic.contribute(GO._replace(common=frozenset({"Get"}), tolerant=False), project)
     nodes = {n["id"]: (n["kind"], n["name"], n["source_location"]) for n in go["nodes"]}
     assert nodes["a_a_go"] == ("file", "a/a.go", "L1")
     assert nodes["a_a_go_store_save"] == ("method", "Store.Save", "L5")

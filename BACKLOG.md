@@ -20,21 +20,22 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   with its C/C++ (T-0034, 57327 nodes): 70.2 s, 35.1 s before; under the
   profiler the layout takes 44 of 82 s, the generic reader about 8 s for its
   1363 C/C++ files (parsing 4.9 s): no cache of its own yet.
-- **A Go file in Go 1.26's syntax is skipped whole.** (gitea, sample host,
-  2026-11-19, T-0031) `tree-sitter-go` 0.25.0, the last on PyPI, knows
-  neither `new(expr)` nor generic methods (`func (f *Flash) Error[T ...]`):
-  47 of gitea's 3199 Go files have an error node and are skipped, 15 of them
-  outside the tests. A definition in such a file is lost everywhere:
-  `ctx.ServerErrorAuto` (`services/context/context_response.go`) is
-  `external` at its 1226 calls; `DecodeJSON` has 533 callers' calls, grep
-  155 more in skipped files. A newer grammar, or reading the valid part of a
-  tree with errors, would avoid it: C/C++ does the latter since T-0034
-  (`Language.tolerant`), measured on protobuf only; Go would take it as data.
+- **A Go generic method is no node.** (gitea, sample host, 2026-11-19,
+  T-0031, T-0039) `tree-sitter-go` 0.25.0, the last on PyPI, knows neither
+  `new(expr)` nor generic methods (`func (f *Flash) Error[T ...]`). Since
+  T-0039 the 47 files with such syntax are read for their valid part, but
+  the 7 generic methods (`Flash.Error`, `Warning`, `Info`, `Success`,
+  `Context.JSONError`, `JSONErrorWithField`, `RenderWithErrDeprecated`) are
+  lost in their error node: their calls are their file's, their callers
+  not linked to them (`f.Error` is `common`, `Info` `ambiguous`, `Success`
+  linked to gitea's other `Success`, the others `external`). A newer grammar
+  would avoid it.
 - **The generic reader cannot tell a Go package's function from another's.**
-  (gitea, sample host, 2026-11-19, T-0031) `pkg.F()` is a send linked by the
-  name alone: 27174 calls are `ambiguous` (`t.Context` 3885, `MakeRequest`
-  1871, `NewRequest` 1647, `ctx.Tr` 849) and 23957 `common` (`t.Run`,
-  `fmt.Errorf`, `log.Error`, `filepath.Join`), against 52902 linked by name.
+  (gitea, sample host, 2026-11-19, T-0031, measures of T-0039) `pkg.F()` is
+  a send linked by the name alone: 29123 calls are `ambiguous` (`t.Context`
+  4178, `MakeRequest` 2261, `NewRequest` 1850, `ctx.Tr` 851) and 24888
+  `common` (`t.Run`, `fmt.Errorf`, `log.Error`, `filepath.Join`), against
+  58121 linked by name.
   Go's imports name the package of `pkg.F()` for sure: a dedicated Go reader
   (ADR 0003) would link most of them, and would leave `strings.Join` out of
   the host's `Join` without a common name.
@@ -216,6 +217,12 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
 
 Settled by tickets (2026-11-19):
 
+- **A Go file in Go 1.26's syntax is skipped whole.** [T-0039] (gitea, 2026-11-19,
+  T-0031) 47 of gitea's 3199 Go files were skipped (`new(expr)`, generic
+  methods), their definitions lost everywhere (`ctx.ServerErrorAuto`
+  `external` at its 1226 calls). Go is `tolerant` since T-0039: the files are
+  read for their valid part, `ctx.ServerErrorAuto` linked at its 1234 calls.
+  What remains, the generic methods, is open above.
 - **A host in another language gets no graph.** [T-0030] (All hosts, 2026-11-18,
   the user's request) Only Python, GDScript, PHP and JS/TS/Svelte have a
   reader: a Java, C#, Go, Rust... host is grep only. Decided in a grilling

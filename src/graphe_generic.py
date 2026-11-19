@@ -14,7 +14,7 @@ a `@class` is its method; a method's class is its `@receiver`, or else the inner
   language: a call or a send to a function or a method, a reference to a class. A send never links a common name.
   Each call or send is a site: `ours?`, `ambiguous`, `common` or `external` (no definition of that name);
 - a file that does not parse is skipped and named on stderr, unless the language is `tolerant` (C's macros, C#'s
-  `#if`, Swift's newer syntax).
+  `#if`, Swift's and Go's newer syntax).
 """
 
 from __future__ import annotations
@@ -41,7 +41,7 @@ class Language(NamedTuple):
     name: str
     grammars: dict[str, tuple[tree_sitter.Language, str]]  # suffix -> (grammar, query)
     common: frozenset[str]  # method names never linked from a send
-    tolerant: bool = False  # a file that does not parse is read all the same (C's macros, C#, Swift), not skipped
+    tolerant: bool = False  # a file that does not parse is read all the same (C's macros, C#, Swift, Go), not skipped
     erased: re.Pattern[bytes] | None = None  # what it matches is blanked before parsing (one line, columns kept)
 
 
@@ -97,7 +97,12 @@ GO = Language("go", {".go": (tree_sitter.Language(tree_sitter_go.language()), GO
     "ToLower", "Count", "Bytes", "Strings", "Fatal", "Printf", "Errorf", "MustCompile", "Compile", "QuoteMeta",
     "Getenv", "ReadFile", "WriteFile", "MkdirAll", "Open", "OpenFile", "Create", "Remove", "Stat", "Symlink", "Base",
     "Clean", "Parse", "ParseBool", "Format", "Marshal", "Unmarshal", "MarshalIndent", "WithTimeout", "WithCancel",
-    "WithContext", "Must", "Equal", "Skip", "Stack", "Exec", "And", "Or", "Where", "Find", "Insert", "Update"}))
+    "WithContext", "Must", "Equal", "Skip", "Stack", "Exec", "And", "Or", "Where", "Find", "Insert", "Update"}),
+    # Grammar 0.25.0 knows neither Go 1.26's `new(expr)` nor generic methods: 47 of gitea's 3199 files, read all the
+    # same (T-0039). shortcut: a generic method is lost in its error node, its calls its file's; to upgrade the
+    # grammar when one knows them. shortcut: a Go file that does not parse is not named on stderr; to name it if a
+    # host's garbage shows.
+    tolerant=True)
 
 # The functions of a trait without a body (`fn sides(&self);`) are not captured: they would make each name ambiguous.
 RUST_QUERY = """
@@ -456,7 +461,7 @@ def read(language: Language, file: str, source: bytes) -> tuple[list[Definition]
     if language.erased:
         source = language.erased.sub(lambda m: b" " * len(m[0]), source)
     root = tree_sitter.Parser(grammar).parse(source).root_node
-    # shortcut: unless the language is `tolerant`, one error node skips the whole file (gitea: Go 1.26's syntax,
+    # shortcut: unless the language is `tolerant`, one error node skips the whole file (protobuf: 5 Kotlin files,
     # BACKLOG.md); to make it `tolerant` once measured on its host, or a newer grammar, when one is published.
     if root.has_error and not language.tolerant:
         raise SyntaxError(file)
