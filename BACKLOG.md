@@ -31,7 +31,8 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   dangling, `check` coverage, 3 queries compared with grep (ADR 0003). The
   sample hosts, pinned, in `docs/sample-hosts.md`, summed up in the README:
   protobuf, libsignal, gitea (and Django). T-0030; Go is read since T-0031
-  (gitea), the other languages follow in T-0032 to T-0038.
+  (gitea), Rust since T-0032 (libsignal), the other languages follow in
+  T-0033 to T-0038.
 - **A Go file in Go 1.26's syntax is skipped whole.** (gitea, sample host,
   2026-11-19, T-0031) `tree-sitter-go` 0.25.0, the last on PyPI, knows
   neither `new(expr)` nor generic methods (`func (f *Flash) Error[T ...]`):
@@ -49,6 +50,34 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   Go's imports name the package of `pkg.F()` for sure: a dedicated Go reader
   (ADR 0003) would link most of them, and would leave `strings.Join` out of
   the host's `Join` without a common name.
+- **A Rust call inside a macro is not seen.** (libsignal, sample host,
+  2026-11-19, T-0032) tree-sitter-rust leaves a macro's arguments as tokens:
+  `assert_eq!(f(x), y)`, `vec![g()]`, `format!("{}", h())` hold no call.
+  libsignal has 8604 macro invocations (`assert_eq!` 1624, `vec!` 1155,
+  `assert!` 716); `Timestamp::from_epoch_millis(` has 81 grep lines, 64 calls
+  the graph sees, most of the 17 others inside a macro. Parsing a token tree
+  as expressions when it parses would recover them.
+- **A Rust type's `impl` in another file than its `struct` is another class
+  node.** (libsignal, sample host, 2026-11-19, T-0032) The classes of one
+  name are merged per file only: 506 of libsignal's 2053 class names have
+  nodes in several files (`Error` 26, `Redact` 16), so 605 of its 3250
+  `T { .. }` are `ambiguous` and not linked. `impl<T> Tr for T` draws a class
+  `T` (15 files), `impl Tr for Vec<X>` a class `Vec` (10). Swift's
+  extensions (T-0037) take the same shape: merging a class's nodes across
+  files, or a `@class` that only extends, is the generic reader's own ticket.
+- **A Rust `Type::f()` path is not linked when `f` is a common name.**
+  (libsignal, sample host, 2026-11-19, T-0032) `T::f()` is a send, like
+  `x.f()`: `DeviceId::new` (183 calls), `ProtocolAddress::new` (132),
+  `TestStoreBuilder::new` (64) are `common`, never linked, though the path
+  names the type; 14660 sends are `common`, 8944 calls `ambiguous`
+  (`KeyPair::generate` 118, defined in 6 `struct KeyPair`), against 6702 linked by
+  name. Linking `T::f` to the method `T.f` when `T` is a class of the host
+  would link most of them, and Java's `C.f()` too: outside "by the name
+  alone" (ADR 0003), to decide.
+- **A Rust file with `dyn 'a + Trait` is skipped whole.** (libsignal,
+  sample host, 2026-11-19, T-0032) `tree-sitter-rust` 0.24.2 rejects a
+  lifetime first in a trait object (`Box<dyn 's + FnOnce(..)>`):
+  `rust/bridge/shared/types/src/net/tokio.rs`, 1 of 612 files.
 - **PHP's pattern reader may be worse than the generic one.** (4cast,
   2026-11-18, the readers' grilling) Once the generic reader exists, compare
   it with `graphe_php.py` on 4cast; replace the pattern reader only if the

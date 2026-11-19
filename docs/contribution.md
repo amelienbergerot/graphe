@@ -4,7 +4,7 @@ Readers and local extensions have one interface only: a function `contribute(pro
 
 ## Assembly
 
-1. The readers (`python`, `godot`, `php`, `js`, `go`: docs/readers.md) contribute, then the extensions declared `with_readers`. Their nodes come in together, sorted by id, after the takeovers (`takeovers`).
+1. The readers (`python`, `godot`, `php`, `js`, `go`, `rust`: docs/readers.md) contribute, then the extensions declared `with_readers`. Their nodes come in together, sorted by id, after the takeovers (`takeovers`).
 2. The core enriches the graph: extents, comments, displayed texts, module variables, documents, etc. A displayed text is the only group of the `displayed_text` pattern of `graphe.toml` (for example `'\btr\("([^"]*)"'`); without a pattern, the core looks for none. The documents are the host's Markdown files, or those that the `[documents] patterns` list designates (like `exclude`). One whose name starts with an identifier (`[documents] identifier`, a regular expression, `\bT-\d{4}\b` by default) is a ticket, with id `ticket_<identifier>`; the others are `document`s.
 3. The other local extensions contribute one by one, in the order in which `graphe.toml` declares them. Each sees the graph the previous ones left.
 

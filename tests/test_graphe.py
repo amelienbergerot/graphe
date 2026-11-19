@@ -487,6 +487,24 @@ def test_the_js_reader_follows_re_exports_and_classifies_its_calls(tmp_path: Pat
                         "Math.max": "global", "[1].map": "member"}
 
 
+def test_the_js_reader_skips_a_comment_among_the_imported_names(tmp_path: Path):
+    """libsignal's `node/ts/NativeNice.ts` (T-0032): a comment is a named child of `{ }`, not a specifier."""
+    read = _js(tmp_path, {
+        "src/zones.mjs": "export function zoneFromCode() {}\n",
+        "app.mjs": textwrap.dedent("""\
+            import {
+              /* eslint-disable no-unused-vars */
+              zoneFromCode,
+            } from './src/zones.mjs'
+            export { /* again */ zoneFromCode as z }
+
+            function main() { zoneFromCode() }
+            """),
+    })
+    assert ("app_mjs_main", "src_zones_mjs_zonefromcode", "calls", "EXTRACTED") in \
+        {(e["source"], e["target"], e["relation"], e["confidence"]) for e in read.links}
+
+
 def test_the_js_reader_keeps_ids_apart_and_links_only_what_it_knows(tmp_path: Path):
     read = _js(tmp_path, {
         "lib.mjs": textwrap.dedent("""\

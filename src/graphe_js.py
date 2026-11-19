@@ -271,7 +271,7 @@ class Reader:
                 elif part.type == "namespace_import":
                     m.bindings[_text(part.named_children[0])] = Import(target, "*")
                 elif part.type == "named_imports":
-                    for name, alias in map(self._specifier, part.named_children):
+                    for name, alias in map(self._specifier, (c for c in part.named_children if c.type != "comment")):
                         m.bindings[alias] = Import(target, name)
         if target:
             self._link(m.id, self.modules[target].id, "imports", m.rel, node)
@@ -286,7 +286,7 @@ class Reader:
         if clause is not None and clause.type == "namespace_export":  # export * as name from
             m.exports[_text(clause.named_children[-1])] = From(target, "*")
         elif clause is not None:
-            for name, alias in map(self._specifier, clause.named_children):
+            for name, alias in map(self._specifier, (c for c in clause.named_children if c.type != "comment")):
                 m.exports[alias] = From(target, name) if source else Local(name)
         elif source:
             if target:

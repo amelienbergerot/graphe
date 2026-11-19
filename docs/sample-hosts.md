@@ -27,3 +27,11 @@ graphe build; graphe check
 - **Languages**: Go (3199 of its 6431 files), TypeScript (276), JavaScript (3).
 - **`graphe.toml`**: none. The Go grammar does not parse 47 files (Go 1.26's `new(expr)`, generic methods): skipped and named at each build (BACKLOG.md).
 - **Measured by**: T-0031 (the generic reader, Go).
+
+## libsignal
+
+- **URL**: https://github.com/signalapp/libsignal
+- **Commit**: `956e1cab1d68291c92f2fcca3c29ec6c3b367e28` (2026-11-17).
+- **Languages**: Rust (612 of its 1852 files), Java (344), Swift (218), TypeScript (176), Kotlin (125).
+- **`graphe.toml`**: none. The Rust grammar does not parse 1 file (`dyn 's + FnOnce`): skipped and named at each build (BACKLOG.md).
+- **Measured by**: T-0032 (Rust). The JS reader read it first there: a comment among the names of `import { }` (`node/ts/NativeNice.ts`) made it fail, fixed in T-0032.

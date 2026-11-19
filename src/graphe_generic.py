@@ -99,7 +99,11 @@ RUST_QUERY = """
 (impl_item type: [
   (type_identifier) @name
   (generic_type type: (type_identifier) @name)
-  (scoped_type_identifier name: (type_identifier) @name)]) @class
+  (scoped_type_identifier name: (type_identifier) @name)
+  (reference_type type: [
+    (type_identifier) @name
+    (generic_type type: (type_identifier) @name)
+    (scoped_type_identifier name: (type_identifier) @name)])]) @class
 (call_expression function: (identifier) @name) @call
 (call_expression function: (field_expression field: (field_identifier) @name)) @send
 (call_expression function: (scoped_identifier name: (identifier) @name)) @send
@@ -108,12 +112,20 @@ RUST_QUERY = """
   (scoped_type_identifier name: (type_identifier) @name)]) @reference
 """
 
-# Not registered yet (T-0032): its queries proven here (T-0031). shortcut: common names guessed, not measured; to
-# tune on its sample host from `check`'s most frequent sends linked by name.
+# The common names: the standard library's and the usual crates' (tokio, futures, http) that one function of
+# libsignal would collect from every `Vec::with_capacity`, `std::future::ready`, `f.debug_struct(..).field` (T-0032,
+# `check`'s most frequent sends linked by name, from `field` to `builder` below); the others, from `take` on, are
+# guessed: the std traits' and iterators' methods. shortcut: a hand-kept list; to extend when `check` shows a
+# standard name among the most frequent sends linked by name (`ours?`) on a host.
 RUST = Language("rust", {".rs": (tree_sitter.Language(tree_sitter_rust.language()), RUST_QUERY)}, frozenset({
     "new", "default", "clone", "len", "is_empty", "push", "pop", "get", "get_mut", "insert", "remove", "contains",
     "iter", "iter_mut", "into_iter", "map", "and_then", "ok_or", "unwrap", "expect", "to_string", "to_owned", "from",
-    "into", "as_ref", "as_str", "fmt", "eq", "cmp", "hash", "next", "collect", "write", "read", "extend", "clear"}))
+    "into", "as_ref", "as_str", "fmt", "eq", "cmp", "hash", "next", "collect", "write", "read", "extend", "clear",
+    "field", "as_slice", "ok", "err", "decode", "transpose", "with_capacity", "ready", "recv", "channel", "is_none",
+    "then", "concat", "null", "timeout", "current", "as_secs", "as_millis", "status", "any", "sort", "as_mut",
+    "as_pin_mut", "builder", "take", "encode", "send", "is_some", "spawn", "block_on", "lock", "join", "to_vec",
+    "try_from", "try_into", "parse", "split", "chain", "filter", "fold", "find", "zip", "copied", "cloned", "flatten",
+    "unwrap_or", "unwrap_or_default", "unwrap_or_else", "map_err", "context", "with_context", "run", "call", "poll"}))
 
 # An abstract method (no body) is not captured, as Rust's trait signatures; a constructor is the method `C.C`.
 JAVA_QUERY = """

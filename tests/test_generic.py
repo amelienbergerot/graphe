@@ -68,9 +68,14 @@ def test_a_rust_function_of_an_impl_is_a_method_of_its_type():
         fn g() {
             println!("x");
         }
+
+        impl<'a> From<&'a U> for &'a mut U {
+            fn from(u: &'a U) -> Self { u }
+        }
         """)
     assert definitions == {("class", "T", 1), ("method", "T.f", 4), ("class", "Shape", 12),
-                           ("method", "Shape.area", 13), ("function", "g", 17)}
+                           ("method", "Shape.area", 13), ("function", "g", 17), ("class", "U", 21),
+                           ("method", "U.from", 22)}
     assert uses == {("call", "g", 5, "T.f"), ("send", "h", 6, "T.f"), ("send", "new", 7, "T.f"),
                     ("reference", "T", 8, "T.f")}
 

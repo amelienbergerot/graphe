@@ -32,3 +32,4 @@ Public sample hosts, pinned in `docs/sample-hosts.md`. Measures only: the build 
 |---|---|---|---|---|
 | Django | Python, JavaScript | 7104 (2943 `.py`) | 54.8 s | `explain django/shortcuts.py::get_object_or_404`: 5 callers, 839 bytes; grep `get_object_or_404(`: 21 lines, 2130 bytes |
 | gitea | Go, TypeScript | 6431 (3199 `.go`) | 31.4 s | `explain GetRepositoryByID`: 72 callers by name, 1770 bytes; grep `GetRepositoryByID(`: 80 lines in 63 files, 7813 bytes |
+| libsignal | Rust, TypeScript | 1852 (612 `.rs`) | 17.7 s | `explain Timestamp.from_epoch_millis`: 57 callers by name, 1577 bytes; grep `from_epoch_millis(`: 81 lines in 30 files, 8260 bytes |

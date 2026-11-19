@@ -9,6 +9,7 @@ A reader turns a host's files of one language into nodes, links and coverage sit
 | `php` | dedicated, `graphe_php.py` | PHP | `.php` |
 | `js` | dedicated, `graphe_js.py` | JavaScript, TypeScript, Svelte | `.js`, `.mjs`, `.ts`, `.svelte` |
 | `go` | generic, `graphe_generic.py` | Go | `.go` |
+| `rust` | generic, `graphe_generic.py` | Rust | `.rs` |
 
 A **dedicated reader** knows its language's imports and types, and links a call for sure where it can. The **generic reader** (ADR 0003, GLOSSARY.md) reads every other language the same way, by its name alone.
 
@@ -86,9 +87,24 @@ A quirk the query cannot express is a `shortcut:` in its section here. A languag
   - `shortcut:` no imports: `pkg.F()` links to any `F` of the host, `strings.Join` included when the host defines one `Join` and `Join` is not common.
 - **Sample host**: gitea (docs/sample-hosts.md).
 
-## Rust and Java (not registered yet)
+## Rust
 
-Their grammars (`tree-sitter-rust` 0.24.2, `tree-sitter-java` 0.23.5) and queries are in `graphe_generic.py`, proven on a snippet each (T-0031): a function of an `impl T` or of a `trait` is `T.f`; a Java class, its methods and its constructor (`C.C`), `new C()`, `extends`, `implements` as `references`. Their `rust` and `java` entries, sections and sample hosts come with T-0032 and T-0033. The limits already probed (an `impl` in another file than its `struct`, Java's overloads and anonymous classes) are in those tickets.
+- **Section**: `rust`. **Suffixes**: `.rs`.
+- **Grammar**: `tree-sitter-rust` 0.24.2 (py-tree-sitter 0.26.1).
+- **Nodes**: a `function` per `fn f()` with a body; a `method` `T.f` per function of an `impl T`, `impl Tr for T`, `impl Tr for &'a T` (and their generic and `path::T` forms) or of a `trait T` (a default method); a `class` per `struct`, `enum`, `union`, `trait` and `impl`. A trait's signatures without a body are not nodes: each would make its implementations' name ambiguous.
+- **Links**: `f()` is `@call`; `x.f()`, `T::f()` and `crate::m::f()` are `@send`, so a path follows the common names. `T { .. }` and `path::T { .. }` are `references` to `T`. All `INFERRED`.
+- **Common names**: the standard library's and the usual crates' (tokio, futures, http) names that one function of libsignal would collect from every `Vec::with_capacity`, `std::future::ready`, `f.debug_struct(..).field`, `x.ok()` (measured from `graphe check` on libsignal, T-0032), and the methods of Rust's common traits (`new`, `default`, `clone`, `from`, `into`, `fmt`...). The list is `RUST.common`.
+- **Quirks**: `Ok(x)`, `Some(x)`, `Err(e)` and a tuple struct `T(x)` are calls, `external` (no function of that name).
+- **Limits**:
+  - `shortcut:` a macro's arguments are tokens to the grammar: a call inside `assert_eq!`, `vec![]`, `format!` is not a use (libsignal: 8604 macro invocations, BACKLOG.md); to parse a token tree as expressions when it parses.
+  - `shortcut:` the classes of one name are one node per file only: a `struct T` and its `impl` in another file are two classes, so `T { .. }` is ambiguous (libsignal: 605 of 3250); `impl<T> Tr for T` draws a class `T`, `impl Tr for Vec<X>` a class `Vec` (BACKLOG.md); to merge a class's nodes across files.
+  - `shortcut:` `T::f()` is linked by `f` alone, so `T::new()` is never linked (`new` is common) and `KeyPair::generate` is ambiguous between 6 types (BACKLOG.md); to link a path to its type's method if ADR 0003 allows it.
+  - `shortcut:` a file with one error node is skipped whole: grammar 0.24.2 rejects `dyn 'a + Trait`, 1 of libsignal's 612 files (BACKLOG.md); to upgrade the grammar when one does, or to read the valid part of a tree.
+- **Sample host**: libsignal (docs/sample-hosts.md).
+
+## Java (not registered yet)
+
+Its grammar (`tree-sitter-java` 0.23.5) and query are in `graphe_generic.py`, proven on a snippet (T-0031): a Java class, its methods and its constructor (`C.C`), `new C()`, `extends`, `implements` as `references`. Its `java` entry, section and sample host come with T-0033. The limits already probed (overloads, anonymous and nested classes) are in that ticket.
 
 ## The dedicated readers
 
