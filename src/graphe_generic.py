@@ -149,6 +149,10 @@ JAVA_QUERY = """
   (type_identifier) @name
   (scoped_type_identifier (type_identifier) @name .)
   (generic_type [(type_identifier) @name (scoped_type_identifier (type_identifier) @name .)])])) @reference
+(extends_interfaces (type_list [
+  (type_identifier) @name
+  (scoped_type_identifier (type_identifier) @name .)
+  (generic_type [(type_identifier) @name (scoped_type_identifier (type_identifier) @name .)])])) @reference
 """
 
 # The common names: the JDK's (and JRuby's `newString`) that one method of protobuf would collect from every

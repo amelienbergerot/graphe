@@ -131,10 +131,13 @@ def test_java_overloads_are_one_method_and_a_scoped_type_is_its_last_name():
                 new Outer.Inner<A>();
             }
         }
+
+        interface AOrBuilder extends I, com.google.protobuf.MessageOrBuilder {}
         """)
-    assert definitions == {("class", "A", 1), ("method", "A.o", 2)}
+    assert definitions == {("class", "A", 1), ("method", "A.o", 2), ("class", "AOrBuilder", 12)}
     assert uses == {("reference", "Builder", 1, "A"), ("reference", "D", 3, "A.o"), ("call", "o", 7, "A.o"),
-                    ("reference", "Inner", 8, "A.o")}
+                    ("reference", "Inner", 8, "A.o"), ("reference", "I", 12, "AOrBuilder"),
+                    ("reference", "MessageOrBuilder", 12, "AOrBuilder")}
 
 
 class Project:
