@@ -127,13 +127,6 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   `csharp/compatibility_tests/v3.0.0/` (28 files) accounts for 756 of them
   only. Linking `output.WriteRawTag` needs the receiver's type: a dedicated
   C# reader (ADR 0003).
-- **A C# property is no definition.** (protobuf, sample host, 2026-11-19,
-  T-0035) The calls of a property's `get`, `set` and `=> expr` belong to its
-  class: `callers ProtoPreconditions.CheckNotNull` lists generated classes
-  (`Person:56`, 138 callers) for their setters, and `explain Person.Name`
-  finds nothing. A `property_declaration` captured as a `@method` `C.P` would
-  hold them, a query change; it would have no caller, a property being used
-  without a call.
 - **Ruby's message classes are built at run time.** (protobuf, sample host,
   2026-11-19, T-0036) A message's fields are read through `method_missing`
   (`m.repeated_string`, 171 sends `external`), and the message class is
@@ -213,6 +206,13 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
 
 Settled by tickets (2026-11-19):
 
+- **A C# property is no definition.** [T-0041] (protobuf, sample host,
+  2026-11-19, T-0035) The calls of a property's `get`, `set` and `=> expr`
+  belonged to its class: `callers ProtoPreconditions.CheckNotNull` listed
+  generated classes (`Person:56`, 98 of its 138 callers). A property is the method
+  `C.P` since T-0041: 270 callers, the setters (`Person.Name:109`). Its name
+  among the definitions makes `JsonToken.Name` ambiguous (27 sites, a
+  `shortcut:`).
 - **A Rust file with `dyn 'a + Trait` is skipped whole.** [T-0040] (libsignal,
   sample host, 2026-11-19, T-0032) `tree-sitter-rust` 0.24.2 rejects a
   lifetime first in a trait object (`Box<dyn 's + FnOnce(..)>`):

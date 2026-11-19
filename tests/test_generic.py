@@ -269,6 +269,31 @@ def test_a_csharp_class_its_members_and_both_kinds_of_call():
                     ("reference", "Q", 11, "R")}
 
 
+def test_a_csharp_property_is_the_method_c_dot_p_owning_its_accessors_calls():
+    """protobuf (T-0041): a generated setter's `CheckNotNull` is `Person.Name`'s, not `Person`'s; `=> expr` and
+    `get => expr` too. An auto-property is a node with no call; its initial value's call is its own. An interface's or
+    abstract property has no body, as a signature: no node."""
+    definitions, uses = _read(CSHARP, "src/Person.cs", """        class Person {
+            string name_;
+            public string Name {
+                get { return name_; }
+                set { name_ = ProtoPreconditions.CheckNotNull(value, "value"); }
+            }
+            int Size => Compute();
+            int Id { get => Read(); }
+            int Age { get; set; }
+            int Tag { get; } = Init();
+        }
+        interface IPerson { string Name { get; } }
+        abstract class Base { public abstract string Name { get; } }
+        """)
+    assert definitions == {("class", "Person", 1), ("method", "Person.Name", 3), ("method", "Person.Size", 7),
+                           ("method", "Person.Id", 8), ("method", "Person.Age", 9), ("method", "Person.Tag", 10),
+                           ("class", "IPerson", 12), ("class", "Base", 13)}
+    assert uses == {("send", "CheckNotNull", 5, "Person.Name"), ("call", "Compute", 7, "Person.Size"),
+                    ("call", "Read", 8, "Person.Id"), ("call", "Init", 10, "Person.Tag")}
+
+
 def test_a_csharp_preprocessor_directive_cutting_a_base_list_or_an_expression_costs_nothing():
     """protobuf (T-0035): generated code cuts its base list with `#if`, which the grammar does not parse (44 of its
     224 files skipped, 42 of them for that): the directives are erased, both branches read; one expression whose two branches then follow

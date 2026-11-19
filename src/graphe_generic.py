@@ -192,9 +192,16 @@ JAVA = Language("java", {".java": (tree_sitter.Language(tree_sitter_java.languag
 
 # C# (T-0035): the upstream `tags.scm` captures only `x.M()`, the bare `F()` is ours. A type is named by its last name,
 # bare, generic, qualified or behind the `pb::` alias of generated code. As Java's, a method without a body (abstract,
-# an interface's) is not captured and a constructor is the method `C.C`. shortcut: a property's accessors, a local
-# function, an operator and a destructor are no definitions, their calls belong to the class (or the method); to
-# capture them if a host's `explain` needs them.
+# an interface's) is not captured and a constructor is the method `C.C`. A property is the method `C.P` (T-0041), so the
+# calls of its `get`, `set` and `=> expr` are its own; read without a call, it has no caller but as a delegate invoked
+# (`codec.ValueWriter(..)`, 14 on protobuf), and an auto-property (`{ get; set; }`) is a node all the same. An
+# interface's or abstract property is written alike but has no body, as a signature: not captured (8 on protobuf).
+# shortcut: an indexer, an event's accessors, a local function, an operator and a destructor are no definitions, their
+# calls belong to the class (or the method); to capture them if a host's `explain` needs them. shortcut: a property's
+# name counts among the definitions of that name, so a method so named is ambiguous (`JsonToken.Name`,
+# `SegmentedBufferHelper.IsAtEnd`: 31 sites on protobuf) and a library's send of that name is linked to it (NUnit's
+# `Assert.False`, then a common name); to keep properties out of a call's targets, the delegates' calls lost, if a
+# host's methods suffer.
 _CS_NAME = "[(identifier) @name (generic_name (identifier) @name)]"
 _CS_TYPE = (f"[(identifier) @name (generic_name (identifier) @name) (qualified_name name: {_CS_NAME}) "
             f"(alias_qualified_name name: {_CS_NAME})]")
@@ -206,6 +213,10 @@ CSHARP_QUERY = f"""
  (record_declaration name: (identifier) @name)] @class
 (method_declaration name: (identifier) @name body: (_)) @method
 (constructor_declaration name: (identifier) @name) @method
+([(class_declaration body: (declaration_list (property_declaration name: (identifier) @name) @method))
+  (struct_declaration body: (declaration_list (property_declaration name: (identifier) @name) @method))
+  (record_declaration body: (declaration_list (property_declaration name: (identifier) @name) @method))]
+ (#not-match? @method "^([^{{=]* )?abstract "))
 (invocation_expression function: {_CS_NAME}) @call
 (invocation_expression function: (member_access_expression name: {_CS_NAME})) @send
 (invocation_expression function: (conditional_access_expression (member_binding_expression name: {_CS_NAME}))) @send
@@ -218,7 +229,9 @@ CSHARP = Language("csharp", {".cs": (tree_sitter.Language(tree_sitter_c_sharp.la
                   # The common names: the BCL's that one method of protobuf would collect from every
                   # `builder.Append` (a StringBuilder), `enumerator.MoveNext`, `typeof(T).GetProperty` (T-0035,
                   # `check`'s most frequent sends linked by name, the first three); the others are guessed: the
-                  # methods of `object`, the strings, the collections, LINQ, the streams and reflection.
+                  # methods of `object`, the strings, the collections, LINQ, the streams and reflection. NUnit's
+                  # `Assert.False`, `True`, `Null`, `IsEmpty` (72, 38, 27, 1 on protobuf) were `external` until a
+                  # property is a method (T-0041): then linked to `JsonToken.False`, `ByteString.IsEmpty`...
                   # shortcut: a hand-kept list; to extend when `check` shows a standard name among the most frequent
                   # sends linked by name (`ours?`) on a host.
                   frozenset({
@@ -229,7 +242,8 @@ CSHARP = Language("csharp", {".cs": (tree_sitter.Language(tree_sitter_c_sharp.la
                       "SequenceEqual", "GetEnumerator", "Dispose", "Split", "Join", "Substring", "IndexOf",
                       "StartsWith", "EndsWith", "Trim", "Replace", "ToUpper", "ToLower", "ToUpperInvariant",
                       "ToLowerInvariant", "Write", "WriteLine", "ReadLine", "ReadToEnd", "Flush", "Close", "Invoke",
-                      "GetValue", "SetValue", "GetMethod", "GetField", "GetCustomAttributes", "IsAssignableFrom"}),
+                      "GetValue", "SetValue", "GetMethod", "GetField", "GetCustomAttributes", "IsAssignableFrom",
+                      "False", "True", "Null", "IsEmpty"}),
                   # protobuf's generated code cuts its base list with `#if` (`: pb::IMessage<T>` `#if ..` `, ..`
                   # `#endif`): the grammar does not parse it, 44 of 224 files skipped. The directives erased, 2 left
                   # (`f() = x;`, and an expression whose two branches then follow each other), read all the same: no
