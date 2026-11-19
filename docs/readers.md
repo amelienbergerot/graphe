@@ -14,12 +14,13 @@ A reader turns a host's files of one language into nodes, links and coverage sit
 | `c` | generic, `graphe_generic.py` | C, C++ | `.c`, `.h`, `.cpp`, `.cc`, `.cxx`, `.hpp` |
 | `csharp` | generic, `graphe_generic.py` | C# | `.cs` |
 | `ruby` | generic, `graphe_generic.py` | Ruby | `.rb` |
+| `swift` | generic, `graphe_generic.py` | Swift | `.swift` |
 
 A **dedicated reader** knows its language's imports and types, and links a call for sure where it can. The **generic reader** (ADR 0003, GLOSSARY.md) reads every other language the same way, by its name alone.
 
 ## The generic reader
 
-`src/graphe_generic.py`. A language is data only, a `Language`: its tree-sitter grammars by file suffix, a query of ours per grammar, its **common names**, the method names never linked from a call on a receiver, and two switches for C/C++'s macros and C#'s `#if`: `tolerant` (a file with error nodes is read, not skipped) and `erased` (a pattern blanked before parsing; ADR 0003's amendment). The reading, the owner of a call, the `Class.method` naming and the linking are written once.
+`src/graphe_generic.py`. A language is data only, a `Language`: its tree-sitter grammars by file suffix, a query of ours per grammar, its **common names**, the method names never linked from a call on a receiver, and two switches for C/C++'s macros, C#'s `#if` and Swift's newer syntax: `tolerant` (a file with error nodes is read, not skipped) and `erased` (a pattern blanked before parsing; ADR 0003's amendment). The reading, the owner of a call, the `Class.method` naming and the linking are written once.
 
 ### The capture convention
 
@@ -27,8 +28,8 @@ Every language's query captures the same names; a query is written from the `tag
 
 | Capture | What it marks |
 |---|---|
-| `@function`, `@method`, `@class` | A definition (the whole node), with its `@name`. `@class` is a class, an interface, a struct, an enum, a trait, a Rust `impl`, a Ruby `module`. |
-| `@receiver` | Inside a `@method`: its type, when the method is declared outside it (Go's `func (r *T) M()`). |
+| `@function`, `@method`, `@class` | A definition (the whole node), with its `@name`. `@class` is a class, an interface, a struct, an enum, a trait, a Rust `impl`, a Ruby `module`, a Swift `actor` or `protocol`. |
+| `@receiver` | Inside a `@method`: its type, when the method is declared outside it (Go's `func (r *T) M()`, Swift's `extension T`). |
 | `@call` | A bare call `f()`, with `@name` the name called. |
 | `@send` | A call on a receiver `x.m()`, a package `pkg.F()` or a path `T::f()`, with `@name` the method's name. |
 | `@reference` | A use of a class that is not a call (`new C()`, `extends C`, Go's `T{}`), with `@name` the class. |
@@ -64,7 +65,7 @@ Every call or send is a coverage site, with its verdict:
 | `common` | A send of a common name that the host defines. | no: counted by `explain` likewise |
 | `external` | No definition of that name in the host (the standard library, a dependency, a builtin). | no |
 
-A file that does not parse (any error node in its tree) is skipped and named on stderr; the build goes on. A `tolerant` language (C/C++, whose macros leave error nodes in valid code; C#, whose `#if` branches, both read, can) reads it all the same. A host without the language's files gets no contribution at all, not even an empty coverage.
+A file that does not parse (any error node in its tree) is skipped and named on stderr; the build goes on. A `tolerant` language (C/C++, whose macros leave error nodes in valid code; C#, whose `#if` branches, both read, can; Swift, whose newer syntax the grammar lacks) reads it all the same. A host without the language's files gets no contribution at all, not even an empty coverage.
 
 ### Adding a language
 
@@ -178,6 +179,23 @@ A quirk the query cannot express is a `shortcut:` in its section here. A languag
   - `shortcut:` a setter call `x.y = v` (339 on protobuf) is a send `y`, not `y=`: a hand-written `def y=` gets no caller, a getter `y` its callers (protobuf has none, its fields go through `method_missing`); to name the send `y=` if a host's setters need callers.
   - `shortcut:` `C.m` is linked by `m` alone, as Java's `C.m()`; `include M` and `extend M` are calls, not references to `M`; to link `C.m` to `C`'s `m`, and `include M` to `M`, if a host needs them.
 - **Sample host**: protobuf (docs/sample-hosts.md).
+
+## Swift
+
+- **Section**: `swift`. **Suffixes**: `.swift`.
+- **Grammar**: `tree-sitter-swift` 0.7.4 (py-tree-sitter 0.26.1). Its `tags.scm` captures no call. The query (`SWIFT_QUERY`) is ours.
+- **Nodes**: a `class` per `class`, `struct`, `enum`, `actor` (one `class_declaration` in the grammar) and `protocol`. An `extension T` is no class: its methods are `T`'s by `@receiver`, as Go's, so that a type extended in several files stays one class and its references are linked (`extension Foo.Bar` and `extension Array<T>` extend `Bar` and `Array`). A `method` `C.m` per `func`, `init` (`C.init`) and computed property (`var p: T { .. }`, `C.p`) directly in a type's or an extension's body; a `function` per `func` at the top of a file. A protocol's requirements (no body) are not captured.
+- **Links**: `b()` is a `@call`; `x.c()`, `self.c()`, `y?.c()`, `C.s()` and an implicit member `.c()` (`.init()`, `.success(x)`) are `@send`. A call to a capitalised name, `C(..)`, `Foo.Bar(..)`, `Array<Int>()`, is a `references` to the type by its last name (Swift's naming convention), as is an inherited type or protocol (`class C: B, P`). All `INFERRED`.
+- **Common names**: `init` (611 sends: `self.init`, `.init`, `super.init`), `append` (71, `Data`'s), `combine` (3 of its 4 sends `Hasher.combine`, linked to `GroupSendEndorsement.combine`) and `withCString` (`String`'s, which libsignal wraps on `Optional`), measured on libsignal (T-0037), and, guessed, the standard library's collections, sequences, `Codable`, `Hashable` and unsafe pointers (`map`, `contains`, `encode`, `hash`, `withUnsafeBytes`...). `remove` is left out: its one send on libsignal is its own `svrB.remove()`. The list is `SWIFT.common`.
+- **Quirks**:
+  - `tolerant`: the grammar does not parse 10 of libsignal's 218 files (parameter packs `repeat (each T)`, `case .self`, `catch E.c(_:)`, `() = try x`); read all the same, they keep every definition but nested functions.
+  - The grammar reads `defer { }` as a call `defer`: the query drops it, as it drops the standard `withUnsafePointer(to:)` and `withUnsafeMutablePointer(to:)`, which libsignal shadows by a method (24 bare calls, all the standard's).
+  - A computed property is a method so that its calls have their owner (464 on libsignal, 670 calls that would be their class's); reading `x.p` is no call, so it has no caller. It made 26 sites ambiguous (`accessKey`, a closure parameter `body`).
+- **Limits**:
+  - `shortcut:` a nested function, an operator (`static func ==`) and a subscript are no definitions, their calls their enclosing definition's; to capture them if a host's `explain` needs them.
+  - `shortcut:` a capitalised call is taken for a type, a lower-case one for a function; an enum case with a payload `.c(x)` is a send `c`; to tell them apart by their definitions if a host breaks the convention.
+  - `shortcut:` a stored property's initial value (`let x = f()`) calls from its class; to capture the property if a host's `callers` needs it.
+- **Sample host**: libsignal (docs/sample-hosts.md).
 
 ## The dedicated readers
 

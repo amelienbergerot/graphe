@@ -6,7 +6,7 @@ import textwrap
 from pathlib import Path
 
 import graphe_generic
-from graphe_generic import C, CSHARP, GO, JAVA, RUBY, RUST
+from graphe_generic import C, CSHARP, GO, JAVA, RUBY, RUST, SWIFT
 
 
 def _read(language, file: str, source: str):
@@ -282,6 +282,59 @@ def test_a_ruby_local_variable_is_no_call():
         end
         """)
     assert uses == {("send", "succ", 5, "m")}
+
+
+def test_a_swift_type_its_methods_and_its_calls():
+    """libsignal (T-0037): a class, a struct, an enum, an actor and a protocol are classes; `init` is the method
+    `C.init`, a computed property `p` the method `C.p`; `b()` is a call, `x.c()`, `y?.z()` and `.make()` are sends; a call to a capitalised name, `C(..)`,
+    `Foo.Bar(..)`, `Array<Int>()`, and an inherited type are references by the last name."""
+    definitions, uses = _read(SWIFT, "Sources/c.swift", """\
+        import Foundation
+        public class C: B, P {
+            init(a: Int) { b(); x.c(); self.f(1); y?.z(); Foo.Bar(x: 1) }
+            func m() -> Int { return .make() }
+            static func s() { C.s() }
+            var p: Int { g() }
+        }
+        struct S { func t() { let q = C(a: 1); q.m(); Array<Int>() } }
+        protocol P { func v() }
+        func top() { [1].map { $0.u() } }
+        """)
+    assert definitions == {("class", "C", 2), ("method", "C.init", 3), ("method", "C.m", 4), ("method", "C.s", 5),
+                           ("method", "C.p", 6), ("class", "S", 8), ("method", "S.t", 8), ("class", "P", 9), ("function", "top", 10)}
+    assert uses == {("reference", "B", 2, "C"), ("reference", "P", 2, "C"), ("call", "b", 3, "C.init"),
+                    ("send", "c", 3, "C.init"), ("send", "f", 3, "C.init"), ("send", "z", 3, "C.init"),
+                    ("reference", "Bar", 3, "C.init"), ("send", "make", 4, "C.m"), ("send", "s", 5, "C.s"),
+                    ("call", "g", 6, "C.p"), ("reference", "C", 8, "S.t"), ("send", "m", 8, "S.t"),
+                    ("reference", "Array", 8, "S.t"), ("send", "map", 10, "top"), ("send", "u", 10, "top")}
+
+
+def test_a_swift_extension_is_no_class_its_methods_are_its_types():
+    """T-0037: `extension Foo.Bar` gives its methods to `Bar` (`@receiver`, as Go's) without being a class itself: a
+    type extended in several files stays one class, its references linked."""
+    definitions, uses = _read(SWIFT, "Sources/e.swift", """\
+        extension Foo.Bar: P {
+            func k() { s() }
+            init(n: Int) { self.init(a: n) }
+            struct Inner { func f() {} }
+        }
+        extension Array where Element == UInt8 { func h() {} }
+        """)
+    assert definitions == {("method", "Bar.k", 2), ("method", "Bar.init", 3), ("class", "Inner", 4),
+                           ("method", "Inner.f", 4), ("method", "Array.h", 6)}
+    assert uses == {("reference", "P", 1, None), ("call", "s", 2, "Bar.k"), ("send", "init", 3, "Bar.init")}
+
+
+def test_a_swift_defer_or_a_standard_function_libsignal_shadows_is_no_call():
+    """T-0037: the grammar reads `defer { }` as a call `defer`; the standard `withUnsafePointer(to:)` (24 on
+    libsignal) would be linked to libsignal's method of that name."""
+    _, uses = _read(SWIFT, "Sources/d.swift", """\
+        func f() {
+            defer { g() }
+            withUnsafePointer(to: 1) { _ in }
+        }
+        """)
+    assert uses == {("call", "g", 2, "f")}
 
 
 class Project:

@@ -14,7 +14,7 @@ a `@class` is its method; a method's class is its `@receiver`, or else the inner
   language: a call or a send to a function or a method, a reference to a class. A send never links a common name.
   Each call or send is a site: `ours?`, `ambiguous`, `common` or `external` (no definition of that name);
 - a file that does not parse is skipped and named on stderr, unless the language is `tolerant` (C's macros, C#'s
-  `#if`).
+  `#if`, Swift's newer syntax).
 """
 
 from __future__ import annotations
@@ -33,13 +33,14 @@ import tree_sitter_go
 import tree_sitter_java
 import tree_sitter_ruby
 import tree_sitter_rust
+import tree_sitter_swift
 
 
 class Language(NamedTuple):
     name: str
     grammars: dict[str, tuple[tree_sitter.Language, str]]  # suffix -> (grammar, query)
     common: frozenset[str]  # method names never linked from a send
-    tolerant: bool = False  # a file that does not parse is read all the same (C's macros, C#), not skipped
+    tolerant: bool = False  # a file that does not parse is read all the same (C's macros, C#, Swift), not skipped
     erased: re.Pattern[bytes] | None = None  # what it matches is blanked before parsing (one line, columns kept)
 
 
@@ -260,6 +261,58 @@ RUBY = Language("ruby", {".rb": (tree_sitter.Language(tree_sitter_ruby.language(
     "compact", "uniq", "zip", "join", "key?", "fetch", "merge", "dig", "empty?", "size", "split", "strip",
     "gsub", "sub", "start_with?", "end_with?", "upcase", "downcase", "read", "write", "puts", "print", "close",
     "call"}))
+
+
+# Swift (T-0037): the upstream `tags.scm` captures no call. A class, a struct, an enum and an actor are one
+# `class_declaration`, a class; a protocol is one too. An `extension C` is no class: its methods are `C`'s by
+# `@receiver` (as Go's), so that a type extended in several files stays one class and its references are linked. A
+# method is captured as a direct child of its body, the only way to tell a type's from an extension's; `init` is
+# `C.init`, a computed property `var p: T { .. }` the method `C.p` (464 on libsignal, which would leave their 670
+# calls to the class; reading `x.p` is no call, so it has no caller). A call to a capitalised name (`C(..)`,
+# `Foo.Bar(..)`) is a reference to that type, Swift's naming convention. shortcut: a nested function, an operator
+# (`static func ==`) and a subscript are no definitions, their calls their enclosing definition's; to capture them if
+# a host's `explain` needs them. The grammar reads `defer { }` as a call `defer`: no call; nor the standard
+# `withUnsafePointer(to:)`, which libsignal shadows by a method (24 bare calls, all the standard's).
+_SW_EXTENDED = ("[(user_type (type_identifier) @receiver .) "
+                "(user_type (type_identifier) @receiver . (type_arguments) .)]")
+_SW_FUNCTION = ("[(function_declaration name: (simple_identifier) @name body: (_)) "
+                "(init_declaration \"init\" @name body: (_)) "
+                "(property_declaration name: (pattern bound_identifier: (simple_identifier) @name) "
+                "computed_value: (_))]")
+_SW_TYPE = "(user_type (type_identifier) @name .)"
+SWIFT_QUERY = f"""
+[(class_declaration name: (type_identifier) @name) (protocol_declaration name: (type_identifier) @name)] @class
+(source_file (function_declaration name: (simple_identifier) @name body: (_)) @function)
+(class_declaration name: (type_identifier) body: [(class_body {_SW_FUNCTION} @function)
+                                                   (enum_class_body {_SW_FUNCTION} @function)])
+(class_declaration name: {_SW_EXTENDED} body: (class_body {_SW_FUNCTION} @method))
+(call_expression (simple_identifier) @name
+ (#not-match? @name "^([A-Z]|(defer|withUnsafePointer|withUnsafeMutablePointer)$)")) @call
+(call_expression (simple_identifier) @name (#match? @name "^[A-Z]")) @reference
+(call_expression (navigation_expression suffix: (navigation_suffix suffix: (simple_identifier) @name))
+ (#not-match? @name "^[A-Z]")) @send
+(call_expression (navigation_expression suffix: (navigation_suffix suffix: (simple_identifier) @name))
+ (#match? @name "^[A-Z]")) @reference
+(call_expression (prefix_expression target: (simple_identifier) @name)) @send
+(constructor_expression constructed_type: (user_type (type_identifier) @name)) @reference
+(inheritance_specifier inherits_from: {_SW_TYPE}) @reference
+"""
+
+# The common names: `init` (611 sends `self.init`, `.init`, `super.init`), `append` (71, `Data`'s), `combine` (3 of
+# its 4 sends `Hasher.combine`, linked to `GroupSendEndorsement.combine`) and `withCString` (`String`'s, which libsignal
+# wraps on `Optional`), measured on libsignal (T-0037, `check`); the others are guessed: the standard library's
+# collections, sequences, `Codable`, `Hashable` and unsafe pointers. `remove` is left out: its one send is
+# libsignal's `svrB.remove()`. shortcut: a hand-kept list; to extend when `check` shows a standard name among the most
+# frequent sends linked by name (`ours?`) on a host.
+SWIFT = Language("swift", {".swift": (tree_sitter.Language(tree_sitter_swift.language()), SWIFT_QUERY)}, frozenset({
+    "init", "append", "combine", "withCString", "map", "filter", "reduce", "forEach", "compactMap", "flatMap",
+    "contains", "first", "last", "insert", "removeAll", "sorted", "sort", "joined", "split", "description", "hash",
+    "encode", "decode", "withUnsafeBytes", "withUnsafeBufferPointer", "withUnsafeMutableBufferPointer",
+    "withUnsafeMutableBytes", "index", "firstIndex", "count", "isEmpty", "prefix", "suffix", "dropFirst", "dropLast",
+    "enumerated", "zip", "makeIterator", "next", "get", "set", "value", "copyBytes"}),
+    # The grammar does not parse 10 of libsignal's 218 files (parameter packs `repeat (each T)`, `case .self`,
+    # `catch E.c(_:)`, `() = try x`); read all the same, they keep every definition but nested functions.
+    tolerant=True)
 
 
 # C and C++ (T-0034): the upstream `tags.scm` capture no call. A query pattern sees direct children only, so the

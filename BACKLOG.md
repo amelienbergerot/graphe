@@ -36,7 +36,8 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   protobuf, libsignal, gitea (and Django). T-0030; Go is read since T-0031
   (gitea), Rust since T-0032 (libsignal), Java since T-0033 (protobuf), C and
   C++ since T-0034 (protobuf), C# since T-0035 (protobuf), Ruby since
-  T-0036 (protobuf), the other languages follow in T-0037 and T-0038.
+  T-0036 (protobuf), Swift since T-0037 (libsignal), Kotlin follows in
+  T-0038.
 - **A Go file in Go 1.26's syntax is skipped whole.** (gitea, sample host,
   2026-11-19, T-0031) `tree-sitter-go` 0.25.0, the last on PyPI, knows
   neither `new(expr)` nor generic methods (`func (f *Flash) Error[T ...]`):
@@ -135,7 +136,9 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   name a document cites only when one node bears it. Preferring the
   language a document's code block or path names would keep them. C# (T-0035)
   made 4 more ambiguous (`docs/design/editions/*.md` naming `Syntax`,
-  `Edition`, `IsValid`, `Feature`).
+  `Edition`, `IsValid`, `Feature`). Swift (T-0037) made 3 of libsignal's
+  ambiguous (`doc/src/net/chat.md` naming `connectAuthenticatedChat`,
+  until then TypeScript's; `description`, `metadata`).
 - **C#'s generated messages make their methods' names ambiguous.**
   (protobuf, sample host, 2026-11-19, T-0035) Every generated message
   defines `WriteTo`, `Clone`, `CalculateSize`, `MergeFrom` (about 348 each),
@@ -168,6 +171,20 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   does not make. A class reopened in several files is one class per file
   likewise (12 names: `Descriptor`, `RepeatedField`), a reference to it
   ambiguous.
+- **Swift's FFI conformances make their methods' names ambiguous.**
+  (libsignal, sample host, 2026-11-19, T-0037) Each of libsignal's 134
+  `extension SignalMutPointerX` / `SignalConstPointerX` defines `toOpaque`
+  and `const`, each converter `convertReturn` and `emptyFfiReturn` (about
+  160 each): `nativeHandle.const()` (475 sends) and `convertReturn` (545)
+  are not attributed, 2598 of the 8213 Swift sites `ambiguous`. Linking
+  them needs the receiver's type, or the protocol's requirement as a node:
+  a dedicated Swift reader (ADR 0003).
+- **A Swift nested function is no definition.** (libsignal, sample host,
+  2026-11-19, T-0037) A `func` inside a function (`check` in
+  `ChatServiceTests.swift`) is not captured, its calls its enclosing
+  method's; operators (`static func ==`) and subscripts likewise. The query
+  takes a type's or an extension's direct children only, the one way to
+  tell an extension's method from a type's.
 - **A file's gtest tests are one function.** (protobuf, sample host,
   2026-11-19, T-0034) `TEST_F(Suite, Name) { .. }` parses as a function
   `TEST_F`: protobuf's 4824 tests are one `TEST_F`, `TEST`, `TEST_P` or
