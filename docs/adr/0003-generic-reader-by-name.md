@@ -8,6 +8,8 @@ The queries are written from the `tags.scm` the grammars ship, but kept in this 
 
 A language is data only: its grammars, its queries, the method names never linked by name. A quirk the queries cannot express is a `shortcut:` in `docs/readers.md`; a language that needs code of its own is the proof that it needs a dedicated reader.
 
+Amended by T-0034 (2026-11-19): C and C++ add two pieces of data to a language, still no code of its own. `tolerant`: a file with error nodes is read, not skipped, since macros leave one in 557 of protobuf's 1363 C/C++ files. `erased`: a pattern blanked before parsing (the attribute macros, `class PROTOBUF_EXPORT Descriptor`), lines and columns kept. Both are measured on a sample host before a language takes them; a language that needs a preprocessor of its own is still the proof that it needs a dedicated reader.
+
 ## Options set aside
 
 - The upstream `tags.scm` as shipped, completed where they fall short: eight capture conventions, and a grammar's upgrade changes the graph silently.

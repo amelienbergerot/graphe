@@ -1,6 +1,6 @@
 """The generic reader (T-0030, ADR 0003): the languages without a dedicated reader, read the same way by tree-sitter.
-A language is data only (`Language`): its grammars by suffix, a query of ours per grammar, and the method names
-never linked by name. The reading, the owner of a call, the `Class.method` naming and the linking are written once.
+A language is data only (`Language`): its grammars by suffix, a query of ours per grammar, the method names
+never linked by name, and, for C/C++'s macros, whether a file with errors is read and what is blanked first. The reading, the owner of a call, the `Class.method` naming and the linking are written once.
 
 The queries follow one capture convention (docs/readers.md): `@function`, `@method`, `@class`, each with its
 `@name`; `@call` for `f()`, `@send` for `x.m()`; `@reference` for `new C()`, `extends C`; `@receiver` for a method's
@@ -219,8 +219,7 @@ CPP_QUERY = _C_DEFINITIONS.format(
 _C = tree_sitter.Language(tree_sitter_c.language())
 _CPP = tree_sitter.Language(tree_sitter_cpp.language())
 # C and C++ are one family (T-0034): a C++ call to a C function is linked. A `.h` is read as C++, which reads C.
-C = Language("c", {".c": (_C, C_QUERY), ".h": (_CPP, CPP_QUERY), ".cpp": (_CPP, CPP_QUERY),
-                   ".cc": (_CPP, CPP_QUERY), ".cxx": (_CPP, CPP_QUERY), ".hpp": (_CPP, CPP_QUERY)},
+C = Language("c", {".c": (_C, C_QUERY), **dict.fromkeys((".h", ".cpp", ".cc", ".cxx", ".hpp"), (_CPP, CPP_QUERY))},
               # The common names: the standard library's (and absl's `Status::message`) that one function of
               # protobuf would collect from every `std::string(..)`, `v.emplace_back`, `s.append`, `v.reserve`
               # (T-0034, `check`'s most frequent sends linked by name, from `string` to `count` below); the others are
@@ -259,8 +258,8 @@ def read(language: Language, file: str, source: bytes) -> tuple[list[Definition]
     if language.erased:
         source = language.erased.sub(lambda m: b" " * len(m[0]), source)
     root = tree_sitter.Parser(grammar).parse(source).root_node
-    # shortcut: one error node skips the whole file (gitea: Go 1.26's syntax, BACKLOG.md); to read the valid part
-    # of the tree, or a newer grammar, when one is published.
+    # shortcut: unless the language is `tolerant`, one error node skips the whole file (gitea: Go 1.26's syntax,
+    # BACKLOG.md); to make it `tolerant` once measured on its host, or a newer grammar, when one is published.
     if root.has_error and not language.tolerant:
         raise SyntaxError(file)
     found = []  # (start, end, role, name node, receiver)

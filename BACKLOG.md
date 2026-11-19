@@ -126,6 +126,12 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   constant so named is erased in an expression too (765 files with an error
   node, 557 without erasing), a macro with arguments is not. Erasing a
   preprocessor branch, or the preprocessor's own pass, would read them.
+- **A document's name loses its link when another language defines it too.**
+  (protobuf, sample host, 2026-11-19, T-0034) The C/C++ definitions made 21
+  `names` links of `docs/design/editions/*.md` ambiguous (`has_presence`,
+  `check`, `packed`, until then Python's or Java's only): the core links a
+  name a document cites only when one node bears it. Preferring the
+  language a document's code block or path names would keep them.
 - **A file's gtest tests are one function.** (protobuf, sample host,
   2026-11-19, T-0034) `TEST_F(Suite, Name) { .. }` parses as a function
   `TEST_F`: protobuf's 4824 tests are one `TEST_F`, `TEST`, `TEST_P` or

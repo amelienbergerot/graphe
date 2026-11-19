@@ -17,7 +17,7 @@ A **dedicated reader** knows its language's imports and types, and links a call 
 
 ## The generic reader
 
-`src/graphe_generic.py`. A language is data only, a `Language`: its tree-sitter grammars by file suffix, a query of ours per grammar, and its **common names**, the method names never linked from a call on a receiver. The reading, the owner of a call, the `Class.method` naming and the linking are written once.
+`src/graphe_generic.py`. A language is data only, a `Language`: its tree-sitter grammars by file suffix, a query of ours per grammar, its **common names**, the method names never linked from a call on a receiver, and two switches for C/C++'s macros: `tolerant` (a file with error nodes is read, not skipped) and `erased` (a pattern blanked before parsing; ADR 0003's amendment). The reading, the owner of a call, the `Class.method` naming and the linking are written once.
 
 ### The capture convention
 

@@ -6,7 +6,7 @@ import textwrap
 from pathlib import Path
 
 import graphe_generic
-from graphe_generic import GO, JAVA, RUST, C
+from graphe_generic import C, GO, JAVA, RUST
 
 
 def _read(language, file: str, source: str):
@@ -177,7 +177,8 @@ def test_a_cpp_method_defined_outside_its_class_is_named_by_its_innermost_scope(
                     ("call", "v", 18, "Holder.Get")}
 
 
-def test_a_c_function_and_struct():
+def test_a_c_function_its_structs_and_a_forward_declaration_that_is_none():
+    """upb (T-0034): `UPB_INLINE` erased, a `typedef struct {..} T` is a class `T`, `struct upb_Arena;` no class."""
     definitions, uses = _read(C, "upb/a.c", """        typedef struct { int a; } Anon;
         struct upb_Arena { int b; };
         struct upb_Arena;
