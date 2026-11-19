@@ -15,6 +15,7 @@ A reader turns a host's files of one language into nodes, links and coverage sit
 | `csharp` | generic, `graphe_generic.py` | C# | `.cs` |
 | `ruby` | generic, `graphe_generic.py` | Ruby | `.rb` |
 | `swift` | generic, `graphe_generic.py` | Swift | `.swift` |
+| `kotlin` | generic, `graphe_generic.py` | Kotlin | `.kt` |
 
 A **dedicated reader** knows its language's imports and types, and links a call for sure where it can. The **generic reader** (ADR 0003, GLOSSARY.md) reads every other language the same way, by its name alone.
 
@@ -28,8 +29,8 @@ Every language's query captures the same names; a query is written from the `tag
 
 | Capture | What it marks |
 |---|---|
-| `@function`, `@method`, `@class` | A definition (the whole node), with its `@name`. `@class` is a class, an interface, a struct, an enum, a trait, a Rust `impl`, a Ruby `module`, a Swift `actor` or `protocol`. |
-| `@receiver` | Inside a `@method`: its type, when the method is declared outside it (Go's `func (r *T) M()`, Swift's `extension T`). |
+| `@function`, `@method`, `@class` | A definition (the whole node), with its `@name`. `@class` is a class, an interface, a struct, an enum, a trait, a Rust `impl`, a Ruby `module`, a Swift `actor` or `protocol`, a Kotlin `object`. |
+| `@receiver` | Inside a `@method`: its type, when the method is declared outside it (Go's `func (r *T) M()`, Swift's `extension T`, Kotlin's extension function `fun T.m()`). |
 | `@call` | A bare call `f()`, with `@name` the name called. |
 | `@send` | A call on a receiver `x.m()`, a package `pkg.F()` or a path `T::f()`, with `@name` the method's name. |
 | `@reference` | A use of a class that is not a call (`new C()`, `extends C`, Go's `T{}`), with `@name` the class. |
@@ -195,6 +196,23 @@ A quirk the query cannot express is a `shortcut:` in its section here. A languag
   - `shortcut:` a capitalised call is taken for a type, a lower-case one for a function; an enum case with a payload `.c(x)` is a send `c`; to tell them apart by their definitions if a host breaks the convention.
   - `shortcut:` the grammar reads `defer { }` as a call `defer`, and the standard `withUnsafePointer(to:)` and `withUnsafeMutablePointer(to:)` would be linked to a host's method of that name (libsignal's, 24 bare calls, all the standard's): the query drops these three names, so a host's own bare function so named gets no caller; to drop them by their `to:` label if a host defines one.
   - `shortcut:` a Swift file that does not parse is not named on stderr (`tolerant`); to name it if a host's garbage shows.
+- **Sample host**: libsignal (docs/sample-hosts.md).
+
+## Kotlin
+
+- **Section**: `kotlin`. **Suffixes**: `.kt` (a Gradle script `.kts` is not read).
+- **Grammar**: `tree-sitter-kotlin` 1.1.0 (py-tree-sitter 0.26.1). It ships no `tags.scm`: the query (`KOTLIN_QUERY`) is ours.
+- **Nodes**: a `class` per `class`, `interface`, `enum class`, `data class` (one `class_declaration` in the grammar) and `object`; a companion object is none, its functions its class's (`C.s`). A `method` `C.m` per `fun` with a body directly in a type's body (an `object`'s, a companion's, an enum's); a `function` per `fun` at the top of a file. A secondary constructor is the method `C.constructor`. An extension function `fun Foo.Bar.f()` is the method `Bar.f` by `@receiver`, as Go's, wherever it is declared (libsignal's 73: its `toFfiArgType` of each type apart). An abstract function (no body), an anonymous object's (`object : Runnable { override fun run() }`) and a local one are not captured: their calls are their enclosing definition's. A type is named by its last name, generic or not.
+- **Links**: `b()` is a `@call`; `x.c()`, `this.c()`, `y?.c()`, `C.s()` are `@send`. A call to a capitalised name, `C(..)`, `Foo.Bar(..)`, `Array<Int>(..) { }`, is a `references` to the type by its last name (Kotlin's naming convention, and Kotlin has no `new`), as is a supertype (`class C : B(), P`, `object O : P by d`, `object : Runnable`). All `INFERRED`. A call to libsignal's Java from its Kotlin is `external` (488 of the 1822 `external` sites name a Java definition): no call is linked across languages (ADR 0003).
+- **Common names**: `get` (78 sends, `CompletableFuture.get`, linked to `TestingIntBox.get`), `toString` (32), `map` (31, mostly a collection's, linked to `RequestResult.map`) and `hashCode`, measured on libsignal (T-0038), and, guessed, `Any`'s, the scope functions (`let`, `apply`, `also`, `run`, `use`), the collections', the arrays' and the futures' (`thenApply`, `complete`). Left out, their sends mostly libsignal's: `await` (its own `CompletableFuture.await`), `start`, `of`. The list is `KOTLIN.common`.
+- **Quirks**:
+  - The grammar does not read a class body on one line (`class C { fun f() {} }`): the snippets of the tests are on several lines.
+  - The grammar reads `Array<Int>(1)` without a trailing lambda, or after a `+`, as comparisons: no reference.
+  - Not `tolerant`: every libsignal file parses. 5 of protobuf's 23 do not (a trailing comma in type parameters, `T : Any,
+>`; a soft keyword used as a name, `by = "foo"`, in its "evil names" tests): skipped and named on stderr (BACKLOG.md).
+- **Limits**:
+  - `shortcut:` a property's getter or setter (32 on libsignal) and an `init { }` block are no definitions, their calls their class's; to capture them as Swift's computed properties if a host's `explain` needs them.
+  - `shortcut:` a capitalised call is taken for a type, a lower-case one for a function; to tell them apart by their definitions if a host breaks the convention.
 - **Sample host**: libsignal (docs/sample-hosts.md).
 
 ## The dedicated readers

@@ -31,6 +31,7 @@ import tree_sitter_c_sharp
 import tree_sitter_cpp
 import tree_sitter_go
 import tree_sitter_java
+import tree_sitter_kotlin
 import tree_sitter_ruby
 import tree_sitter_rust
 import tree_sitter_swift
@@ -318,6 +319,57 @@ SWIFT = Language("swift", {".swift": (tree_sitter.Language(tree_sitter_swift.lan
     # `catch E.c(_:)`, `() = try x`); read all the same, they lose no definition. shortcut: a Swift file that does
     # not parse is not named on stderr; to name it if a host's garbage shows.
     tolerant=True)
+
+
+# Kotlin (T-0038): the grammar ships no `tags.scm`, the query is ours. A class, an interface, an enum and an `object`
+# are classes; a companion object is none, its functions its class's. A function is captured as a direct child of a
+# file or of a type's body, so an anonymous object's (`object : Runnable { override fun run() }`) and a local one are
+# none, their calls their enclosing function's; an abstract one (no body) is none, as Java's. An extension function
+# `fun Foo.Bar.f()` is the method `Bar.f` by `@receiver` (as Go's): libsignal's 73, its `toFfiArgType` of each type
+# apart. A secondary constructor is the method `C.constructor`. A type is named by its last name, generic or not.
+# shortcut: a property's getter or setter (32 on libsignal) and an `init { }` block are no definitions, their calls
+# their class's; to capture them as Swift's computed properties if a host's `explain` needs them. shortcut: a call to
+# a capitalised name (`C(..)`, `Foo.Bar(..)`) is a reference to that type, a lower-case one a call, Kotlin's naming
+# convention; to tell them apart by their definitions if a host breaks it.
+_KT_LAST = ("[(user_type (identifier) @{c} .) "
+            "(user_type (identifier) @{c} . (type_arguments) .)]")
+_KT_TYPE = _KT_LAST.format(c="name")
+_KT_RECEIVER = _KT_LAST.format(c="receiver")
+# The name right after the modifiers, the type parameters or nothing: a receiver between them is an extension.
+_KT_FUNCTION = ("[(function_declaration . name: (identifier) @name (function_body)) "
+                "(function_declaration (modifiers) . name: (identifier) @name (function_body)) "
+                "(function_declaration (type_parameters) . name: (identifier) @name (function_body)) "
+                "(secondary_constructor \"constructor\" @name)]")
+KOTLIN_QUERY = f"""
+[(class_declaration name: (identifier) @name) (object_declaration name: (identifier) @name)] @class
+(source_file {_KT_FUNCTION} @function)
+(class_declaration (class_body {_KT_FUNCTION} @function))
+(class_declaration (enum_class_body {_KT_FUNCTION} @function))
+(object_declaration (class_body {_KT_FUNCTION} @function))
+(companion_object (class_body {_KT_FUNCTION} @function))
+(function_declaration {_KT_RECEIVER} . name: (identifier) @name (function_body)) @function
+(function_declaration (nullable_type {_KT_RECEIVER}) . name: (identifier) @name (function_body)) @function
+(call_expression (identifier) @name (#not-match? @name "^[A-Z]")) @call
+(call_expression (identifier) @name (#match? @name "^[A-Z]")) @reference
+(call_expression (navigation_expression (identifier) @name .) (#not-match? @name "^[A-Z]")) @send
+(call_expression (navigation_expression (identifier) @name .) (#match? @name "^[A-Z]")) @reference
+(delegation_specifier {_KT_TYPE}) @reference
+(delegation_specifier (constructor_invocation {_KT_TYPE})) @reference
+(delegation_specifier (explicit_delegation {_KT_TYPE})) @reference
+"""
+
+# The common names: `get` (78 sends, `CompletableFuture.get`, linked to `TestingIntBox.get`), `toString` (32), `map`
+# (31, mostly a collection's, linked to `RequestResult.map`) and `hashCode`, measured on libsignal (T-0038, `check`);
+# the others are guessed: `Any`'s, the scope functions, the collections', the arrays' and the futures'. Left out, their
+# sends mostly libsignal's: `await` (its `CompletableFuture.await`), `start`, `of`. shortcut: a hand-kept list; to
+# extend when `check` shows a standard name among the most frequent sends linked by name (`ours?`) on a host.
+KOTLIN = Language("kotlin", {".kt": (tree_sitter.Language(tree_sitter_kotlin.language()), KOTLIN_QUERY)}, frozenset({
+    "get", "toString", "map", "hashCode", "equals", "compareTo", "let", "apply", "also", "run", "use", "takeIf",
+    "filter", "forEach", "flatMap", "mapNotNull", "first", "firstOrNull", "last", "single", "toList", "toSet", "toMap",
+    "toTypedArray", "toByteArray", "joinToString", "contains", "isEmpty", "isNotEmpty", "set", "add", "addAll", "put",
+    "remove", "clear", "copyOf", "copyOfRange", "contentEquals", "contentHashCode", "invoke", "close", "split",
+    "thenApply", "thenCompose", "complete", "completeExceptionally", "getOrNull", "getOrThrow", "getOrElse",
+    "onSuccess", "onFailure", "fold", "iterator", "next", "hasNext"}))
 
 
 # C and C++ (T-0034): the upstream `tags.scm` capture no call. A query pattern sees direct children only, so the

@@ -36,8 +36,8 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   protobuf, libsignal, gitea (and Django). T-0030; Go is read since T-0031
   (gitea), Rust since T-0032 (libsignal), Java since T-0033 (protobuf), C and
   C++ since T-0034 (protobuf), C# since T-0035 (protobuf), Ruby since
-  T-0036 (protobuf), Swift since T-0037 (libsignal), Kotlin follows in
-  T-0038.
+  T-0036 (protobuf), Swift since T-0037 (libsignal), Kotlin since T-0038
+  (libsignal).
 - **A Go file in Go 1.26's syntax is skipped whole.** (gitea, sample host,
   2026-11-19, T-0031) `tree-sitter-go` 0.25.0, the last on PyPI, knows
   neither `new(expr)` nor generic methods (`func (f *Flash) Error[T ...]`):
@@ -185,6 +185,27 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   method's; operators (`static func ==`) and subscripts likewise. The query
   takes a type's or an extension's direct children only, the one way to
   tell an extension's method from a type's.
+- **Kotlin's calls to its host's Java are not linked.** (libsignal, sample
+  host, 2026-11-19, T-0038) 488 of the 1822 Kotlin sites `external` name a
+  definition of libsignal's Java (`nativeHandle` 71, `makeCancelable` 69,
+  `fakeConnect` 58, `guardedMap` 48): Kotlin and Java are one entry each,
+  and no call is linked across languages (ADR 0003). One JVM entry, as C and
+  C++ are one (T-0034), would link them by name.
+- **A Kotlin extension function of one name on several types is
+  ambiguous.** (libsignal, sample host, 2026-11-19, T-0038) Its 40
+  `this.toFfiArgType()` (generated test code: `fun MyTestEnum.Unit.toFfiArgType()`
+  and its siblings, one per type) are not attributed: linking them needs the
+  receiver's type, a dedicated reader's work (ADR 0003).
+- **A Kotlin file in the grammar's blind spots is skipped whole.**
+  (protobuf, sample host, 2026-11-19, T-0038) `tree-sitter-kotlin` 1.1.0
+  reads neither a trailing comma in type parameters (`T : Any,` then `>`,
+  `ExtendableMessageExtensions.kt` and its lite twin) nor a soft keyword used
+  as a name (`by = "foo"`, the "evil names" tests `Proto2Test.kt`,
+  `Proto3Test.kt`, `Proto2LiteTest.kt`): 5 of protobuf's 23 Kotlin files are
+  skipped and named at each build. Being `tolerant` would keep the two
+  extension files' other functions but turn a test class's methods into
+  functions (the error node holds the whole class); a newer grammar, when
+  one is published, or erasing the trailing comma (`erased`).
 - **A file's gtest tests are one function.** (protobuf, sample host,
   2026-11-19, T-0034) `TEST_F(Suite, Name) { .. }` parses as a function
   `TEST_F`: protobuf's 4824 tests are one `TEST_F`, `TEST`, `TEST_P` or

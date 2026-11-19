@@ -6,7 +6,7 @@ import textwrap
 from pathlib import Path
 
 import graphe_generic
-from graphe_generic import C, CSHARP, GO, JAVA, RUBY, RUST, SWIFT
+from graphe_generic import C, CSHARP, GO, JAVA, KOTLIN, RUBY, RUST, SWIFT
 
 
 def _read(language, file: str, source: str):
@@ -335,6 +335,66 @@ def test_a_swift_defer_or_a_standard_function_libsignal_shadows_is_no_call():
         }
         """)
     assert uses == {("call", "g", 2, "f")}
+
+
+def test_a_kotlin_class_its_methods_and_its_calls():
+    """libsignal (T-0038): a class, an interface, an enum and an `object` are classes, a companion object's functions
+    its class's; a secondary constructor is the method `C.constructor`; an abstract function, an anonymous object's
+    and a local one are no definitions. `b()` is a call, `x.c()`, `y?.z()` and `this.m()` are sends; a call to a
+    capitalised name, `D(..)`, `Foo.Bar(..)`, `Array<Int>(..)`, and a supertype are references by the last name."""
+    definitions, uses = _read(KOTLIN, "src/c.kt", """\
+        class C(val x: Int) : B(), P, a.Q<Int> {
+            constructor(y: String) : this(1) {
+                b()
+            }
+            fun m(): Int {
+                x.c(); y?.z(); Foo.Bar(1)
+                val r = object : Runnable {
+                    override fun run() { this@C.m() }
+                }
+                return D(2).k()
+            }
+            companion object {
+                fun s() = C.s()
+            }
+        }
+        interface P {
+            fun v()
+            fun w() {}
+        }
+        object O : P by d {
+            private fun <T> o() { fun local() {} }
+        }
+        enum class E {
+            A, B;
+            fun e() {}
+        }
+        fun top() { listOf(1).map { it.u() }; Array<Int>(1) { 0 } }
+        """)
+    assert definitions == {("class", "C", 1), ("method", "C.constructor", 2), ("method", "C.m", 5),
+                           ("method", "C.s", 13), ("class", "P", 16), ("method", "P.w", 18), ("class", "O", 20),
+                           ("method", "O.o", 21), ("class", "E", 23), ("method", "E.e", 25), ("function", "top", 27)}
+    assert uses == {("reference", "B", 1, "C"), ("reference", "P", 1, "C"), ("reference", "Q", 1, "C"),
+                    ("call", "b", 3, "C.constructor"), ("send", "c", 6, "C.m"), ("send", "z", 6, "C.m"),
+                    ("reference", "Bar", 6, "C.m"), ("reference", "Runnable", 7, "C.m"), ("send", "m", 8, "C.m"),
+                    ("reference", "D", 10, "C.m"), ("send", "k", 10, "C.m"), ("send", "s", 13, "C.s"),
+                    ("reference", "P", 20, "O"), ("call", "listOf", 27, "top"), ("send", "map", 27, "top"),
+                    ("send", "u", 27, "top"), ("reference", "Array", 27, "top")}
+
+
+def test_a_kotlin_extension_function_is_a_method_of_its_receiver():
+    """T-0038: `fun Foo.Bar.f()` is the method `Bar.f` (`@receiver`, as Go's), so that libsignal's `toFfiArgType` of
+    each type stay apart; nullable and generic receivers too."""
+    definitions, _ = _read(KOTLIN, "src/e.kt", """\
+        public fun UnauthProfileAuthorization.GroupSend.toFfiArgType() = 1
+        suspend fun <T> CompletableFuture<T>.await(): T = get()
+        fun Throwable?.toResult() {}
+        class K {
+            fun String.inside() {}
+        }
+        """)
+    assert definitions == {("method", "GroupSend.toFfiArgType", 1), ("method", "CompletableFuture.await", 2),
+                           ("method", "Throwable.toResult", 3), ("class", "K", 4), ("method", "String.inside", 5)}
 
 
 class Project:

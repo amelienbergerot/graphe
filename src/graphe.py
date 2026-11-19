@@ -19,8 +19,8 @@ graphe_godot.py (GDScript, by patterns), graphe_php.py (its functions, the
 actions of a `switch ($action)`, the calls of the file's top) and graphe_js.py
 (`.js`, `.mjs`, `.ts`, the script and markup of `.svelte`, by tree-sitter: calls
 resolved by the imports, by `new C()` or `f()` assigned, else by the name); graphe_generic.py reads
-Go, Rust, Java, C/C++, C#, Ruby and Swift by tree-sitter, a call linked by its name only when the language defines it
-once (docs/readers.md lists every reader). The core, graphe_core.py, then
+Go, Rust, Java, C/C++, C#, Ruby, Swift and Kotlin by tree-sitter, a call linked by its name only when the
+language defines it once (docs/readers.md lists every reader). The core, graphe_core.py, then
 reads the text: the end of each function and class, the texts it displays
 (the `displayed_text` pattern of graphe.toml), its comment, module variables
 and who reads them, and the documents (the host's Markdown, `[documents]` of
@@ -125,7 +125,8 @@ READERS = {"python": graphe_python.contribute, "godot": graphe_godot.contribute,
            "c": functools.partial(graphe_generic.contribute, graphe_generic.C),
            "csharp": functools.partial(graphe_generic.contribute, graphe_generic.CSHARP),
            "ruby": functools.partial(graphe_generic.contribute, graphe_generic.RUBY),
-           "swift": functools.partial(graphe_generic.contribute, graphe_generic.SWIFT)}
+           "swift": functools.partial(graphe_generic.contribute, graphe_generic.SWIFT),
+           "kotlin": functools.partial(graphe_generic.contribute, graphe_generic.KOTLIN)}
 NODE_FIELDS = ("id", "label", "kind", "source_file", "source_location", "name")
 LINK_FIELDS = ("source", "target", "relation", "confidence", "source_file", "source_location", "context")
 
