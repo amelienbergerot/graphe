@@ -6,7 +6,7 @@ import textwrap
 from pathlib import Path
 
 import graphe_generic
-from graphe_generic import C, CSHARP, GO, JAVA, KOTLIN, RUBY, RUST, SWIFT
+from graphe_generic import C, CSHARP, GO, JAVA, JVM, KOTLIN, RUBY, RUST, SWIFT
 
 
 def _read(language, file: str, source: str):
@@ -589,3 +589,32 @@ def test_a_cpp_call_to_a_c_function_is_linked_and_its_header_prototype_is_no_def
         ("class", "Holder"), ("method", "Holder.Reset"), ("function", "upb_Arena_New"), ("function", "Use")}
     assert sorted((e["source"], e["target"]) for e in c["links"] if e["relation"] == "calls") == [
         ("src_user_cc_use", "upb_arena_c_upb_arena_new"), ("upb_arena_h_holder_reset", "upb_arena_c_upb_arena_new")]
+
+
+def test_a_kotlin_call_to_a_java_method_is_linked_and_the_reverse(tmp_path: Path):
+    """libsignal (T-0042): its Kotlin calls its Java's `nativeHandle`; Java calls a Kotlin top-level function through
+    its file class (`FooKt.fromKotlin()`). `Foo.java` and `Foo.kt` keep their own ids."""
+    project = Project(tmp_path, {
+        "src/Foo.java": """\
+            class Foo {
+                long nativeHandle() { return 0; }
+                void useKotlin() { FooKt.fromKotlin(); }
+            }
+            """,
+        "src/Foo.kt": """\
+            class Bar {
+                fun m() {
+                    Foo().nativeHandle()
+                }
+            }
+
+            fun fromKotlin() {}
+            """,
+    })
+    jvm = graphe_generic.contribute(JVM, project)
+    ids = [n["id"] for n in jvm["nodes"]]
+    assert "src_foo_java" in ids and "src_foo_kt" in ids and len(ids) == len(set(ids))
+    assert {(e["source"], e["target"], e["relation"]) for e in jvm["links"] if e["relation"] != "contains"} == {
+        ("src_foo_kt_bar_m", "src_foo_java_foo_nativehandle", "calls"),
+        ("src_foo_kt_bar_m", "src_foo_java_foo", "references"),
+        ("src_foo_java_foo_usekotlin", "src_foo_kt_fromkotlin", "calls")}

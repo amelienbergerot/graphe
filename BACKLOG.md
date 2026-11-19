@@ -157,12 +157,14 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   method's; operators (`static func ==`) and subscripts likewise. The query
   takes a type's or an extension's direct children only, the one way to
   tell an extension's method from a type's.
-- **Kotlin's calls to its host's Java are not linked.** (libsignal, sample
-  host, 2026-11-19, T-0038) 488 of the 1822 Kotlin sites `external` name a
-  definition of libsignal's Java (`nativeHandle` 71, `makeCancelable` 69,
-  `fakeConnect` 58, `guardedMap` 48): Kotlin and Java are one entry each,
-  and no call is linked across languages (ADR 0003). One JVM entry, as C and
-  C++ are one (T-0034), would link them by name.
+- **A Kotlin standard type is linked to a Java class of its name.**
+  (libsignal, sample host, 2026-11-19, T-0042) Since Java and Kotlin are one
+  entry, Kotlin's `ByteArray(32)`, the standard library's, is a `references`
+  link to libsignal's Java `zkgroup.internal.ByteArray` (24 links; libsignal's
+  Kotlin imports its own as `SignalByteArray`). A capitalised call is taken
+  for a type of the host by its last name: a list of Kotlin's standard types
+  (`ByteArray`, `IntArray`, `Pair`...) never referenced, as the common names
+  are for sends, would drop them.
 - **A Kotlin extension function of one name on several types is
   ambiguous.** (libsignal, sample host, 2026-11-19, T-0038) Its 40
   `this.toFfiArgType()` (generated test code: `fun MyTestEnum.Unit.toFfiArgType()`
@@ -206,6 +208,14 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
 
 Settled by tickets (2026-11-19):
 
+- **Kotlin's calls to its host's Java are not linked.** [T-0042] (libsignal,
+  sample host, 2026-11-19, T-0038) 488 of the 1822 Kotlin sites `external`
+  named a definition of libsignal's Java (`nativeHandle` 71, `makeCancelable`
+  69, `fakeConnect` 58, `guardedMap` 48). Java and Kotlin are one entry,
+  `java`, since T-0042: 401 Kotlin sites linked (`fakeConnect` is ambiguous,
+  three Java classes define it), `callers NativeHandleGuard.nativeHandle` 30
+  -> 99. A name both define is ambiguous where each language's was linked
+  (`filterExceptions`, 246 sites, a Kotlin twin of the Java one).
 - **A C# property is no definition.** [T-0041] (protobuf, sample host,
   2026-11-19, T-0035) The calls of a property's `get`, `set` and `=> expr`
   belonged to its class: `callers ProtoPreconditions.CheckNotNull` listed

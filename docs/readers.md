@@ -10,12 +10,11 @@ A reader turns a host's files of one language into nodes, links and coverage sit
 | `js` | dedicated, `graphe_js.py` | JavaScript, TypeScript, Svelte | `.js`, `.mjs`, `.ts`, `.svelte` |
 | `go` | generic, `graphe_generic.py` | Go | `.go` |
 | `rust` | generic, `graphe_generic.py` | Rust | `.rs` |
-| `java` | generic, `graphe_generic.py` | Java | `.java` |
+| `java` | generic, `graphe_generic.py` | Java, Kotlin | `.java`, `.kt` |
 | `c` | generic, `graphe_generic.py` | C, C++ | `.c`, `.h`, `.cpp`, `.cc`, `.cxx`, `.hpp` |
 | `csharp` | generic, `graphe_generic.py` | C# | `.cs` |
 | `ruby` | generic, `graphe_generic.py` | Ruby | `.rb` |
 | `swift` | generic, `graphe_generic.py` | Swift | `.swift` |
-| `kotlin` | generic, `graphe_generic.py` | Kotlin | `.kt` |
 
 A **dedicated reader** knows its language's imports and types, and links a call for sure where it can. The **generic reader** (ADR 0003, GLOSSARY.md) reads every other language the same way, by its name alone.
 
@@ -53,7 +52,7 @@ Every link a use makes is by the name alone (`INFERRED`: `[by name]`, `?` in the
 - `@reference` becomes `references`, to the class of that name;
 - a `@send` of a common name is never linked;
 - a call to its own definition (recursion) draws no link;
-- no call is linked to another language: each language is its own registry entry, and sees only its own definitions.
+- no call is linked to another language: each language is its own registry entry, and sees only its own definitions; a family is one entry (C and C++, `c`; Java and Kotlin, `java`), each file read by its own grammar.
 
 A bare call and a send are marked alike: both are by name.
 
@@ -115,11 +114,11 @@ A quirk the query cannot express is a `shortcut:` in its section here. A languag
 
 ## Java
 
-- **Section**: `java`. **Suffixes**: `.java`.
+- **Section**: `java`, one family with Kotlin (T-0042): a Kotlin call to a Java method is linked, and the reverse. **Suffixes**: `.java` (and Kotlin's, below). A host's `[kotlin]` section, as its `[java]` one, has no key a generic reader reads: it was ignored and still is; `graphe check` gives Kotlin's sites under `java`.
 - **Grammar**: `tree-sitter-java` 0.23.5 (py-tree-sitter 0.26.1).
 - **Nodes**: a `class` per `class`, `interface`, `enum` and `record`; a `method` `C.m` per method with a body, and `C.C` per constructor; a method's class is the innermost class that contains it. An abstract method or an interface's signature is not a node: each would make its implementations' name ambiguous. The overloads of a class are one method.
 - **Links**: `m()` is `@call`; `x.m()`, `C.m()` and `com.x.C.m()` are `@send`, so a static method follows the common names. `new C()`, `extends C`, `implements I` and an interface's `extends J` are `references` to the type, in their generic (`C<T>`) and qualified (`Outer.Inner`, `com.x.C`) forms, by the last name. All `INFERRED`.
-- **Common names**: the JDK's names (and JRuby's `newString`) that one method of protobuf would collect from every `s.getBytes`, `clazz.getMethod`, `buffer.flip`, `map.keySet`, `s.startsWith` (measured from `graphe check` on protobuf, T-0033), and, guessed, the methods of the collections, `Object`, `String`, `Optional`, the streams, the threads, the boxed numbers and `Arrays` (`get`, `add`, `equals`, `toString`, `substring`, `orElse`, `println`, `parseInt`...). The list is `JAVA.common`.
+- **Common names**: the JDK's names (and JRuby's `newString`) that one method of protobuf would collect from every `s.getBytes`, `clazz.getMethod`, `buffer.flip`, `map.keySet`, `s.startsWith` (measured from `graphe check` on protobuf, T-0033), and, guessed, the methods of the collections, `Object`, `String`, `Optional`, the streams, the threads, the boxed numbers and `Arrays` (`get`, `add`, `equals`, `toString`, `substring`, `orElse`, `println`, `parseInt`...). The list is `JAVA.common`; the family's is `JVM.common`, both lists (Kotlin's below).
 - **Quirks**: an abstract method has no node, so `explain CodedInputStream.pushLimit` finds none: its implementations do (`ArrayDecoder.pushLimit`). A class named like another of the host, in any file, is ambiguous: generated code repeats its classes (`Builder`, `TestMessage`) in every file.
 - **Limits**:
   - `shortcut:` a nested class is named by its own name: `X.Builder` and `Y.Builder` of one file are one class, their methods of one name one method; to name a nested class by its outer one if a host needs them apart.
@@ -206,14 +205,16 @@ A quirk the query cannot express is a `shortcut:` in its section here. A languag
 
 ## Kotlin
 
-- **Section**: `kotlin`. **Suffixes**: `.kt` (a Gradle script `.kts` is not read).
+- **Section**: `java`, one family with Java (T-0042, above). **Suffixes**: `.kt` (a Gradle script `.kts` is not read).
 - **Grammar**: `tree-sitter-kotlin` 1.1.0 (py-tree-sitter 0.26.1). It ships no `tags.scm`: the query (`KOTLIN_QUERY`) is ours.
 - **Nodes**: a `class` per `class`, `interface`, `enum class`, `data class` (one `class_declaration` in the grammar) and `object`; a companion object is none, its functions its class's (`C.s`). A `method` `C.m` per `fun` with a body directly in a type's body (an `object`'s, a companion's, an enum's); a `function` per `fun` at the top of a file. A secondary constructor is the method `C.constructor`. An extension function `fun Foo.Bar.f()` is the method `Bar.f` by `@receiver`, as Go's, wherever it is declared (libsignal's 73: its `toFfiArgType` of each type apart); one on a function type (`fun (() -> Unit).f()`) is not captured. An abstract function (no body), an anonymous object's (`object : Runnable { override fun run() }`) and a local one are not captured: their calls are their enclosing definition's. A type is named by its last name, generic or not.
-- **Links**: `b()` is a `@call`; `x.c()`, `this.c()`, `y?.c()`, `C.s()` are `@send`. A call to a capitalised name, `C(..)`, `Foo.Bar(..)`, `Array<Int>(..) { }`, is a `references` to the type by its last name (Kotlin's naming convention, and Kotlin has no `new`), as is a supertype (`class C : B(), P`, `object O : P by d`, `object : Runnable`). All `INFERRED`. A call to libsignal's Java from its Kotlin is `external` (488 of the 1822 `external` sites name a Java definition): no call is linked across languages (ADR 0003).
-- **Common names**: `get` (78 sends, `CompletableFuture.get`, linked to `TestingIntBox.get`), `toString` (32), `map` (31, mostly a collection's, linked to `RequestResult.map`) and `hashCode`, measured on libsignal (T-0038), and, guessed, `Any`'s, the scope functions (`let`, `apply`, `also`, `run`, `use`), the collections', the arrays' and the futures' (`thenApply`, `complete`). Left out, their sends mostly libsignal's: `await` (its own `CompletableFuture.await`), `start`, `of`, `remove` and `invoke` (one send each, libsignal's `svrB.remove()` and `SetProfileHelpers.invoke`). The list is `KOTLIN.common`.
+- **Links**: `b()` is a `@call`; `x.c()`, `this.c()`, `y?.c()`, `C.s()` are `@send`. A call to a capitalised name, `C(..)`, `Foo.Bar(..)`, `Array<Int>(..) { }`, is a `references` to the type by its last name (Kotlin's naming convention, and Kotlin has no `new`), as is a supertype (`class C : B(), P`, `object O : P by d`, `object : Runnable`). All `INFERRED`. A call to libsignal's Java from its Kotlin is linked by name (T-0042: 401 sites `external` before, `nativeHandle` 71, `makeCancelable` 69, `guardedMap` 48), and the reverse (65, `checkCalledMethod` 16). A name both define is ambiguous: `filterExceptions` (`FilterExceptions.java` and `FilterExceptionsKt.kt`, 246 sites), `fakeConnect` (three Java classes, 58).
+- **Common names**: `get` (78 sends, `CompletableFuture.get`, linked to `TestingIntBox.get`), `toString` (32), `map` (31, mostly a collection's, linked to `RequestResult.map`) and `hashCode`, measured on libsignal (T-0038), and, guessed, `Any`'s, the scope functions (`let`, `apply`, `also`, `run`, `use`), the collections', the arrays' and the futures' (`getOrNull`, `onSuccess`). Left out, their sends mostly libsignal's: `await` (its own `CompletableFuture.await`), `start`, `of`, `remove` and `invoke` (one send each, libsignal's `svrB.remove()` and `SetProfileHelpers.invoke`). Out since Java is read with Kotlin (T-0042): `thenApply`, `thenCompose`, `complete`, `completeExceptionally`, the methods of libsignal's own Java `CompletableFuture` (56 of its Java sends were linked to them, 41 Kotlin ones are), and `toByteArray`, protobuf's (306 Java sends). The list is `KOTLIN.common`; Java's applies too (`JVM.common`).
 - **Quirks**:
   - Not `tolerant`: every libsignal file parses. 5 of protobuf's 23 do not (a trailing comma in type parameters, `T : Any,` then `>`; a soft keyword used as a name, `by = "foo"`, in its "evil names" tests): skipped and named on stderr (BACKLOG.md).
 - **Limits**:
+  - `shortcut:` Java's `start`, `of` and `remove` silence 16 of libsignal's Kotlin sends to its own (`BackupJsonExporter.start`, `BadgeVisibility.of`); out of the list, Java's `List.of` would be linked to `BadgeVisibility.of` (35 sends) and 501 of protobuf's Java sends become ambiguous; to give each grammar its own list if a host's Kotlin loses more.
+  - `shortcut:` a capitalised call to a standard type, `ByteArray(32)`, is a `references` to a Java class of the host so named (libsignal's `zkgroup.internal.ByteArray`: 24 links, BACKLOG.md); to never reference Kotlin's standard types if a host's `callers` of a class suffer.
   - `shortcut:` a property's getter or setter (32 on libsignal) and an `init { }` block are no definitions, their calls their class's; to capture them as Swift's computed properties if a host's `explain` needs them.
   - `shortcut:` a capitalised call is taken for a type, a lower-case one for a function; to tell them apart by their definitions if a host breaks the convention.
   - `shortcut:` the grammar does not read a class body on one line (`class C { fun f() {} }`, an error node: the tests' snippets are on several lines; none on libsignal), and reads `Array<Int>(1)` without a trailing lambda, or after a `+`, as comparisons (no reference); to take a newer grammar when one is published, if a host loses code to them.

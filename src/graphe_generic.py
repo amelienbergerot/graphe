@@ -11,7 +11,8 @@ a `@class` is its method; a method's class is its `@receiver`, or else the inner
 - a node per file, function, method (`Class.method`) and class; the definitions of one kind and name in a file are one
   (Rust's `struct T` and its `impl T`, Java's overloads); the ids carry the extension (`a_t_go`);
 - every link a use makes is by the name alone (INFERRED), and only when the name has a single definition in the
-  language: a call or a send to a function or a method, a reference to a class. A send never links a common name.
+  language (or family: C/C++, Java/Kotlin): a call or a send to a function or a method, a reference to a class. A send
+  never links a common name.
   Each call or send is a site: `ours?`, `ambiguous`, `common` or `external` (no definition of that name);
 - a file that does not parse is skipped and named on stderr, unless the language is `tolerant` (C's macros, C#'s
   `#if`, Swift's and Go's newer syntax, Rust's `dyn 'a + Trait`).
@@ -385,15 +386,27 @@ KOTLIN_QUERY = f"""
 # (31, mostly a collection's, linked to `RequestResult.map`) and `hashCode`, measured on libsignal (T-0038, `check`);
 # the others are guessed: `Any`'s, the scope functions, the collections', the arrays' and the futures'. Left out, their
 # sends mostly libsignal's: `await` (its `CompletableFuture.await`), `start`, `of`, and `remove` and `invoke`, whose one
-# send each is libsignal's (`svrB.remove()`, `SetProfileHelpers.invoke`). shortcut: a hand-kept list; to
-# extend when `check` shows a standard name among the most frequent sends linked by name (`ours?`) on a host.
+# send each is libsignal's (`svrB.remove()`, `SetProfileHelpers.invoke`). Out since Java is read with it (T-0042):
+# `thenApply`, `thenCompose`, `complete`, `completeExceptionally`, the methods of libsignal's own Java
+# `CompletableFuture` (56 of its Java sends were linked to them), and `toByteArray`, protobuf's (306 Java sends).
+# shortcut: a hand-kept list; to extend when `check` shows a standard name among the most frequent sends linked by name
+# (`ours?`) on a host.
 KOTLIN = Language("kotlin", {".kt": (tree_sitter.Language(tree_sitter_kotlin.language()), KOTLIN_QUERY)}, frozenset({
     "get", "toString", "map", "hashCode", "equals", "compareTo", "let", "apply", "also", "run", "use", "takeIf",
     "filter", "forEach", "flatMap", "mapNotNull", "first", "firstOrNull", "last", "single", "toList", "toSet", "toMap",
-    "toTypedArray", "toByteArray", "joinToString", "contains", "isEmpty", "isNotEmpty", "set", "add", "addAll", "put",
+    "toTypedArray", "joinToString", "contains", "isEmpty", "isNotEmpty", "set", "add", "addAll", "put",
     "clear", "copyOf", "copyOfRange", "contentEquals", "contentHashCode", "close", "split",
-    "thenApply", "thenCompose", "complete", "completeExceptionally", "getOrNull", "getOrThrow", "getOrElse",
+    "getOrNull", "getOrThrow", "getOrElse",
     "onSuccess", "onFailure", "fold", "iterator", "next", "hasNext"}))
+
+# Java and Kotlin are one family (T-0042), as C and C++: a Kotlin call to its host's Java is linked, and the reverse.
+# Each file keeps its grammar and query; the common names are both lists. Not `tolerant`, as each was. shortcut: Java's
+# `start`, `of` and `remove` silence 16 of libsignal's Kotlin sends to its own; out, Java's `List.of` would be linked to
+# Kotlin's `BadgeVisibility.of` (35 sends) and 501 of protobuf's sends made ambiguous; to give each grammar its own list
+# if a host's Kotlin loses more. shortcut: Kotlin's `ByteArray(n)`, the standard library's, is a reference to a Java
+# class so named (libsignal's `zkgroup.internal.ByteArray`, 24 links); to never reference Kotlin's standard types
+# (BACKLOG.md) if a host's `callers` of a class suffer.
+JVM = Language("java", {**JAVA.grammars, **KOTLIN.grammars}, JAVA.common | KOTLIN.common)
 
 
 # C and C++ (T-0034): the upstream `tags.scm` capture no call. A query pattern sees direct children only, so the
