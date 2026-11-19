@@ -33,8 +33,8 @@ graphe build; graphe check
 - **URL**: https://github.com/signalapp/libsignal
 - **Commit**: `956e1cab1d68291c92f2fcca3c29ec6c3b367e28` (2026-11-17).
 - **Languages**: Rust (612 of its 1852 files), Java (344), Swift (218), TypeScript (176), Kotlin (125).
-- **`graphe.toml`**: none. The Rust grammar does not parse 1 file (`dyn 's + FnOnce`): skipped and named at each build (BACKLOG.md).
-- **Measured by**: T-0032 (Rust), T-0033 (its Java: 0 dangling, no file skipped), T-0034 (its 2 C headers, `swift/Sources/SignalFfi/*.h`: 544 structs, nothing else changed), T-0037 (Swift: 0 dangling; 10 of its 218 files have an error node, read all the same), T-0038 (Kotlin: 0 dangling, every file parses). The JS reader read it first there: a comment among the names of `import { }` (`node/ts/NativeNice.ts`) made it fail, fixed in T-0032.
+- **`graphe.toml`**: none. The Rust grammar does not parse 1 file (`dyn 's + FnOnce`): read all the same since T-0040, it loses no definition.
+- **Measured by**: T-0032 (Rust), T-0033 (its Java: 0 dangling, no file skipped), T-0034 (its 2 C headers, `swift/Sources/SignalFfi/*.h`: 544 structs, nothing else changed), T-0037 (Swift: 0 dangling; 10 of its 218 files have an error node, read all the same), T-0038 (Kotlin: 0 dangling, every file parses), T-0040 (Rust `tolerant`: 0 dangling, no file skipped). The JS reader read it first there: a comment among the names of `import { }` (`node/ts/NativeNice.ts`) made it fail, fixed in T-0032.
 
 ## protobuf
 

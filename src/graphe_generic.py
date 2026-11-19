@@ -14,7 +14,7 @@ a `@class` is its method; a method's class is its `@receiver`, or else the inner
   language: a call or a send to a function or a method, a reference to a class. A send never links a common name.
   Each call or send is a site: `ours?`, `ambiguous`, `common` or `external` (no definition of that name);
 - a file that does not parse is skipped and named on stderr, unless the language is `tolerant` (C's macros, C#'s
-  `#if`, Swift's and Go's newer syntax).
+  `#if`, Swift's and Go's newer syntax, Rust's `dyn 'a + Trait`).
 """
 
 from __future__ import annotations
@@ -41,7 +41,7 @@ class Language(NamedTuple):
     name: str
     grammars: dict[str, tuple[tree_sitter.Language, str]]  # suffix -> (grammar, query)
     common: frozenset[str]  # method names never linked from a send
-    tolerant: bool = False  # a file that does not parse is read all the same (C's macros, C#, Swift, Go), not skipped
+    tolerant: bool = False  # a file that does not parse is read, not skipped (C's macros, C#, Swift, Go, Rust)
     erased: re.Pattern[bytes] | None = None  # what it matches is blanked before parsing (one line, columns kept)
 
 
@@ -140,7 +140,11 @@ RUST = Language("rust", {".rs": (tree_sitter.Language(tree_sitter_rust.language(
     "then", "concat", "null", "timeout", "current", "as_secs", "as_millis", "status", "any", "sort", "as_mut",
     "as_pin_mut", "builder", "take", "encode", "send", "is_some", "spawn", "block_on", "lock", "join", "to_vec",
     "try_from", "try_into", "parse", "split", "chain", "filter", "fold", "find", "zip", "copied", "cloned", "flatten",
-    "unwrap_or", "unwrap_or_default", "unwrap_or_else", "map_err", "context", "with_context", "run", "call", "poll"}))
+    "unwrap_or", "unwrap_or_default", "unwrap_or_else", "map_err", "context", "with_context", "run", "call", "poll"}),
+    # Grammar 0.24.2 rejects a lifetime first in a trait object (`dyn 's + FnOnce(..)`): 1 of libsignal's 612 files,
+    # read all the same (T-0040). shortcut: a Rust file that does not parse is not named on stderr; to name it if a
+    # host's garbage shows.
+    tolerant=True)
 
 # An abstract method (no body) is not captured, as Rust's trait signatures; a constructor is the method `C.C`.
 JAVA_QUERY = """

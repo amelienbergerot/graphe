@@ -21,7 +21,7 @@ A **dedicated reader** knows its language's imports and types, and links a call 
 
 ## The generic reader
 
-`src/graphe_generic.py`. A language is data only, a `Language`: its tree-sitter grammars by file suffix, a query of ours per grammar, its **common names**, the method names never linked from a call on a receiver, and two switches for C/C++'s macros, C#'s `#if` and Swift's and Go's newer syntax: `tolerant` (a file with error nodes is read, not skipped) and `erased` (a pattern blanked before parsing; ADR 0003's amendment). The reading, the owner of a call, the `Class.method` naming and the linking are written once.
+`src/graphe_generic.py`. A language is data only, a `Language`: its tree-sitter grammars by file suffix, a query of ours per grammar, its **common names**, the method names never linked from a call on a receiver, and two switches for C/C++'s macros, C#'s `#if`, Swift's and Go's newer syntax and Rust's `dyn 'a + Trait`: `tolerant` (a file with error nodes is read, not skipped) and `erased` (a pattern blanked before parsing; ADR 0003's amendment). The reading, the owner of a call, the `Class.method` naming and the linking are written once.
 
 ### The capture convention
 
@@ -66,7 +66,7 @@ Every call or send is a coverage site, with its verdict:
 | `common` | A send of a common name that the host defines. | no: counted by `explain` likewise |
 | `external` | No definition of that name in the host (the standard library, a dependency, a builtin). | no |
 
-A file that does not parse (any error node in its tree) is skipped and named on stderr; the build goes on. A `tolerant` language (C/C++, whose macros leave error nodes in valid code; C#, whose `#if` branches, both read, can; Swift and Go, whose newer syntax the grammar lacks) reads it all the same. A host without the language's files gets no contribution at all, not even an empty coverage.
+A file that does not parse (any error node in its tree) is skipped and named on stderr; the build goes on. A `tolerant` language (C/C++, whose macros leave error nodes in valid code; C#, whose `#if` branches, both read, can; Swift and Go, whose newer syntax the grammar lacks; Rust, whose grammar rejects `dyn 'a + Trait`) reads it all the same. A host without the language's files gets no contribution at all, not even an empty coverage.
 
 ### Adding a language
 
@@ -103,12 +103,14 @@ A quirk the query cannot express is a `shortcut:` in its section here. A languag
 - **Nodes**: a `function` per `fn f()` with a body; a `method` `T.f` per function of an `impl T`, `impl Tr for T`, `impl Tr for &'a T` (and their generic and `path::T` forms) or of a `trait T` (a default method); a `class` per `struct`, `enum`, `union`, `trait` and `impl`. A trait's signatures without a body are not nodes: each would make its implementations' name ambiguous.
 - **Links**: `f()` is `@call`; `x.f()`, `T::f()` and `crate::m::f()` are `@send`, so a path follows the common names. `T { .. }` and `path::T { .. }` are `references` to `T`. All `INFERRED`.
 - **Common names**: the standard library's and the usual crates' (tokio, futures, http) names that one function of libsignal would collect from every `Vec::with_capacity`, `std::future::ready`, `f.debug_struct(..).field`, `x.ok()` (measured from `graphe check` on libsignal, T-0032), and the methods of Rust's common traits (`new`, `default`, `clone`, `from`, `into`, `fmt`...). The list is `RUST.common`.
-- **Quirks**: `Ok(x)`, `Some(x)`, `Err(e)` and a tuple struct `T(x)` are calls, `external` (no function of that name). The functions of one name in one file are one node: `fmt` of `impl Debug for T` and of `impl Display for T` is one `T.fmt`, the `fn f` of two `mod`s one `f` (libsignal: 513 merged in 89 files, T-0033).
+- **Quirks**:
+  - `Ok(x)`, `Some(x)`, `Err(e)` and a tuple struct `T(x)` are calls, `external` (no function of that name). The functions of one name in one file are one node: `fmt` of `impl Debug for T` and of `impl Display for T` is one `T.fmt`, the `fn f` of two `mod`s one `f` (libsignal: 513 merged in 89 files, T-0033).
+  - `tolerant`: grammar 0.24.2 rejects a lifetime first in a trait object (`Box<dyn 's + FnOnce(..)>`), 1 of libsignal's 612 files; read all the same, it loses no definition (T-0040).
 - **Limits**:
   - `shortcut:` a macro's arguments are tokens to the grammar: a call inside `assert_eq!`, `vec![]`, `format!` is not a use (libsignal: 8604 macro invocations, BACKLOG.md); to parse a token tree as expressions when it parses.
   - `shortcut:` the classes of one name are one node per file only: a `struct T` and its `impl` in another file are two classes, so `T { .. }` is ambiguous (libsignal: 605 of 3250); `impl<T> Tr for T` draws a class `T`, `impl Tr for Vec<X>` a class `Vec` (BACKLOG.md); to merge a class's nodes across files.
   - `shortcut:` `T::f()` is linked by `f` alone, so `T::new()` is never linked (`new` is common) and `KeyPair::generate` is ambiguous between 6 types (BACKLOG.md); to link a path to its type's method if ADR 0003 allows it.
-  - `shortcut:` a file with one error node is skipped whole: grammar 0.24.2 rejects `dyn 'a + Trait`, 1 of libsignal's 612 files (BACKLOG.md); to upgrade the grammar when one does, or to read the valid part of a tree.
+  - `shortcut:` a Rust file that does not parse is not named on stderr (`tolerant`); to name it if a host's garbage shows.
 - **Sample host**: libsignal (docs/sample-hosts.md).
 
 ## Java

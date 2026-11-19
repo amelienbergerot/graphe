@@ -73,6 +73,34 @@ def test_a_go_file_in_go_1_26s_syntax_is_read_for_its_valid_part():
                     ("call", "h", 15, "after")}
 
 
+def test_a_rust_file_with_a_lifetime_first_in_a_trait_object_is_read_for_its_valid_part():
+    """libsignal (T-0040): grammar 0.24.2 rejects `dyn 's + Trait`; the file is read all the same, even the method
+    whose signature holds the error."""
+    definitions, uses = _read(RUST, "src/tokio.rs", """\
+        struct Context;
+
+        impl Context {
+            fn run_boxed<'s>(&'s self, make: Box<dyn 's + FnOnce() -> u8>) -> u8 {
+                prepare();
+                make()
+            }
+
+            fn spawn_it(&self) {
+                self.run_boxed(Box::new(|| 1));
+            }
+        }
+
+        fn after() {
+            helper();
+        }
+        """)
+    assert definitions == {("class", "Context", 1), ("method", "Context.run_boxed", 4),
+                           ("method", "Context.spawn_it", 9), ("function", "after", 14)}
+    assert uses == {("call", "prepare", 5, "Context.run_boxed"), ("call", "make", 6, "Context.run_boxed"),
+                    ("send", "run_boxed", 10, "Context.spawn_it"), ("send", "new", 10, "Context.spawn_it"),
+                    ("call", "helper", 15, "after")}
+
+
 def test_a_rust_function_of_an_impl_is_a_method_of_its_type():
     definitions, uses = _read(RUST, "src/t.rs", """\
         struct T;

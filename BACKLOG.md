@@ -63,10 +63,6 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   name. Linking `T::f` to the method `T.f` when `T` is a class of the host
   would link most of them, and Java's `C.f()` too: outside "by the name
   alone" (ADR 0003), to decide.
-- **A Rust file with `dyn 'a + Trait` is skipped whole.** (libsignal,
-  sample host, 2026-11-19, T-0032) `tree-sitter-rust` 0.24.2 rejects a
-  lifetime first in a trait object (`Box<dyn 's + FnOnce(..)>`):
-  `rust/bridge/shared/types/src/net/tokio.rs`, 1 of 612 files.
 - **Generated Java code repeated in a host makes its names ambiguous.**
   (protobuf, sample host, 2026-11-19, T-0033) 11 of protobuf's 293 Java
   files are one generated file, `Proto3GencodeTestProto.java`, as 9 old
@@ -217,6 +213,12 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
 
 Settled by tickets (2026-11-19):
 
+- **A Rust file with `dyn 'a + Trait` is skipped whole.** [T-0040] (libsignal,
+  sample host, 2026-11-19, T-0032) `tree-sitter-rust` 0.24.2 rejects a
+  lifetime first in a trait object (`Box<dyn 's + FnOnce(..)>`):
+  `rust/bridge/shared/types/src/net/tokio.rs`, 1 of 612 files. Rust is
+  `tolerant` since T-0040: the error is the one `'`, the file's 20
+  definitions are read, `TokioAsyncContext.run_future_boxed` among them.
 - **A Go file in Go 1.26's syntax is skipped whole.** [T-0039] (gitea, 2026-11-19,
   T-0031) 47 of gitea's 3199 Go files were skipped (`new(expr)`, generic
   methods), their definitions lost everywhere (`ctx.ServerErrorAuto`
