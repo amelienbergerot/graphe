@@ -157,14 +157,17 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   method's; operators (`static func ==`) and subscripts likewise. The query
   takes a type's or an extension's direct children only, the one way to
   tell an extension's method from a type's.
-- **A Kotlin standard type is linked to a Java class of its name.**
-  (libsignal, sample host, 2026-11-19, T-0042) Since Java and Kotlin are one
-  entry, Kotlin's `ByteArray(32)`, the standard library's, is a `references`
-  link to libsignal's Java `zkgroup.internal.ByteArray` (24 links; libsignal's
-  Kotlin imports its own as `SignalByteArray`). A capitalised call is taken
-  for a type of the host by its last name: a list of Kotlin's standard types
+- **A library's name in Kotlin or Java is linked to the other one's
+  definition.** (libsignal and protobuf, sample hosts, 2026-11-19, T-0042)
+  Since Java and Kotlin are one entry, Kotlin's `ByteArray(32)`, the standard
+  library's, is a `references` link to libsignal's Java
+  `zkgroup.internal.ByteArray` (24 links; libsignal's Kotlin imports its own
+  as `SignalByteArray`), and protobuf's Java `any.unpack(X.class)`, its
+  generated `Any`'s, a `calls` link to its Kotlin `inline` extension
+  `ProtoAny.unpack` (3 links, 8 sites). A capitalised call is taken for a
+  type of the host by its last name: a list of Kotlin's standard types
   (`ByteArray`, `IntArray`, `Pair`...) never referenced, as the common names
-  are for sends, would drop them.
+  are for sends, would drop the first.
 - **A Kotlin extension function of one name on several types is
   ambiguous.** (libsignal, sample host, 2026-11-19, T-0038) Its 40
   `this.toFfiArgType()` (generated test code: `fun MyTestEnum.Unit.toFfiArgType()`

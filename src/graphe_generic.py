@@ -384,9 +384,9 @@ KOTLIN_QUERY = f"""
 
 # The common names: `get` (78 sends, `CompletableFuture.get`, linked to `TestingIntBox.get`), `toString` (32), `map`
 # (31, mostly a collection's, linked to `RequestResult.map`) and `hashCode`, measured on libsignal (T-0038, `check`);
-# the others are guessed: `Any`'s, the scope functions, the collections', the arrays' and the futures'. Left out, their
+# the others are guessed: `Any`'s, the scope functions, the collections', the arrays' and `Result`'s. Left out, their
 # sends mostly libsignal's: `await` (its `CompletableFuture.await`), `start`, `of`, and `remove` and `invoke`, whose one
-# send each is libsignal's (`svrB.remove()`, `SetProfileHelpers.invoke`). Out since Java is read with it (T-0042):
+# send each is libsignal's (`svrB.remove()`, `SetProfileHelpers.invoke`); `start`, `of` and `remove` are Java's (`JVM`). Out since Java is read with it (T-0042):
 # `thenApply`, `thenCompose`, `complete`, `completeExceptionally`, the methods of libsignal's own Java
 # `CompletableFuture` (56 of its Java sends were linked to them), and `toByteArray`, protobuf's (306 Java sends).
 # shortcut: a hand-kept list; to extend when `check` shows a standard name among the most frequent sends linked by name
@@ -404,8 +404,10 @@ KOTLIN = Language("kotlin", {".kt": (tree_sitter.Language(tree_sitter_kotlin.lan
 # `start`, `of` and `remove` silence 16 of libsignal's Kotlin sends to its own; out, Java's `List.of` would be linked to
 # Kotlin's `BadgeVisibility.of` (35 sends) and 501 of protobuf's sends made ambiguous; to give each grammar its own list
 # if a host's Kotlin loses more. shortcut: Kotlin's `ByteArray(n)`, the standard library's, is a reference to a Java
-# class so named (libsignal's `zkgroup.internal.ByteArray`, 24 links); to never reference Kotlin's standard types
-# (BACKLOG.md) if a host's `callers` of a class suffer.
+# class so named (libsignal's `zkgroup.internal.ByteArray`, 24 links), and a Java send to a library is linked to a
+# Kotlin definition so named (protobuf's generated `Any.unpack(X.class)` to its Kotlin `ProtoAny.unpack`, 3 links, 8
+# sites; Kotlin's `"s".toByteArray()` would be to a host's single Java `toByteArray`); to never reference Kotlin's
+# standard types, or to link a call to the other language's definitions only (BACKLOG.md), if a host's `callers` suffer.
 JVM = Language("java", {**JAVA.grammars, **KOTLIN.grammars}, JAVA.common | KOTLIN.common)
 
 
