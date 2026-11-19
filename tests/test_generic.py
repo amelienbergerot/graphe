@@ -6,7 +6,7 @@ import textwrap
 from pathlib import Path
 
 import graphe_generic
-from graphe_generic import C, CSHARP, GO, JAVA, RUST
+from graphe_generic import C, CSHARP, GO, JAVA, RUBY, RUST
 
 
 def _read(language, file: str, source: str):
@@ -238,6 +238,50 @@ def test_a_csharp_preprocessor_directive_cutting_a_base_list_or_an_expression_co
     assert definitions == {("class", "Person", 1), ("method", "Person.M", 6)}
     assert uses == {("reference", "IMessage", 1, "Person"), ("reference", "IBufferMessage", 3, "Person"),
                     ("call", "Check", 13, "Person.M")}
+
+
+def test_a_ruby_class_its_methods_and_its_explicit_calls():
+    """protobuf (T-0036): a module is a class, a `class << self` none, `X.class_eval do` reopens `X`
+    (well_known_types.rb's `Any.pack`); `b()`, `c arg`, `x.c`, `self.f` are calls; `C.new` and a superclass are
+    references by the last name."""
+    definitions, uses = _read(RUBY, "lib/c.rb", """\
+        module Google::Protobuf
+          class C < Google::Protobuf::B
+            def initialize(a); b(); d 1; x.c; self.f; Foo::Bar.new(1); end
+            def self.s; end
+            def x=(v); end
+            class << self
+              def t; y&.z; end
+            end
+          end
+          Any.class_eval do
+            def pack; end
+          end
+          def self.encode(m); end
+        end
+        def top; end
+        """)
+    assert definitions == {("class", "Protobuf", 1), ("class", "C", 2), ("method", "C.initialize", 3),
+                           ("method", "C.s", 4), ("method", "C.x=", 5), ("method", "C.t", 7), ("class", "Any", 10),
+                           ("method", "Any.pack", 11), ("method", "Protobuf.encode", 13), ("function", "top", 15)}
+    assert uses == {("reference", "B", 2, "C"), ("call", "b", 3, "C.initialize"), ("call", "d", 3, "C.initialize"),
+                    ("send", "c", 3, "C.initialize"), ("send", "f", 3, "C.initialize"),
+                    ("send", "new", 3, "C.initialize"), ("reference", "Bar", 3, "C.initialize"),
+                    ("send", "z", 7, "C.t"), ("send", "class_eval", 10, "Any")}
+
+
+def test_a_ruby_local_variable_is_no_call():
+    """T-0036: the upstream `tags.scm` takes a bare identifier for a call; it may be a variable. shortcut: a bare
+    method call `e` is missed too (docs/readers.md)."""
+    _, uses = _read(RUBY, "lib/v.rb", """\
+        def m
+          v = 1
+          v
+          e
+          v.succ
+        end
+        """)
+    assert uses == {("send", "succ", 5, "m")}
 
 
 class Project:

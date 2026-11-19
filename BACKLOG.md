@@ -35,8 +35,8 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   sample hosts, pinned, in `docs/sample-hosts.md`, summed up in the README:
   protobuf, libsignal, gitea (and Django). T-0030; Go is read since T-0031
   (gitea), Rust since T-0032 (libsignal), Java since T-0033 (protobuf), C and
-  C++ since T-0034 (protobuf), C# since T-0035 (protobuf), the other
-  languages follow in T-0036 to T-0038.
+  C++ since T-0034 (protobuf), C# since T-0035 (protobuf), Ruby since
+  T-0036 (protobuf), the other languages follow in T-0037 and T-0038.
 - **A Go file in Go 1.26's syntax is skipped whole.** (gitea, sample host,
   2026-11-19, T-0031) `tree-sitter-go` 0.25.0, the last on PyPI, knows
   neither `new(expr)` nor generic methods (`func (f *Flash) Error[T ...]`):
@@ -152,6 +152,22 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   finds nothing. A `property_declaration` captured as a `@method` `C.P` would
   hold them, a query change; it would have no caller, a property being used
   without a call.
+- **Ruby's message classes are built at run time.** (protobuf, sample host,
+  2026-11-19, T-0036) A message's fields are read through `method_missing`
+  (`m.repeated_string`, 171 sends `external`), and the message class is
+  `Class.new(..) do` in `ffi/message.rb`, its 41 methods named `Descriptor`'s
+  (`Descriptor.encode`): `TestMessage.encode` is ambiguous between it and
+  `Google::Protobuf.encode` (90 sends `encode`, 83 `decode`). Naming a class
+  built by `Class.new` after what it is assigned to would need code of its
+  own: a dedicated Ruby reader (ADR 0003).
+- **A Ruby bare call is missed, as a variable is.** (protobuf, sample host,
+  2026-11-19, T-0036) `b` alone may be a local variable: the query captures
+  `b()`, `c arg`, `x.c` only, so at least 17 bare calls to protobuf's
+  methods (`inspect`, `reset_allocations`) are missing from `callers`. The
+  grammar's `locals.scm` tells a variable apart, a pass the generic reader
+  does not make. A class reopened in several files is one class per file
+  likewise (12 names: `Descriptor`, `RepeatedField`), a reference to it
+  ambiguous.
 - **A file's gtest tests are one function.** (protobuf, sample host,
   2026-11-19, T-0034) `TEST_F(Suite, Name) { .. }` parses as a function
   `TEST_F`: protobuf's 4824 tests are one `TEST_F`, `TEST`, `TEST_P` or

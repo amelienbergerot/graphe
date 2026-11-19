@@ -13,6 +13,7 @@ A reader turns a host's files of one language into nodes, links and coverage sit
 | `java` | generic, `graphe_generic.py` | Java | `.java` |
 | `c` | generic, `graphe_generic.py` | C, C++ | `.c`, `.h`, `.cpp`, `.cc`, `.cxx`, `.hpp` |
 | `csharp` | generic, `graphe_generic.py` | C# | `.cs` |
+| `ruby` | generic, `graphe_generic.py` | Ruby | `.rb` |
 
 A **dedicated reader** knows its language's imports and types, and links a call for sure where it can. The **generic reader** (ADR 0003, GLOSSARY.md) reads every other language the same way, by its name alone.
 
@@ -26,7 +27,7 @@ Every language's query captures the same names; a query is written from the `tag
 
 | Capture | What it marks |
 |---|---|
-| `@function`, `@method`, `@class` | A definition (the whole node), with its `@name`. `@class` is a class, an interface, a struct, an enum, a trait, a Rust `impl`. |
+| `@function`, `@method`, `@class` | A definition (the whole node), with its `@name`. `@class` is a class, an interface, a struct, an enum, a trait, a Rust `impl`, a Ruby `module`. |
 | `@receiver` | Inside a `@method`: its type, when the method is declared outside it (Go's `func (r *T) M()`). |
 | `@call` | A bare call `f()`, with `@name` the name called. |
 | `@send` | A call on a receiver `x.m()`, a package `pkg.F()` or a path `T::f()`, with `@name` the method's name. |
@@ -157,6 +158,24 @@ A quirk the query cannot express is a `shortcut:` in its section here. A languag
   - `shortcut:` a C# file that does not parse is read, no longer named on stderr; to name it if a host's garbage shows.
   - `shortcut:` a nested class is named by its own name (generated code's `Types.PhoneType`, every `Types`), and `C.M()` is linked by `M` alone, as Java's; to name a nested class by its outer one, and link `C.M()` to `C.M`, if a host needs it (BACKLOG.md).
   - `shortcut:` a `partial class` is one class per file it spans: `Any` (`Any.pb.cs`, `AnyPartial.cs`) is two classes, so a reference to it is ambiguous (125 class names in several of protobuf's `.cs` files, partials and the copied tests); to merge a partial class's files if a host's references to it matter.
+- **Sample host**: protobuf (docs/sample-hosts.md).
+
+## Ruby
+
+- **Section**: `ruby`. **Suffixes**: `.rb`.
+- **Grammar**: `tree-sitter-ruby` 0.23.1 (py-tree-sitter 0.26.1). Its `tags.scm` takes a bare identifier for a call (`#is-not? local`, which py-tree-sitter does not apply): a local variable would be a call. The query (`RUBY_QUERY`) is ours.
+- **Nodes**: a `class` per `class` and `module` (a module holds its `def self.m`, and names a namespace), and per `X.class_eval do` block, which reopens `X` (protobuf's `well_known_types.rb`: `Any.pack`, `Timestamp.to_time`); a `method` `C.m` per `def m` and `def self.m` in it, the two one method if both exist; a `function` per `def` outside any. A method's class is the innermost one: `module Google::Protobuf` `def self.encode` is `Protobuf.encode`. A `class << self` is no class, its methods its enclosing class's. Operators and setters are methods too (`C.==`, `C.x=`).
+- **Links**: `b()` and `c arg` (a `call` without receiver) are `@call`; `x.c`, `self.c`, `x&.c` and `A::B.c` are `@send`. `C.new` and a superclass (`class A < B`) are `references` to the class, bare or scoped (`Google::Protobuf::B`), by the last name; `C.new` is a send `new` too, a common name. All `INFERRED`.
+- **Common names**: `new` (892 sends `C.new`, 9 `def self.new` in protobuf's ffi) and `each` (38), the most frequent sends by name on protobuf (T-0036), and, guessed, the methods of `Object`, the conversions, `Enumerable`, `Array`, `Hash`, `String` and `IO` (`to_s`, `inspect`, `dup`, `map`, `keys`, `join`, `puts`...). The most frequent sends linked by name (`push`, `pop`, `first`, `delete`) are protobuf's `RepeatedField` and `Map`, which mirror `Array` and `Hash`: left out. The list is `RUBY.common`.
+- **Quirks**:
+  - Every protobuf `.rb` parses: neither `tolerant` nor `erased`.
+  - A message's fields are read through `method_missing` (`m.repeated_string`, 171 sends): `external`, no definition.
+  - The methods of a class built by `Class.new(..) do` belong to the enclosing class: the 41 methods of the message class `ffi/message.rb` builds are `Descriptor`'s (`Descriptor.encode`).
+- **Limits**:
+  - `shortcut:` a bare `b` is no call: it may be a local variable, which only the grammar's `locals.scm` tells; at least 17 bare calls to protobuf's methods are missed (`inspect`, `reset_allocations`); to tell a variable from a call if a host's `explain` misses them.
+  - `shortcut:` an `attr_reader`, `attr_accessor`, `alias`, `define_method` is no definition, its readers' sends `external`; to capture them if a host's `explain` needs them.
+  - `shortcut:` a class reopened in several files is one class per file (12 names on protobuf: `Descriptor`, `RepeatedField`, `Google`, `Protobuf`), so a reference to it is ambiguous; to merge them if a host's references matter.
+  - `shortcut:` `C.m` is linked by `m` alone, as Java's `C.m()`; `include M` and `extend M` are calls, not references to `M`.
 - **Sample host**: protobuf (docs/sample-hosts.md).
 
 ## The dedicated readers
