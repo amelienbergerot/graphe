@@ -11,6 +11,7 @@ A reader turns a host's files of one language into nodes, links and coverage sit
 | `go` | generic, `graphe_generic.py` | Go | `.go` |
 | `rust` | generic, `graphe_generic.py` | Rust | `.rs` |
 | `java` | generic, `graphe_generic.py` | Java | `.java` |
+| `c` | generic, `graphe_generic.py` | C, C++ | `.c`, `.h`, `.cpp`, `.cc`, `.cxx`, `.hpp` |
 
 A **dedicated reader** knows its language's imports and types, and links a call for sure where it can. The **generic reader** (ADR 0003, GLOSSARY.md) reads every other language the same way, by its name alone.
 
@@ -61,13 +62,13 @@ Every call or send is a coverage site, with its verdict:
 | `common` | A send of a common name that the host defines. | no: counted by `explain` likewise |
 | `external` | No definition of that name in the host (the standard library, a dependency, a builtin). | no |
 
-A file that does not parse (any error node in its tree) is skipped and named on stderr; the build goes on. A host without the language's files gets no contribution at all, not even an empty coverage.
+A file that does not parse (any error node in its tree) is skipped and named on stderr; the build goes on. A `tolerant` language (C/C++, whose macros leave error nodes in valid code) reads it all the same. A host without the language's files gets no contribution at all, not even an empty coverage.
 
 ### Adding a language
 
 1. Pin its grammar in the main dependencies (`pyproject.toml`, `uv add tree-sitter-<language>==<version>`).
 2. Write its query in `graphe_generic.py` from the grammar's `tags.scm`, in the capture convention above: definitions with a body only (an abstract method or a signature would make each name ambiguous with its implementation).
-3. Its `Language`: the name of its `graphe.toml` section, the grammar and query per suffix, a first list of common names.
+3. Its `Language`: the name of its `graphe.toml` section, the grammar and query per suffix, a first list of common names; `tolerant` if valid code leaves error nodes, `erased` for what the grammar cannot read and blanks keep in place (C/C++, T-0034).
 4. A snippet test at the seam `read(language, file, source)` (`tests/test_generic.py`): its definitions and its uses with their owners.
 5. Its entry in `READERS` (`functools.partial(graphe_generic.contribute, graphe_generic.<LANGUAGE>)`).
 6. Its sample host (docs/sample-hosts.md): build, no dangling link, `graphe check`; tune the common names from the most frequent sends linked by name; three queries compared with grep; its README row and its section here; what it misses in BACKLOG.md, naming the host.
@@ -115,6 +116,26 @@ A quirk the query cannot express is a `shortcut:` in its section here. A languag
   - `shortcut:` a nested class is named by its own name: `X.Builder` and `Y.Builder` of one file are one class, their methods of one name one method; to name a nested class by its outer one if a host needs them apart.
   - `shortcut:` an anonymous class (`new Runnable() { public void run() {..} }`) is not a class: its methods are the enclosing class's (`A.run`), 325 such methods on protobuf; to make the anonymous body a `@class` if a host needs it.
   - `shortcut:` no imports nor types: `C.m()` is linked by `m` alone, so a static method named like another class's is ambiguous (BACKLOG.md, the item on Rust's `Type::f()`, which names Java's `C.f()` too); to link `C.m()` to the method `C.m` when `C` is a class of the host, if ADR 0003 allows it.
+- **Sample host**: protobuf (docs/sample-hosts.md).
+
+## C and C++
+
+- **Section**: `c`, one family: a C++ call to a C function is linked. **Suffixes**: `.c` (the C grammar); `.h`, `.cpp`, `.cc`, `.cxx`, `.hpp` (the C++ grammar, which reads C headers too).
+- **Grammars**: `tree-sitter-c` 0.24.2 and `tree-sitter-cpp` 0.23.4 (py-tree-sitter 0.26.1). Their `tags.scm` capture no call: the queries (`C_QUERY`, `CPP_QUERY`) are ours.
+- **Nodes**: a `function` per function definition with a body, its name in any declarator (`char** f()`, `T& f()`); a `method` `C.m` per function defined in a class's body, and per `C::m`, `ns::C::m`, `C<T>::m` defined outside it (the innermost scope is the class), constructors (`C.C`), destructors (`C.~C`) and operators (`C.operator==`) included; a `class` per `class`, `struct`, `union` and `enum` with a body, and per `typedef struct { .. } T`. A prototype (`int f(int);`, a method declared in its class), a forward declaration (`class C;`) and `= default` are not nodes: each would make a name ambiguous between the `.h` and the file that defines it.
+- **Links**: `f()` and `f<T>()` are `@call`; `x.m()`, `p->m()`, `C::m()` and `ns::f()` are `@send`, so a qualified call follows the common names. `new C()` and a base class (`class A : public B`) are `references` to the class, in their template (`C<T>`) and qualified (`ns::C`) forms, by the last name. All `INFERRED`.
+- **Common names**: the standard library's names (and absl's `Status::message`) that one function of protobuf would collect from every `std::string(..)`, `v.emplace_back`, `s.append`, `v.reserve` (measured from `graphe check` on protobuf, T-0034), and, guessed, the methods of the containers, the strings, the smart pointers, `optional` and `std::`'s functions (`size`, `push_back`, `c_str`, `reset`, `move`, `make_unique`...). The list is `C.common`.
+- **Quirks**:
+  - A file that does not parse is read all the same (`Language.tolerant`): macros the grammar does not know leave an error node in 557 of protobuf's 1363 C/C++ files (765 once the macros below are erased: a constant erased in an expression leaves one), and a function still parses around most of them. A name the grammar inserts to recover (`enum : int {..}` reads as an enum with a missing name) is not a definition.
+  - The attribute macros, upper case with an underscore and no arguments (`PROTOBUF_EXPORT`, `UPB_INLINE`, `ABSL_ATTRIBUTE_LIFETIME_BOUND`, `PROTOBUF_NONNULL`), are blanked before the parse (`Language.erased`, lines and columns kept): the grammar would read `class PROTOBUF_EXPORT Descriptor {` as a function `Descriptor`, `f() const ABSL_ATTRIBUTE_LIFETIME_BOUND {` as no function (834 on protobuf). On protobuf: 2542 classes and 26202 functions and methods, against 2208 and 23811 unerased.
+  - A gtest test (`TEST_F(Suite, Name) { .. }`) parses as a function `TEST_F`: a file's tests are one function `TEST_F` (or `TEST`, `TEST_P`), which calls what they call.
+  - A `.h` is C++ whatever its language: protobuf's Objective-C headers (`objectivec/*.h`, 41 files) are read, 49 definitions.
+  - Calls to macros are calls: `EXPECT_EQ`, `UPB_SIZE`, `static_assert_64bit` are `external`.
+- **Limits**:
+  - `shortcut:` a scope is taken for a class: `void internal::Helper() {}` is the method `internal.Helper`; to tell a namespace from a class if a host needs it.
+  - `shortcut:` a constant (`INT_MAX`) or a class (`struct MY_POINT {`) named like a macro is erased too, and a macro with arguments (`PROTOBUF_ALIGNAS(8)`) is not; a class whose declaration an `#ifdef` cuts (`class PROTOBUF_EXPORT` / `#ifdef` / `ABSL_ATTRIBUTE_WARN_UNUSED` / `#endif` / `Arena final {`, protobuf's `Arena`) is lost (BACKLOG.md); to tell them apart if a host loses code to one.
+  - `shortcut:` the classes and functions of one name are one node per file only: an amalgamation (`php-upb.c`, `ruby-upb.c`, which repeat upb) makes each name it repeats ambiguous (BACKLOG.md).
+  - `shortcut:` no imports nor types: `C::m()` is linked by `m` alone, as Java's `C.m()`.
 - **Sample host**: protobuf (docs/sample-hosts.md).
 
 ## The dedicated readers

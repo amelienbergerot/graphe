@@ -16,7 +16,10 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   reader takes most of it now. A rebuild of only the files that changed
   (or a query that answers from the old graph and says so) would avoid it.
   T-0026: 45 s, then a cache of each Python file's definitions (about
-  4.6 s less); the layout outside the queries is the lever left.
+  4.6 s less); the layout outside the queries is the lever left. protobuf
+  with its C/C++ (T-0034, 57327 nodes): 70.2 s, 35.1 s before; under the
+  profiler the layout takes 44 of 82 s, the generic reader about 8 s for its
+  1363 C/C++ files (parsing 4.9 s): no cache of its own yet.
 - **A host in another language gets no graph.** (All hosts, 2026-11-18,
   the user's request) Only Python, GDScript, PHP and JS/TS/Svelte have a
   reader: a Java, C#, Go, Rust... host is grep only. Decided in a grilling
@@ -31,8 +34,8 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   dangling, `check` coverage, 3 queries compared with grep (ADR 0003). The
   sample hosts, pinned, in `docs/sample-hosts.md`, summed up in the README:
   protobuf, libsignal, gitea (and Django). T-0030; Go is read since T-0031
-  (gitea), Rust since T-0032 (libsignal), Java since T-0033 (protobuf), the
-  other languages follow in T-0034 to T-0038.
+  (gitea), Rust since T-0032 (libsignal), Java since T-0033 (protobuf), C and
+  C++ since T-0034 (protobuf), the other languages follow in T-0035 to T-0038.
 - **A Go file in Go 1.26's syntax is skipped whole.** (gitea, sample host,
   2026-11-19, T-0031) `tree-sitter-go` 0.25.0, the last on PyPI, knows
   neither `new(expr)` nor generic methods (`func (f *Flash) Error[T ...]`):
@@ -41,7 +44,8 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   `ctx.ServerErrorAuto` (`services/context/context_response.go`) is
   `external` at its 1226 calls; `DecodeJSON` has 533 callers' calls, grep
   155 more in skipped files. A newer grammar, or reading the valid part of a
-  tree with errors, would avoid it.
+  tree with errors, would avoid it: C/C++ does the latter since T-0034
+  (`Language.tolerant`), measured on protobuf only; Go would take it as data.
 - **The generic reader cannot tell a Go package's function from another's.**
   (gitea, sample host, 2026-11-19, T-0031) `pkg.F()` is a send linked by the
   name alone: 27174 calls are `ambiguous` (`t.Context` 3885, `MakeRequest`
@@ -102,6 +106,32 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   name one method. The 325 methods of an anonymous class are the enclosing
   class's (`A.run`). Naming a nested class `Outer.Inner` would keep them
   apart.
+- **A C amalgamation makes every name it repeats ambiguous.** (protobuf,
+  sample host, 2026-11-19, T-0034) `php/ext/google/protobuf/php-upb.{c,h}`
+  and `ruby/ext/google/protobuf_c/ruby-upb.{c,h}` are upb's sources
+  concatenated: each upb function is defined 3 times, so
+  `upb_Arena_Malloc`'s 197 calls are not attributed (grep: 212 lines).
+  Without those 4 files, `ambiguous` 79088 -> 56664 and `ours?` 36523 ->
+  48720 of the C/C++ sites. A `graphe.toml` `exclude` would drop them; telling a
+  generated or concatenated file from the code would be the generic reader's
+  own, as Java's repeated generated file.
+- **A C++ class whose declaration an `#ifdef` cuts is lost.** (protobuf,
+  sample host, 2026-11-19, T-0034) `class PROTOBUF_EXPORT` / `#ifdef
+  __clang__` / `ABSL_ATTRIBUTE_WARN_UNUSED` / `#endif` / `Arena final {`:
+  the grammar reads neither the class nor its methods' owner, so
+  `Arena::Create` (310 calls) is linked to a function `Create`, and
+  `explain Arena` finds hpb's, upb's, PHP's and Ruby's `Arena` classes, not
+  `src/google/protobuf/arena.h`'s. The macros are erased
+  by a regex (`C.erased`, upper case with an underscore, no arguments): a
+  constant so named is erased in an expression too (765 files with an error
+  node, 557 without erasing), a macro with arguments is not. Erasing a
+  preprocessor branch, or the preprocessor's own pass, would read them.
+- **A file's gtest tests are one function.** (protobuf, sample host,
+  2026-11-19, T-0034) `TEST_F(Suite, Name) { .. }` parses as a function
+  `TEST_F`: protobuf's 4824 tests are one `TEST_F`, `TEST`, `TEST_P` or
+  `TYPED_TEST` per file, so `callers` says `TEST_F` where grep says the test
+  name. Naming a test by its suite and name (`Suite.Name`) would take a
+  query of its own for a macro call with a body.
 - **PHP's pattern reader may be worse than the generic one.** (4cast,
   2026-11-18, the readers' grilling) Once the generic reader exists, compare
   it with `graphe_php.py` on 4cast; replace the pattern reader only if the

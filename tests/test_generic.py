@@ -6,7 +6,7 @@ import textwrap
 from pathlib import Path
 
 import graphe_generic
-from graphe_generic import GO, JAVA, RUST
+from graphe_generic import GO, JAVA, RUST, C
 
 
 def _read(language, file: str, source: str):
@@ -140,6 +140,53 @@ def test_java_overloads_are_one_method_and_a_scoped_type_is_its_last_name():
                     ("reference", "MessageOrBuilder", 12, "AOrBuilder")}
 
 
+def test_a_cpp_method_defined_outside_its_class_is_named_by_its_innermost_scope():
+    """protobuf (T-0034): `ns::Foo::Bar`, `Foo<T>::Bar`, a constructor, a destructor, an operator; a prototype and a
+    method declared in its class are not definitions; a file with a macro the grammar does not know is read; an
+    anonymous `enum : int` is no class; the macros of `class PROTOBUF_EXPORT Foo` and
+    `Get() const ABSL_ATTRIBUTE_LIFETIME_BOUND {` are erased: the grammar would read a function `Foo`, and no `Get`."""
+    definitions, uses = _read(C, "src/foo.cc", """        namespace ns {
+        class PROTOBUF_EXPORT PROTOBUF_DECLSPEC_EMPTY_BASES Foo : public Base, public ns::Mixin<int> {
+          int declared();
+          int inline_one() { return helper<int>(); }
+          Foo(const Foo&) = default;
+        };
+        }
+        int prototype(int);
+        void ns::Foo::Bar() { p->m(); std::move(x); a::b::c(); }
+        template <typename T> const T& Foo<T>::Get() const { return new ns::Thing<T>(); }
+        Foo::Foo() : x(1) { init(); }
+        Foo::~Foo() {}
+        bool Foo::operator==(const Foo& o) const { return true; }
+        static char** names(void) { return 0; }
+        PROTOBUF_EXPORT void exported() { f(); }
+        class Bits { enum : int { kA = 1 }; };
+        struct URL final { void Parse() {} };
+        const T& Holder::Get() const ABSL_ATTRIBUTE_LIFETIME_BOUND { return v(); }
+        """)
+    assert definitions == {("class", "Foo", 2), ("method", "Foo.inline_one", 4), ("method", "Foo.Bar", 9),
+                           ("method", "Foo.Get", 10), ("method", "Foo.Foo", 11), ("method", "Foo.~Foo", 12),
+                           ("method", "Foo.operator==", 13), ("function", "names", 14),
+                           ("function", "exported", 15), ("class", "Bits", 16),
+                           ("class", "URL", 17), ("method", "URL.Parse", 17),
+                           ("method", "Holder.Get", 18)}
+    assert uses == {("reference", "Base", 2, "Foo"), ("reference", "Mixin", 2, "Foo"),
+                    ("call", "helper", 4, "Foo.inline_one"), ("send", "m", 9, "Foo.Bar"),
+                    ("send", "move", 9, "Foo.Bar"), ("send", "c", 9, "Foo.Bar"), ("reference", "Thing", 10, "Foo.Get"),
+                    ("call", "init", 11, "Foo.Foo"), ("call", "f", 15, "exported"),
+                    ("call", "v", 18, "Holder.Get")}
+
+
+def test_a_c_function_and_struct():
+    definitions, uses = _read(C, "upb/a.c", """        typedef struct { int a; } Anon;
+        struct upb_Arena { int b; };
+        struct upb_Arena;
+        UPB_INLINE void* upb_Arena_Malloc(upb_Arena* a) { return a->alloc(_upb_size(a)); }
+        """)
+    assert definitions == {("class", "Anon", 1), ("class", "upb_Arena", 2), ("function", "upb_Arena_Malloc", 4)}
+    assert uses == {("send", "alloc", 4, "upb_Arena_Malloc"), ("call", "_upb_size", 4, "upb_Arena_Malloc")}
+
+
 class Project:
     """What `contribute(project)` receives (docs/contribution.md), over files in a temporary folder."""
 
@@ -230,3 +277,25 @@ def test_a_java_class_is_referenced_by_what_extends_and_builds_it_and_its_overlo
     assert {(e["source"], e["target"], e["relation"]) for e in java["links"] if e["relation"] != "contains"} == {
         ("c_c_java_c", "b_b_java_b", "references"), ("c_c_java_c_m", "b_b_java_b", "references"),
         ("c_c_java_c_m", "b_b_java_b_o", "calls")}
+
+
+def test_a_cpp_call_to_a_c_function_is_linked_and_its_header_prototype_is_no_definition(tmp_path: Path):
+    """protobuf (T-0034): `upb/arena.h` declares, `upb/arena.c` defines, a `.cc` calls; the `.h`'s struct and its
+    inline method are read, its prototype is not a second `upb_Arena_New`."""
+    project = Project(tmp_path, {
+        "upb/arena.h": """\
+            extern "C" {
+            upb_Arena* upb_Arena_New(void);
+            }
+            struct Holder {
+              void Reset() { upb_Arena_New(); }
+            };
+            """,
+        "upb/arena.c": "upb_Arena* upb_Arena_New(void) { return 0; }\n",
+        "src/user.cc": "void Use() { upb_Arena_New(); }\n",
+    })
+    c = graphe_generic.contribute(C, project)
+    assert {(n["kind"], n["name"]) for n in c["nodes"] if n["kind"] != "file"} == {
+        ("class", "Holder"), ("method", "Holder.Reset"), ("function", "upb_Arena_New"), ("function", "Use")}
+    assert sorted((e["source"], e["target"]) for e in c["links"] if e["relation"] == "calls") == [
+        ("src_user_cc_use", "upb_arena_c_upb_arena_new"), ("upb_arena_h_holder_reset", "upb_arena_c_upb_arena_new")]

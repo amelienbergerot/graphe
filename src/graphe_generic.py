@@ -12,7 +12,7 @@ a `@class` is its method; a method's class is its `@receiver`, or else the inner
 - every link a use makes is by the name alone (INFERRED), and only when the name has a single definition in the
   language: a call or a send to a function or a method, a reference to a class. A send never links a common name.
   Each call or send is a site: `ours?`, `ambiguous`, `common` or `external` (no definition of that name);
-- a file that does not parse is skipped and named on stderr.
+- a file that does not parse is skipped and named on stderr, unless the language is `tolerant` (C's macros).
 """
 
 from __future__ import annotations
@@ -24,6 +24,8 @@ from collections import defaultdict
 from typing import NamedTuple
 
 import tree_sitter
+import tree_sitter_c
+import tree_sitter_cpp
 import tree_sitter_go
 import tree_sitter_java
 import tree_sitter_rust
@@ -33,6 +35,8 @@ class Language(NamedTuple):
     name: str
     grammars: dict[str, tuple[tree_sitter.Language, str]]  # suffix -> (grammar, query)
     common: frozenset[str]  # method names never linked from a send
+    tolerant: bool = False  # a file that does not parse is read all the same (C's macros), not skipped
+    erased: re.Pattern[bytes] | None = None  # what it matches is blanked before parsing (one line, columns kept)
 
 
 class Definition(NamedTuple):
@@ -171,6 +175,74 @@ JAVA = Language("java", {".java": (tree_sitter.Language(tree_sitter_java.languag
     "intValue", "longValue", "parseInt", "asList", "sort", "copyOf", "max", "min"}))
 
 
+# C and C++ (T-0034): the upstream `tags.scm` capture no call. A query pattern sees direct children only, so the
+# forms a name takes are spelled out: wrapped in pointers or a reference (`char** f()`, `T& C::m()`), qualified up
+# to three scopes (`ns::C::m`), the class the innermost scope (`C<T>::m` too). A prototype (`int f(int);`, a method
+# declared in its class) and a declaration without a body (`class C;`, `= default`) are not captured: each would make
+# a name ambiguous between the `.h` and the file that defines it. shortcut: a scope is taken for a class, so
+# `void internal::Helper() {}` is the method `internal.Helper`; to tell a namespace from a class if a host needs it.
+_C_DECLARATOR = ("[{f} (pointer_declarator declarator: {f}) (pointer_declarator declarator: (pointer_declarator "
+                 "declarator: {f})){ref}]")
+_C_DEFINITIONS = """
+(function_definition declarator: {declarator} body: (_)) @function
+[(struct_specifier name: {type} body: (_))
+ (union_specifier name: {type} body: (_))
+ (enum_specifier name: {type} body: (_))
+ (type_definition type: [(struct_specifier !name body: (_)) (union_specifier !name body: (_))]
+  declarator: (type_identifier) @name)] @class
+(call_expression function: {call}) @call
+(call_expression function: (field_expression field: {field})) @send
+"""
+_C_FUNCTION = "(function_declarator declarator: (identifier) @name)"
+C_QUERY = _C_DEFINITIONS.format(declarator=_C_DECLARATOR.format(f=_C_FUNCTION, ref=""), type="(type_identifier) @name",
+                                call="(identifier) @name", field="(field_identifier) @name")
+# The forms are listed flat: py-tree-sitter 0.26.1 drops a match whose alternation holds a captured alternation
+# (`[[(identifier) (field_identifier)] @name (qualified_identifier)]` misses `int a() {}` in a class).
+_CPP_QUALIFIED = ("{n} (qualified_identifier name: [{n}]) "
+                  "(qualified_identifier name: (qualified_identifier name: [{n}]))")
+_CPP_SCOPED = ("(qualified_identifier scope: [(namespace_identifier) @receiver (template_type name: (type_identifier) "
+               "@receiver)] name: [(identifier) @name (destructor_name) @name (operator_name) @name])")
+_CPP_FUNCTION = ("(function_declarator declarator: [(identifier) @name (field_identifier) @name "
+                 f"(destructor_name) @name (operator_name) @name {_CPP_QUALIFIED.format(n=_CPP_SCOPED)}])")
+_CPP_TYPE = "(type_identifier) @name (template_type name: (type_identifier) @name)"
+_CPP_CALL = "(identifier) @name (template_function name: (identifier) @name)"
+CPP_QUERY = _C_DEFINITIONS.format(
+    declarator=_C_DECLARATOR.format(f=_CPP_FUNCTION, ref=f" (reference_declarator {_CPP_FUNCTION})"),
+    type=f"[{_CPP_TYPE}]", call=f"[{_CPP_CALL}]",
+    field="[(field_identifier) @name (template_method name: (field_identifier) @name)]") + f"""
+(class_specifier name: [{_CPP_TYPE}] body: (_)) @class
+(call_expression function: (qualified_identifier name: [{_CPP_QUALIFIED.format(n=_CPP_CALL)}])) @send
+(new_expression type: [{_CPP_QUALIFIED.format(n=_CPP_TYPE)}]) @reference
+(base_class_clause [{_CPP_QUALIFIED.format(n=_CPP_TYPE)}]) @reference
+"""
+
+_C = tree_sitter.Language(tree_sitter_c.language())
+_CPP = tree_sitter.Language(tree_sitter_cpp.language())
+# C and C++ are one family (T-0034): a C++ call to a C function is linked. A `.h` is read as C++, which reads C.
+C = Language("c", {".c": (_C, C_QUERY), ".h": (_CPP, CPP_QUERY), ".cpp": (_CPP, CPP_QUERY),
+                   ".cc": (_CPP, CPP_QUERY), ".cxx": (_CPP, CPP_QUERY), ".hpp": (_CPP, CPP_QUERY)},
+              # The common names: the standard library's (and absl's `Status::message`) that one function of
+              # protobuf would collect from every `std::string(..)`, `v.emplace_back`, `s.append`, `v.reserve`
+              # (T-0034, `check`'s most frequent sends linked by name, from `string` to `count` below); the others are
+              # guessed: the methods of the containers, the strings, the smart pointers, `optional` and `std::`'s
+              # functions. shortcut: a hand-kept list; to extend when `check` shows a standard name among the most
+              # frequent sends linked by name (`ours?`) on a host.
+              frozenset({
+                  "string", "append", "emplace_back", "pop_back", "reserve", "message", "str", "release", "count",
+                  "size", "empty", "begin", "end", "cbegin", "cend", "push_back", "data", "get", "reset", "find",
+                  "insert", "erase", "clear", "at", "front", "back", "c_str", "substr", "length", "emplace", "resize",
+                  "swap", "value", "has_value", "value_or", "ok", "status", "move", "forward", "make_unique",
+                  "make_shared", "min", "max", "assign", "compare", "contains", "load", "store", "lock", "unlock",
+                  "join", "push", "pop", "top", "rfind", "find_first_of", "starts_with", "ends_with", "what"}),
+              # The macros the grammar cannot read, upper case with an underscore and no arguments:
+              # `class PROTOBUF_EXPORT Foo` reads as a function `Foo`, `f() const ABSL_ATTRIBUTE_LIFETIME_BOUND {` (834
+              # on protobuf) as no function, `UPB_INLINE void f()` and `T* PROTOBUF_NONNULL C::f()` as garbage. Erased
+              # on protobuf: 2542 classes and 26202 functions and methods against 2208 and 23811, no name made of a
+              # macro left. shortcut: a constant (`INT_MAX`) or a class (`struct MY_POINT {`) so named is erased too,
+              # and a macro with arguments (`PROTOBUF_ALIGNAS(8)`) is not; to tell them apart if a host loses code.
+              tolerant=True, erased=re.compile(rb"\b[A-Z][A-Z0-9]*_[A-Z0-9_]*[A-Z0-9]\b(?!\s*\()"))
+
+
 @functools.cache
 def _query(grammar: tree_sitter.Language, text: str) -> tree_sitter.Query:
     return tree_sitter.Query(grammar, text)
@@ -181,17 +253,22 @@ def _grammar(language: Language, file: str) -> tuple[tree_sitter.Language, str]:
 
 
 def read(language: Language, file: str, source: bytes) -> tuple[list[Definition], list[Use]]:
-    """A file's definitions and uses, each use with its owner. Raises SyntaxError if the file does not parse."""
+    """A file's definitions and uses, each use with its owner. Raises SyntaxError if the file does not parse and the
+    language is not `tolerant`."""
     grammar, text = _grammar(language, file)
+    if language.erased:
+        source = language.erased.sub(lambda m: b" " * len(m[0]), source)
     root = tree_sitter.Parser(grammar).parse(source).root_node
     # shortcut: one error node skips the whole file (gitea: Go 1.26's syntax, BACKLOG.md); to read the valid part
     # of the tree, or a newer grammar, when one is published.
-    if root.has_error:
+    if root.has_error and not language.tolerant:
         raise SyntaxError(file)
     found = []  # (start, end, role, name node, receiver)
     for _, captures in tree_sitter.QueryCursor(_query(grammar, text)).matches(root):
         role = next(r for r in DEFINITIONS + USES if r in captures)
         node, name = captures[role][0], captures["name"][0]
+        if name.is_missing:  # a name the grammar inserted to recover: C++'s `enum : int {..}` (T-0034)
+            continue
         found.append((node.start_byte, node.end_byte, role, name, captures.get("receiver", [None])[0]))
     definitions, uses = [], []
     # A file's definitions of one kind and name are one: Rust's `struct T` and its `impl T`, Java's overloads.

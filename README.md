@@ -33,4 +33,4 @@ Public sample hosts, pinned in `docs/sample-hosts.md`. Measures only: the build 
 | Django | Python, JavaScript | 7104 (2943 `.py`) | 54.8 s | `explain django/shortcuts.py::get_object_or_404`: 5 callers, 839 bytes; grep `get_object_or_404(`: 21 lines, 2130 bytes |
 | gitea | Go, TypeScript | 6431 (3199 `.go`) | 31.4 s | `explain GetRepositoryByID`: 72 callers by name, 1770 bytes; grep `GetRepositoryByID(`: 80 lines in 63 files, 7813 bytes |
 | libsignal | Rust, Java, TypeScript | 1852 (612 `.rs`, 344 `.java`) | 24.6 s | `explain Timestamp.from_epoch_millis`: 57 callers by name, 1577 bytes; grep `from_epoch_millis(`: 81 lines in 30 files, 8260 bytes |
-| protobuf | Java, Python, Rust, PHP, Go | 3795 (293 `.java`) | 35.1 s | `callers ByteString.copyFromUtf8`: 124 callers by name, 9253 bytes; grep `copyFromUtf8(`: 172 lines in 42 files, 25208 bytes |
+| protobuf | C/C++, Java, Python, Rust, PHP, Go | 3795 (1363 C/C++, 293 `.java`) | 70.2 s | `callers ByteString.copyFromUtf8`: 124 callers by name, 9253 bytes; grep `copyFromUtf8(`: 172 lines in 42 files, 25208 bytes |
