@@ -12,8 +12,8 @@ a `@class` is its method; a method's class is its `@receiver`, or else the inner
 - a node per file, function, method (`Class.method`) and class; the definitions of one kind and name in a file are one
   (Rust's `struct T` and its `impl T`, Java's overloads); the ids carry the extension (`a_t_go`);
 - every link a use makes is by the name alone (INFERRED), and only when the name has a single definition in the
-  language (or family: C/C++, Java/Kotlin): a call or a send to a function or a method, a reference to a class. A send
-  never links a common name.
+  language (or family: C/C++, Java/Kotlin): a call or a send to a function or a method (an `apart` language, PHP: a
+  call to a function, a send to a method), a reference to a class. A send never links a common name.
   Each call or send is a site: `ours?`, `ambiguous`, `common` or `external` (no definition of that name);
 - a file that does not parse is skipped and named on stderr, unless the language is `tolerant` (C's macros, C#'s
   `#if`, Swift's and Go's newer syntax, Rust's `dyn 'a + Trait`).
@@ -34,6 +34,7 @@ import tree_sitter_cpp
 import tree_sitter_go
 import tree_sitter_java
 import tree_sitter_kotlin
+import tree_sitter_php
 import tree_sitter_ruby
 import tree_sitter_rust
 import tree_sitter_swift
@@ -45,6 +46,7 @@ class Language(NamedTuple):
     common: frozenset[str]  # method names never linked from a send
     tolerant: bool = False  # a file that does not parse is read, not skipped (C's macros, C#, Swift, Go, Rust)
     erased: re.Pattern[bytes] | None = None  # what it matches is blanked before parsing (one line, columns kept)
+    apart: bool = False  # a call is linked to a function only, a send to a method only (PHP)
 
 
 class Definition(NamedTuple):
@@ -290,6 +292,35 @@ RUBY = Language("ruby", {".rb": (tree_sitter.Language(tree_sitter_ruby.language(
     "compact", "uniq", "zip", "join", "key?", "fetch", "merge", "dig", "empty?", "size", "split", "strip",
     "gsub", "sub", "start_with?", "end_with?", "upcase", "downcase", "read", "write", "puts", "print", "close",
     "call"}))
+
+
+# PHP (T-0044), compared with the PHP reader by patterns (graphe_php.py), which hosts get: not in the readers'
+# registry. The grammar with its HTML (`language_php`), so a page's text holds no call. A class, an interface, a trait
+# and an enum are a class, a namespace none; as Java's, a method without a body (an interface's, abstract) is not
+# captured. `x->m()`, `x?->m()` and `X::m()` (`self::`, `parent::`) are sends; `new C`, `extends`, `implements` and a
+# trait's `use` references by the last name. shortcut: PHP's function and method names are case-insensitive, the
+# links by the exact name; to fold the case if a host calls `Foo()` for `foo()`. shortcut: a call through a variable
+# (`$f()`, `$x->$m()`) is none, and an anonymous class at a file's top is no class, its methods functions; to capture
+# them if a host's `explain` needs them. shortcut: no `case 'x':` action, as the PHP reader's (Grid Zero's 8); to add them
+# when this entry replaces it (T-0045).
+_PHP_NAME = "[(name) @name (qualified_name (name) @name .)]"
+PHP_QUERY = f"""
+[(class_declaration name: (name) @name) (interface_declaration name: (name) @name)
+ (trait_declaration name: (name) @name) (enum_declaration name: (name) @name)] @class
+(function_definition name: (name) @name) @function
+(method_declaration name: (name) @name body: (compound_statement)) @method
+(function_call_expression function: {_PHP_NAME}) @call
+[(member_call_expression name: (name) @name) (nullsafe_member_call_expression name: (name) @name)
+ (scoped_call_expression name: (name) @name)] @send
+[(object_creation_expression {_PHP_NAME}) (base_clause {_PHP_NAME}) (class_interface_clause {_PHP_NAME})
+ (use_declaration {_PHP_NAME})] @reference
+"""
+
+# `apart`: on protobuf, 219 bare calls to PHP's built-ins (`count()` 185, `substr()` 19, `pack()`) went to its
+# methods of that name. No common name: every send linked by a standard name on protobuf is to one of its own methods
+# (`$any->pack`, `getFile`), PHP's library being functions (T-0044, `check`).
+PHP = Language("php", {".php": (tree_sitter.Language(tree_sitter_php.language_php()), PHP_QUERY)}, frozenset(),
+               apart=True)
 
 
 # Swift (T-0037): the upstream `tags.scm` captures no call. A class, a struct, an enum and an actor are one
@@ -590,11 +621,14 @@ def contribute(language: Language, project) -> dict:
             cls = d.name.rsplit(".", 1)[0] if d.kind == "method" else None
             link(in_file.get(cls, fid), held[d], "contains", rel, d.line)
         files.append((rel, fid, held, uses))
+    functions = {n["id"] for n in nodes if n["kind"] == "function"}
     for rel, fid, held, uses in files:
         for u in uses:
             owner = held[u.owner] if u.owner else fid
             ours = (classes if u.kind == "reference" else callables).get(u.name, [])
             if u.kind != "reference":
+                if language.apart:
+                    ours = [t for t in ours if (t in functions) == (u.kind == "call")]
                 verdict = "external" if not ours else "common" if u.kind == "send" and u.name in language.common \
                     else "ours?" if len(ours) == 1 else "ambiguous"
                 sites.append({"verdict": verdict, "file": rel, "line": u.line, "name": u.name, "text": u.text})

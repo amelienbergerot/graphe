@@ -186,10 +186,12 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   `TYPED_TEST` per file, so `callers` says `TEST_F` where grep says the test
   name. Naming a test by its suite and name (`Suite.Name`) would take a
   query of its own for a macro call with a body.
-- **PHP's pattern reader may be worse than the generic one.** (4cast,
-  2026-11-18, the readers' grilling) Once the generic reader exists, compare
-  it with `graphe_php.py` on 4cast; replace the pattern reader only if the
-  generic one does at least as well.
+- **PHP's pattern reader reads no class nor method.** [T-0044] (4cast,
+  Grid Zero, protobuf, 2026-11-19) Compared: on 4cast the generic entry links
+  the same 81 calls and adds a class; on protobuf it reads 1723 methods where
+  `graphe_php.py` reads 5 functions; it lacks Grid Zero's 8 `case 'x':`
+  actions. The user's decision: the generic entry replaces the PHP reader,
+  with the actions (T-0045).
 - **Only its author can install the tool.** (All hosts, 2026-11-18, the
   user's request) The install depends on `E:/dev/graphe`, an editable
   `uv tool install` and PowerShell (README); ADR 0001 says "for a single

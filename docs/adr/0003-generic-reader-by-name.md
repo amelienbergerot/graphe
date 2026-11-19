@@ -12,6 +12,8 @@ Amended by T-0034 (2026-11-19): C and C++ add two pieces of data to a language, 
 
 Amended by T-0042 (2026-11-19): the "same language" of the linking is the same family for the JVM too, as for C and C++ (T-0034): Java and Kotlin are one entry, `java`, so that a Kotlin call to its host's Java is linked by name, and the reverse (libsignal's Kotlin: 401 `external` sites linked, `nativeHandle`, `makeCancelable`, `guardedMap`). The price is a name both define: libsignal's `filterExceptions`, in `FilterExceptions.java` and `FilterExceptionsKt.kt`, is ambiguous where each language's was linked. Other languages stay apart: a bridge between them (JNI, FFI) is no call by name.
 
+Amended by T-0044 (2026-11-19): a third piece of data, still no code of its own. `apart`: a bare call is linked to a function only, a send to a method only, for a language where a bare `f()` is never a method. PHP takes it (its entry not yet in the registry, T-0045): on protobuf, 219 bare calls to PHP's built-ins (`count()` 185, `substr()` 19, `pack()`) went to its methods of that name.
+
 ## Options set aside
 
 - The upstream `tags.scm` as shipped, completed where they fall short: eight capture conventions, and a grammar's upgrade changes the graph silently.

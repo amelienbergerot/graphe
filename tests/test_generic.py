@@ -9,7 +9,7 @@ import networkx as nx
 
 import graphe
 import graphe_generic
-from graphe_generic import C, CSHARP, GO, JAVA, JVM, KOTLIN, RUBY, RUST, SWIFT
+from graphe_generic import C, CSHARP, GO, JAVA, JVM, KOTLIN, PHP, RUBY, RUST, SWIFT
 
 
 def _read(language, file: str, source: str):
@@ -412,6 +412,32 @@ def test_a_ruby_local_variable_is_no_call():
     assert uses == {("send", "succ", 5, "m")}
 
 
+def test_a_php_function_its_classes_methods_and_top_level_calls():
+    """4cast (T-0044): a top-level call is its file's (as the PHP reader's since T-0023), a method is `Class.method`, an
+    interface's signature is none, the HTML outside `<?php ?>` holds no call; `x->m()`, `x?->m()`, `X::m()` are sends,
+    `new C`, `extends`, `implements` and a trait's `use` references by the last name."""
+    definitions, uses = _read(PHP, "api/index.php", """\
+        <?php
+        $db = ouvrir();
+        \\A\\route_zones($db);
+        function route_zones($db) { return array_map(fn($z) => $z->nom(), (new \\A\\Zone())->all()); }
+        class Zone extends Base implements I { use T;
+          public function __construct() { parent::__construct(); self::make(); $this?->go(); $f(); }
+        }
+        interface I { function f(); }
+        ?>
+        <p>aide(x)</p>
+        """)
+    assert definitions == {("function", "route_zones", 4), ("class", "Zone", 5), ("method", "Zone.__construct", 6),
+                           ("class", "I", 8)}
+    init = "Zone.__construct"
+    assert uses == {("call", "ouvrir", 2, None), ("call", "route_zones", 3, None),
+                    ("call", "array_map", 4, "route_zones"), ("send", "nom", 4, "route_zones"),
+                    ("reference", "Zone", 4, "route_zones"), ("send", "all", 4, "route_zones"),
+                    ("reference", "Base", 5, "Zone"), ("reference", "I", 5, "Zone"), ("reference", "T", 5, "Zone"),
+                    ("send", "__construct", 6, init), ("send", "make", 6, init), ("send", "go", 6, init)}
+
+
 def test_a_swift_type_its_methods_and_its_calls():
     """libsignal (T-0037): a class, a struct, an enum, an actor and a protocol are classes; `init` is the method
     `C.init`, a computed property `p` the method `C.p`; `b()` is a call, `x.c()`, `y?.z()` and `.make()` are sends; a call to a capitalised name, `C(..)`,
@@ -710,3 +736,21 @@ def test_two_nested_builders_of_one_file_are_two_nodes_and_a_call_both_define_is
     assert graphe.find(graph, "Builder.build") == ["src_msgs_java_bar_builder_build", "src_msgs_java_foo_builder_build"]
     assert graphe.find(graph, "Only") == ["src_msgs_java_bar_only"]
     assert graphe._designation(graph, "src_msgs_java_foo_builder_build") == "Foo.Builder.build"
+
+
+def test_a_php_bare_call_is_linked_to_a_function_only_and_a_send_to_a_method_only(tmp_path: Path):
+    """protobuf (T-0044): 219 bare calls to PHP's built-ins (`count()` 185, `substr()`, `pack()`) were linked to, or
+    ambiguous with, protobuf's methods of that name; in PHP a bare `f()` is a function, `$x->f()` a method."""
+    project = Project(tmp_path, {
+        "a.php": """\
+            <?php
+            class Field { function count() {} function pack() {} }
+            function pack() {}
+            function caller($f) { count($f); $f->count(); pack(); $f->pack(); }
+            """,
+    })
+    php = graphe_generic.contribute(PHP, project)
+    calls = {(e["target"], e["source_location"]) for e in php["links"] if e["relation"] == "calls"}
+    assert calls == {("a_php_field_count", "L4"), ("a_php_pack", "L4"), ("a_php_field_pack", "L4")}
+    verdicts = {s["text"]: s["verdict"] for s in php["sites"]}
+    assert verdicts == {"count": "external", "$f->count": "ours?", "pack": "ours?", "$f->pack": "ours?"}

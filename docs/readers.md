@@ -20,7 +20,7 @@ A **dedicated reader** knows its language's imports and types, and links a call 
 
 ## The generic reader
 
-`src/graphe_generic.py`. A language is data only, a `Language`: its tree-sitter grammars by file suffix, a query of ours per grammar, its **common names**, the method names never linked from a call on a receiver, and two switches for C/C++'s macros, C#'s `#if`, Swift's and Go's newer syntax and Rust's `dyn 'a + Trait`: `tolerant` (a file with error nodes is read, not skipped) and `erased` (a pattern blanked before parsing; ADR 0003's amendment). The reading, the owner of a call, the `Class.method` naming and the linking are written once.
+`src/graphe_generic.py`. A language is data only, a `Language`: its tree-sitter grammars by file suffix, a query of ours per grammar, its **common names**, the method names never linked from a call on a receiver, two switches for C/C++'s macros, C#'s `#if`, Swift's and Go's newer syntax and Rust's `dyn 'a + Trait`: `tolerant` (a file with error nodes is read, not skipped) and `erased` (a pattern blanked before parsing; ADR 0003's amendment), and `apart` (a bare call is linked to a function only, a send to a method only: PHP's, T-0044). The reading, the owner of a call, the `Class.method` naming and the linking are written once.
 
 ### The capture convention
 
@@ -49,7 +49,7 @@ A file `contains` its definitions; a class `contains` its methods when they are 
 
 Every link a use makes is by the name alone (`INFERRED`: `[by name]`, `?` in the answers), and made only when the name has **a single definition in the language**:
 
-- `@call` and `@send` become `calls`, to the function or method of that bare name (`Save` for `T.Save`);
+- `@call` and `@send` become `calls`, to the function or method of that bare name (`Save` for `T.Save`); in an `apart` language (PHP, T-0044), a `@call` to a function only, a `@send` to a method only;
 - `@reference` becomes `references`, to the class of that name;
 - a `@send` of a common name is never linked;
 - a call to its own definition (recursion) draws no link;
@@ -72,7 +72,7 @@ A file that does not parse (any error node in its tree) is skipped and named on 
 
 1. Pin its grammar in the main dependencies (`pyproject.toml`, `uv add tree-sitter-<language>==<version>`).
 2. Write its query in `graphe_generic.py` from the grammar's `tags.scm`, in the capture convention above: definitions with a body only (an abstract method or a signature would make each name ambiguous with its implementation).
-3. Its `Language`: the name of its `graphe.toml` section, the grammar and query per suffix, a first list of common names; `tolerant` if valid code leaves error nodes, `erased` for what the grammar cannot read and blanks keep in place (C/C++, T-0034; C#'s `#if` lines, T-0035).
+3. Its `Language`: the name of its `graphe.toml` section, the grammar and query per suffix, a first list of common names; `tolerant` if valid code leaves error nodes, `erased` for what the grammar cannot read and blanks keep in place (C/C++, T-0034; C#'s `#if` lines, T-0035); `apart` if a bare call can never be a method (PHP, T-0044).
 4. A snippet test at the seam `read(language, file, source)` (`tests/test_generic.py`): its definitions and its uses with their owners.
 5. Its entry in `READERS` (`functools.partial(graphe_generic.contribute, graphe_generic.<LANGUAGE>)`).
 6. Its sample host (docs/sample-hosts.md): build, no dangling link, `graphe check`; tune the common names from the most frequent sends linked by name; three queries compared with grep; its README row and its section here; what it misses in BACKLOG.md, naming the host.
