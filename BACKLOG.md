@@ -84,7 +84,7 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   (protobuf, sample host, 2026-11-19, T-0033) The 325 methods of an
   anonymous class (`new Runnable() { public void run() {..} }`) are the
   enclosing class's (`A.run`). Making the anonymous body a class would keep
-  them apart. Its nested classes are `Outer.Inner` since T-0043 (Settled).
+  them apart. Java's nested classes are `Outer.Inner` since T-0043 (Settled).
 - **A C amalgamation makes every name it repeats ambiguous.** (protobuf,
   sample host, 2026-11-19, T-0034) `php/ext/google/protobuf/php-upb.{c,h}`
   and `ruby/ext/google/protobuf_c/ruby-upb.{c,h}` are upb's sources

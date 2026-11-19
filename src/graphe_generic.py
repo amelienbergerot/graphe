@@ -259,7 +259,10 @@ CSHARP = Language("csharp", {".cs": (tree_sitter.Language(tree_sitter_c_sharp.la
 # captures the explicit calls only, `b()`, `c arg`, `x.c`. A module is a class, as it holds its `def self.m`; a
 # `class << self` is none, its methods its class's. `C.new` is a reference to `C`. shortcut: a bare `b` is no call (it
 # may be a variable); to tell a variable from a call (the grammar's `locals.scm`) if a host's `explain` misses them.
-# shortcut: an `attr_reader`, an `alias` or a `define_method` is no definition, and a setter call `x.y = v` is a send
+# A module being a class, a class in a module is `Module.Class` (T-0043): `Google.Protobuf.Descriptor`. shortcut: a
+# scoped module is named by its last name, so one class is `Protobuf.X` under `module Google::Protobuf` and
+# `Google.Protobuf.X` under `module Google` `module Protobuf`; to name a module by its whole path if a host's `explain`
+# needs them together. shortcut: an `attr_reader`, an `alias` or a `define_method` is no definition, and a setter call `x.y = v` is a send
 # `y`, not `y=`; to capture them if a host's hand-written accessors need callers.
 _RB_CONSTANT = "[(constant) @name (scope_resolution name: (constant) @name)]"
 RUBY_QUERY = f"""
@@ -524,6 +527,9 @@ def read(language: Language, file: str, source: bytes) -> tuple[list[Definition]
             uses.append(Use(role, name, line, stack[-1][1] if stack else None, re.sub(r"\s+", "", used)[:60]))
             continue
         kind = role
+        # shortcut: a `@receiver` is a last name, so a method declared outside its nested class (C++'s
+        # `Outer::Inner::m`, Kotlin's `fun Outer.Inner.f()`, Swift's `extension Outer.Inner`) is `Inner.m`, apart from
+        # the class's own `Outer.Inner.m`; to capture the receiver's whole path if a host's `explain` needs them together.
         cls = receiver.text.decode("utf-8", "replace") if receiver is not None else \
             next((d.name for _, d in reversed(stack) if d.kind == "class"), None)
         if role == "class":
