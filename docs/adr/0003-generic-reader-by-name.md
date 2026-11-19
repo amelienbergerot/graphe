@@ -4,7 +4,7 @@ Java, C#, Go, Rust, Ruby, C, C++, Swift and Kotlin are read by one generic reade
 
 The graph of such a host does not lift an ambiguous name, which is what the graph does best against grep; it still gives what grep does not: what a function calls, `path`, `callers --depth`, and the documents that cite the code.
 
-The queries are written from the `tags.scm` the grammars ship, but kept in this repository, one capture convention for all, each tested on a snippet, and specified per language in `docs/readers.md`. Run as shipped (py-tree-sitter 0.26.1, 2026-11-18), the upstream ones fall short: C, C++ and Swift capture no call, C# no bare call `f()`, Ruby takes a variable for a call, and C#'s wheel stores its queries outside its package.
+The queries are written from the `tags.scm` the grammars ship, but kept in this repository, one capture convention for all, each tested on a snippet, and specified per language in `docs/readers.md`. Run as shipped (py-tree-sitter 0.26.1, 2026-11-18), the upstream ones fall short: C, C++ and Swift capture no call, Kotlin's grammar ships none (T-0038), C# no bare call `f()`, Ruby takes a variable for a call, and C#'s wheel stores its queries outside its package.
 
 A language is data only: its grammars, its queries, the method names never linked by name. A quirk the queries cannot express is a `shortcut:` in `docs/readers.md`; a language that needs code of its own is the proof that it needs a dedicated reader.
 
