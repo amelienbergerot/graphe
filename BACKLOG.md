@@ -128,7 +128,7 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   preprocessor branch, or the preprocessor's own pass, would read them.
 - **A document's name loses its link when another language defines it too.**
   (protobuf, sample host, 2026-11-19, T-0034) The C/C++ definitions made 21
-  `names` links of `docs/design/editions/*.md` ambiguous (`has_presence`,
+  `names` links of its documents (`cmake/README.md`, `docs/design/editions/*.md`) ambiguous (`has_presence`,
   `check`, `packed`, until then Python's or Java's only): the core links a
   name a document cites only when one node bears it. Preferring the
   language a document's code block or path names would keep them.
