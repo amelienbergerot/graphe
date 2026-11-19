@@ -6,7 +6,7 @@ import textwrap
 from pathlib import Path
 
 import graphe_generic
-from graphe_generic import C, GO, JAVA, RUST
+from graphe_generic import C, CSHARP, GO, JAVA, RUST
 
 
 def _read(language, file: str, source: str):
@@ -186,6 +186,58 @@ def test_a_c_function_its_structs_and_a_forward_declaration_that_is_none():
         """)
     assert definitions == {("class", "Anon", 1), ("class", "upb_Arena", 2), ("function", "upb_Arena_Malloc", 4)}
     assert uses == {("send", "alloc", 4, "upb_Arena_Malloc"), ("call", "_upb_size", 4, "upb_Arena_Malloc")}
+
+
+def test_a_csharp_class_its_members_and_both_kinds_of_call():
+    """protobuf (T-0035): the upstream `tags.scm` captures only `x.M()`; a bare `F()` is ours too. A base given by
+    the `pb::` alias of generated code, a generic or a qualified name is a reference by its last name, as what `new`
+    builds; an abstract or interface method without a body is no definition, as Java's; a constructor is `C.C`."""
+    definitions, uses = _read(CSHARP, "src/C.cs", """        namespace N.M {
+        sealed partial class C : pb::IMessage<C>, global::System.IEquatable<C>, B {
+            C() { Init(); }
+            void M() { list.Add(new D()); this.N(); x?.O(); F<int>(1); }
+            int L() => new pb::E<int>().P();
+            abstract void A();
+        }
+        interface I { void X(); void Y() {} }
+        struct S {}
+        enum K {}
+        record R(int A) : Q(A);
+        }
+        """)
+    assert definitions == {("class", "C", 2), ("method", "C.C", 3), ("method", "C.M", 4), ("method", "C.L", 5),
+                           ("class", "I", 8), ("method", "I.Y", 8), ("class", "S", 9), ("class", "K", 10),
+                           ("class", "R", 11)}
+    assert uses == {("reference", "IMessage", 2, "C"), ("reference", "IEquatable", 2, "C"), ("reference", "B", 2, "C"),
+                    ("call", "Init", 3, "C.C"), ("send", "Add", 4, "C.M"), ("reference", "D", 4, "C.M"),
+                    ("send", "N", 4, "C.M"), ("send", "O", 4, "C.M"), ("call", "F", 4, "C.M"),
+                    ("reference", "E", 5, "C.L"), ("send", "P", 5, "C.L"),
+                    ("reference", "Q", 11, "R")}
+
+
+def test_a_csharp_preprocessor_directive_cutting_a_base_list_or_an_expression_costs_nothing():
+    """protobuf (T-0035): generated code cuts its base list with `#if`, which the grammar does not parse (44 of its
+    224 files skipped, 42 of them for that): the directives are erased, both branches read; one expression whose two branches then follow
+    each other (`= new[] {1}; new[] {2};`) leaves an error, read all the same."""
+    definitions, uses = _read(CSHARP, "src/Person.pb.cs", """        public sealed partial class Person : pb::IMessage<Person>
+          #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+            , pb::IBufferMessage
+          #endif
+        {
+            void M() {
+                var e =
+        #if NET5_0_OR_GREATER
+                    new[] { 1 };
+        #else
+                    new[] { 2 };
+        #endif
+                Check(e);
+            }
+        }
+        """)
+    assert definitions == {("class", "Person", 1), ("method", "Person.M", 6)}
+    assert uses == {("reference", "IMessage", 1, "Person"), ("reference", "IBufferMessage", 3, "Person"),
+                    ("call", "Check", 13, "Person.M")}
 
 
 class Project:

@@ -1,6 +1,7 @@
 """The generic reader (T-0030, ADR 0003): the languages without a dedicated reader, read the same way by tree-sitter.
 A language is data only (`Language`): its grammars by suffix, a query of ours per grammar, the method names
-never linked by name, and, for C/C++'s macros, whether a file with errors is read and what is blanked first. The reading, the owner of a call, the `Class.method` naming and the linking are written once.
+never linked by name, and, for C/C++'s macros and C#'s `#if`, whether a file with errors is read and what is
+blanked first. The reading, the owner of a call, the `Class.method` naming and the linking are written once.
 
 The queries follow one capture convention (docs/readers.md): `@function`, `@method`, `@class`, each with its
 `@name`; `@call` for `f()`, `@send` for `x.m()`; `@reference` for `new C()`, `extends C`; `@receiver` for a method's
@@ -12,7 +13,8 @@ a `@class` is its method; a method's class is its `@receiver`, or else the inner
 - every link a use makes is by the name alone (INFERRED), and only when the name has a single definition in the
   language: a call or a send to a function or a method, a reference to a class. A send never links a common name.
   Each call or send is a site: `ours?`, `ambiguous`, `common` or `external` (no definition of that name);
-- a file that does not parse is skipped and named on stderr, unless the language is `tolerant` (C's macros).
+- a file that does not parse is skipped and named on stderr, unless the language is `tolerant` (C's macros, C#'s
+  `#if`).
 """
 
 from __future__ import annotations
@@ -25,6 +27,7 @@ from typing import NamedTuple
 
 import tree_sitter
 import tree_sitter_c
+import tree_sitter_c_sharp
 import tree_sitter_cpp
 import tree_sitter_go
 import tree_sitter_java
@@ -35,7 +38,7 @@ class Language(NamedTuple):
     name: str
     grammars: dict[str, tuple[tree_sitter.Language, str]]  # suffix -> (grammar, query)
     common: frozenset[str]  # method names never linked from a send
-    tolerant: bool = False  # a file that does not parse is read all the same (C's macros), not skipped
+    tolerant: bool = False  # a file that does not parse is read all the same (C's macros, C#), not skipped
     erased: re.Pattern[bytes] | None = None  # what it matches is blanked before parsing (one line, columns kept)
 
 
@@ -173,6 +176,55 @@ JAVA = Language("java", {".java": (tree_sitter.Language(tree_sitter_java.languag
     "entrySet", "values", "iterator", "charAt", "substring", "indexOf", "trim", "split", "compareTo", "getClass",
     "isPresent", "orElse", "ifPresent", "println", "print", "write", "read", "flush", "start", "join", "getMessage",
     "intValue", "longValue", "parseInt", "asList", "sort", "copyOf", "max", "min"}))
+
+
+# C# (T-0035): the upstream `tags.scm` captures only `x.M()`, the bare `F()` is ours. A type is named by its last name,
+# bare, generic, qualified or behind the `pb::` alias of generated code. As Java's, a method without a body (abstract,
+# an interface's) is not captured and a constructor is the method `C.C`. shortcut: a property's accessors, a local
+# function, an operator and a destructor are no definitions, their calls belong to the class (or the method); to
+# capture them if a host's `explain` needs them.
+_CS_NAME = "[(identifier) @name (generic_name (identifier) @name)]"
+_CS_TYPE = (f"[(identifier) @name (generic_name (identifier) @name) (qualified_name name: {_CS_NAME}) "
+            f"(alias_qualified_name name: {_CS_NAME})]")
+CSHARP_QUERY = f"""
+[(class_declaration name: (identifier) @name)
+ (interface_declaration name: (identifier) @name)
+ (struct_declaration name: (identifier) @name)
+ (enum_declaration name: (identifier) @name)
+ (record_declaration name: (identifier) @name)] @class
+(method_declaration name: (identifier) @name body: (_)) @method
+(constructor_declaration name: (identifier) @name) @method
+(invocation_expression function: {_CS_NAME}) @call
+(invocation_expression function: (member_access_expression name: {_CS_NAME})) @send
+(invocation_expression function: (conditional_access_expression (member_binding_expression name: {_CS_NAME}))) @send
+(object_creation_expression type: {_CS_TYPE}) @reference
+(base_list {_CS_TYPE}) @reference
+(primary_constructor_base_type type: {_CS_TYPE}) @reference
+"""
+
+CSHARP = Language("csharp", {".cs": (tree_sitter.Language(tree_sitter_c_sharp.language()), CSHARP_QUERY)},
+                  # The common names: the BCL's that one method of protobuf would collect from every
+                  # `builder.Append` (a StringBuilder), `enumerator.MoveNext`, `typeof(T).GetProperty` (T-0035,
+                  # `check`'s most frequent sends linked by name, the first three); the others are guessed: the
+                  # methods of `object`, the strings, the collections, LINQ, the streams and reflection.
+                  # shortcut: a hand-kept list; to extend when `check` shows a standard name among the most frequent
+                  # sends linked by name (`ours?`) on a host.
+                  frozenset({
+                      "Append", "MoveNext", "GetProperty", "AppendLine", "AppendFormat", "ToString", "Equals",
+                      "GetHashCode", "GetType", "CompareTo", "Add", "AddRange", "Remove", "RemoveAt", "Contains",
+                      "ContainsKey", "TryGetValue", "Clear", "CopyTo", "ToArray", "ToList", "ToDictionary", "Select",
+                      "Where", "Any", "All", "First", "FirstOrDefault", "Single", "Count", "Sum", "OrderBy",
+                      "SequenceEqual", "GetEnumerator", "Dispose", "Split", "Join", "Substring", "IndexOf",
+                      "StartsWith", "EndsWith", "Trim", "Replace", "ToUpper", "ToLower", "ToUpperInvariant",
+                      "ToLowerInvariant", "Write", "WriteLine", "ReadLine", "ReadToEnd", "Flush", "Close", "Invoke",
+                      "GetValue", "SetValue", "GetMethod", "GetField", "GetCustomAttributes", "IsAssignableFrom"}),
+                  # protobuf's generated code cuts its base list with `#if` (`: pb::IMessage<T>` `#if ..` `, ..`
+                  # `#endif`): the grammar does not parse it, 44 of 224 files skipped. The directives erased, 2 left
+                  # (`f() = x;`, and an expression whose two branches then follow each other), read all the same: no
+                  # method lost its class. shortcut: both branches are read (their calls counted twice, their
+                  # definitions one); to keep one branch if a host's definitions differ between them. shortcut: a C#
+                  # file that does not parse is no longer named on stderr; to name it if a host's garbage shows.
+                  tolerant=True, erased=re.compile(rb"(?m)^[ \t]*#[ \t]*(?:if|elif|else|endif)\b.*$"))
 
 
 # C and C++ (T-0034): the upstream `tags.scm` capture no call. A query pattern sees direct children only, so the

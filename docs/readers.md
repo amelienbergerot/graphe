@@ -12,12 +12,13 @@ A reader turns a host's files of one language into nodes, links and coverage sit
 | `rust` | generic, `graphe_generic.py` | Rust | `.rs` |
 | `java` | generic, `graphe_generic.py` | Java | `.java` |
 | `c` | generic, `graphe_generic.py` | C, C++ | `.c`, `.h`, `.cpp`, `.cc`, `.cxx`, `.hpp` |
+| `csharp` | generic, `graphe_generic.py` | C# | `.cs` |
 
 A **dedicated reader** knows its language's imports and types, and links a call for sure where it can. The **generic reader** (ADR 0003, GLOSSARY.md) reads every other language the same way, by its name alone.
 
 ## The generic reader
 
-`src/graphe_generic.py`. A language is data only, a `Language`: its tree-sitter grammars by file suffix, a query of ours per grammar, its **common names**, the method names never linked from a call on a receiver, and two switches for C/C++'s macros: `tolerant` (a file with error nodes is read, not skipped) and `erased` (a pattern blanked before parsing; ADR 0003's amendment). The reading, the owner of a call, the `Class.method` naming and the linking are written once.
+`src/graphe_generic.py`. A language is data only, a `Language`: its tree-sitter grammars by file suffix, a query of ours per grammar, its **common names**, the method names never linked from a call on a receiver, and two switches for C/C++'s macros and C#'s `#if`: `tolerant` (a file with error nodes is read, not skipped) and `erased` (a pattern blanked before parsing; ADR 0003's amendment). The reading, the owner of a call, the `Class.method` naming and the linking are written once.
 
 ### The capture convention
 
@@ -62,13 +63,13 @@ Every call or send is a coverage site, with its verdict:
 | `common` | A send of a common name that the host defines. | no: counted by `explain` likewise |
 | `external` | No definition of that name in the host (the standard library, a dependency, a builtin). | no |
 
-A file that does not parse (any error node in its tree) is skipped and named on stderr; the build goes on. A `tolerant` language (C/C++, whose macros leave error nodes in valid code) reads it all the same. A host without the language's files gets no contribution at all, not even an empty coverage.
+A file that does not parse (any error node in its tree) is skipped and named on stderr; the build goes on. A `tolerant` language (C/C++, whose macros leave error nodes in valid code; C#, whose `#if` branches, both read, can) reads it all the same. A host without the language's files gets no contribution at all, not even an empty coverage.
 
 ### Adding a language
 
 1. Pin its grammar in the main dependencies (`pyproject.toml`, `uv add tree-sitter-<language>==<version>`).
 2. Write its query in `graphe_generic.py` from the grammar's `tags.scm`, in the capture convention above: definitions with a body only (an abstract method or a signature would make each name ambiguous with its implementation).
-3. Its `Language`: the name of its `graphe.toml` section, the grammar and query per suffix, a first list of common names; `tolerant` if valid code leaves error nodes, `erased` for what the grammar cannot read and blanks keep in place (C/C++, T-0034).
+3. Its `Language`: the name of its `graphe.toml` section, the grammar and query per suffix, a first list of common names; `tolerant` if valid code leaves error nodes, `erased` for what the grammar cannot read and blanks keep in place (C/C++, T-0034; C#'s `#if` lines, T-0035).
 4. A snippet test at the seam `read(language, file, source)` (`tests/test_generic.py`): its definitions and its uses with their owners.
 5. Its entry in `READERS` (`functools.partial(graphe_generic.contribute, graphe_generic.<LANGUAGE>)`).
 6. Its sample host (docs/sample-hosts.md): build, no dangling link, `graphe check`; tune the common names from the most frequent sends linked by name; three queries compared with grep; its README row and its section here; what it misses in BACKLOG.md, naming the host.
@@ -136,6 +137,26 @@ A quirk the query cannot express is a `shortcut:` in its section here. A languag
   - `shortcut:` a constant (`INT_MAX`) or a class (`struct MY_POINT {`) named like a macro is erased too, and a macro with arguments (`PROTOBUF_ALIGNAS(8)`) is not; a class whose declaration an `#ifdef` cuts (`class PROTOBUF_EXPORT` / `#ifdef` / `ABSL_ATTRIBUTE_WARN_UNUSED` / `#endif` / `Arena final {`, protobuf's `Arena`) is lost (BACKLOG.md); to tell them apart if a host loses code to one.
   - `shortcut:` the classes and functions of one name are one node per file only: an amalgamation (`php-upb.c`, `ruby-upb.c`, which repeat upb) makes each name it repeats ambiguous (BACKLOG.md).
   - `shortcut:` no imports nor types: `C::m()` is linked by `m` alone, as Java's `C.m()`.
+- **Sample host**: protobuf (docs/sample-hosts.md).
+
+## C#
+
+- **Section**: `csharp`. **Suffixes**: `.cs`.
+- **Grammar**: `tree-sitter-c-sharp` 0.24.0 (py-tree-sitter 0.26.1). Its `tags.scm` captures only the calls on a receiver (`reference.send`); its wheel stores its queries outside its package (`site-packages/tree_sitter_c-sharp/queries/`), which nothing reads: the query (`CSHARP_QUERY`) is ours.
+- **Nodes**: a `class` per `class`, `interface`, `struct`, `enum` and `record`; a `method` `C.M` per method with a body (a block or `=> expr`), and `C.C` per constructor; a method's class is the innermost class that contains it. An abstract method or an interface's signature is not a node, as Java's. The overloads of a class are one method. Namespaces are not nodes.
+- **Links**: `F()` and `F<T>()` are `@call`; `x.M()`, `x?.M()`, `this.M()`, `C.M()` and `pb::C.M()` are `@send`, so a static method follows the common names. `new C()` and a base or interface (`class A : B, I`) and a record's primary-constructor base (`record R(int X) : B(X)`) are `references` to the type, in their generic (`C<T>`), qualified (`A.B.C`, `global::System.C`) and aliased (`pb::C`) forms, by the last name. All `INFERRED`.
+- **Common names**: the BCL's names that one method of protobuf would collect from every `builder.Append` (a `StringBuilder`, linked to `BufferSegment.Append`), `enumerator.MoveNext`, `typeof(T).GetProperty` (measured from `graphe check` on protobuf, T-0035), and, guessed, the methods of `object`, the strings, the collections, LINQ, the streams and reflection (`ToString`, `Add`, `TryGetValue`, `Select`, `WriteLine`, `GetMethod`...). The list is `CSHARP.common`.
+- **Quirks**:
+  - The preprocessor lines `#if`, `#elif`, `#else` and `#endif` are blanked before the parse (`Language.erased`): protobuf's generated code cuts its base list with one (`: pb::IMessage<T>` / `#if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE` / `, pb::IBufferMessage` / `#endif`), which the grammar does not parse: 44 of its 224 files skipped, 2 once the lines are erased. Both branches are read.
+  - A file that does not parse is read all the same (`Language.tolerant`): the 2 left on protobuf (`Unsafe.AddByteOffset(ref a, i) = x;`, and `var e =` whose two erased branches then follow each other) lose no method to their class. On protobuf: skipped 44 / 0, classes 242 / 769, methods 2021 / 6422, as is / erased and tolerant; tolerant alone reads 1285 methods as functions, their class lost in the base list.
+  - A property's accessors are no definitions: the calls of `get`, `set` and `=> expr` belong to the class, so `callers ProtoPreconditions.CheckNotNull` lists generated classes (`Person:56`) for their setters.
+  - A `partial void OnConstruction();` has no body: its 364 calls in generated code are `external`. `nameof(X)` is a call, `external` (102 on protobuf).
+- **Limits**:
+  - `shortcut:` a property's accessors, a local function, an operator and a destructor are no definitions, their calls belong to the class (or the method); to capture them if a host's `explain` needs them.
+  - `shortcut:` both branches of an `#if` are read: their calls are counted twice, their definitions of one name are one; to keep one branch if a host's definitions differ between them.
+  - `shortcut:` a C# file that does not parse is read, no longer named on stderr; to name it if a host's garbage shows.
+  - `shortcut:` a nested class is named by its own name (generated code's `Types.PhoneType`, every `Types`), and `C.M()` is linked by `M` alone, as Java's; to name a nested class by its outer one, and link `C.M()` to `C.M`, if a host needs it (BACKLOG.md).
+  - `shortcut:` a `partial class` is one class per file it spans: `Any` (`Any.pb.cs`, `AnyPartial.cs`) is two classes, so a reference to it is ambiguous (125 class names in several of protobuf's `.cs` files, partials and the copied tests); to merge a partial class's files if a host's references to it matter.
 - **Sample host**: protobuf (docs/sample-hosts.md).
 
 ## The dedicated readers

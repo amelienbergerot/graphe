@@ -35,7 +35,8 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   sample hosts, pinned, in `docs/sample-hosts.md`, summed up in the README:
   protobuf, libsignal, gitea (and Django). T-0030; Go is read since T-0031
   (gitea), Rust since T-0032 (libsignal), Java since T-0033 (protobuf), C and
-  C++ since T-0034 (protobuf), the other languages follow in T-0035 to T-0038.
+  C++ since T-0034 (protobuf), C# since T-0035 (protobuf), the other
+  languages follow in T-0036 to T-0038.
 - **A Go file in Go 1.26's syntax is skipped whole.** (gitea, sample host,
   2026-11-19, T-0031) `tree-sitter-go` 0.25.0, the last on PyPI, knows
   neither `new(expr)` nor generic methods (`func (f *Flash) Error[T ...]`):
@@ -105,7 +106,8 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   generated message's `Builder`), and are one class, their methods of one
   name one method. The 325 methods of an anonymous class are the enclosing
   class's (`A.run`). Naming a nested class `Outer.Inner` would keep them
-  apart.
+  apart. C# likewise (T-0035): each generated message's nested `Types` class
+  is one `Types` per file (18 files).
 - **A C amalgamation makes every name it repeats ambiguous.** (protobuf,
   sample host, 2026-11-19, T-0034) `php/ext/google/protobuf/php-upb.{c,h}`
   and `ruby/ext/google/protobuf_c/ruby-upb.{c,h}` are upb's sources
@@ -131,7 +133,25 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   `names` links of its documents (`cmake/README.md`, `docs/design/editions/*.md`) ambiguous (`has_presence`,
   `check`, `packed`, until then Python's or Java's only): the core links a
   name a document cites only when one node bears it. Preferring the
-  language a document's code block or path names would keep them.
+  language a document's code block or path names would keep them. C# (T-0035)
+  made 4 more ambiguous (`docs/design/editions/*.md` naming `Syntax`,
+  `Edition`, `IsValid`, `Feature`).
+- **C#'s generated messages make their methods' names ambiguous.**
+  (protobuf, sample host, 2026-11-19, T-0035) Every generated message
+  defines `WriteTo`, `Clone`, `CalculateSize`, `MergeFrom` (about 348 each),
+  and `output.WriteRawTag` (2449 calls) has 3 definitions
+  (`CodedOutputStream`, `WriteContext`, `WritingPrimitives`): 19463 of the
+  35466 C# sites are `ambiguous`. The copy of the tests in
+  `csharp/compatibility_tests/v3.0.0/` (28 files) accounts for 756 of them
+  only. Linking `output.WriteRawTag` needs the receiver's type: a dedicated
+  C# reader (ADR 0003).
+- **A C# property is no definition.** (protobuf, sample host, 2026-11-19,
+  T-0035) The calls of a property's `get`, `set` and `=> expr` belong to its
+  class: `callers ProtoPreconditions.CheckNotNull` lists generated classes
+  (`Person:56`, 138 callers) for their setters, and `explain Person.Name`
+  finds nothing. A `property_declaration` captured as a `@method` `C.P` would
+  hold them, a query change; it would have no caller, a property being used
+  without a call.
 - **A file's gtest tests are one function.** (protobuf, sample host,
   2026-11-19, T-0034) `TEST_F(Suite, Name) { .. }` parses as a function
   `TEST_F`: protobuf's 4824 tests are one `TEST_F`, `TEST`, `TEST_P` or

@@ -20,7 +20,7 @@ description: Locate code with the `graphe` command before grep or reading files 
 
 The graph rebuilds itself when the code or the tool is newer than it: trust the answer. Done when the answer names the code you need, or when it falls short (next section).
 
-The readers: listed in `E:/dev/graphe/docs/readers.md` (Python, GDScript, PHP, JavaScript/TypeScript/Svelte, Go, Rust, Java, C/C++...), and the Markdown documents (a document cites code between backticks, and other documents by identifier, `T-0012`). In a host whose code no reader takes yet, use grep and read the files. Outside the graph too: dynamic calls (`getattr`, stored callbacks), tests a host excludes, `.toml`, shaders - grep is the tool there.
+The readers: listed in `E:/dev/graphe/docs/readers.md` (Python, GDScript, PHP, JavaScript/TypeScript/Svelte, Go, Rust, Java, C/C++, C#...), and the Markdown documents (a document cites code between backticks, and other documents by identifier, `T-0012`). In a host whose code no reader takes yet, use grep and read the files. Outside the graph too: dynamic calls (`getattr`, stored callbacks), tests a host excludes, `.toml`, shaders - grep is the tool there.
 
 A new host: `graphe install` sets the git hooks that rebuild it and ignores its `graphe/` output folder. `graphe check` gives each contribution's coverage.
 
