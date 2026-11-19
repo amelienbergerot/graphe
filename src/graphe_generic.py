@@ -231,31 +231,33 @@ CSHARP = Language("csharp", {".cs": (tree_sitter.Language(tree_sitter_c_sharp.la
 # Ruby (T-0036): the upstream `tags.scm` takes a bare identifier for a call, which may be a local variable: ours
 # captures the explicit calls only, `b()`, `c arg`, `x.c`. A module is a class, as it holds its `def self.m`; a
 # `class << self` is none, its methods its class's. `C.new` is a reference to `C`. shortcut: a bare `b` is no call (it
-# may be a variable), nor an `attr_reader`, an `alias` or a `define_method` a definition; to tell a variable from a
-# call (the grammar's `locals.scm`) if a host's `explain` misses them.
+# may be a variable); to tell a variable from a call (the grammar's `locals.scm`) if a host's `explain` misses them.
+# shortcut: an `attr_reader`, an `alias` or a `define_method` is no definition, and a setter call `x.y = v` is a send
+# `y`, not `y=`; to capture them if a host's hand-written accessors need callers.
 _RB_CONSTANT = "[(constant) @name (scope_resolution name: (constant) @name)]"
 RUBY_QUERY = f"""
 [(class name: {_RB_CONSTANT}) (module name: {_RB_CONSTANT})] @class
-(call receiver: {_RB_CONSTANT} method: (identifier) @eval block: (_) (#eq? @eval "class_eval")) @class
+(call receiver: {_RB_CONSTANT} method: (identifier) @_eval block: (_) (#eq? @_eval "class_eval")) @class
 [(method name: (_) @name) (singleton_method name: (_) @name)] @method
 (call !receiver method: [(identifier) (constant)] @name) @call
 (call receiver: (_) method: [(identifier) (constant)] @name) @send
 (superclass {_RB_CONSTANT}) @reference
-(call receiver: {_RB_CONSTANT} method: (identifier) @new (#eq? @new "new")) @reference
+(call receiver: {_RB_CONSTANT} method: (identifier) @_new (#eq? @_new "new")) @reference
 """
 
-# The common names: `new` (892 sends `C.new`, 9 `def self.new` in protobuf) and `each` (38), the most frequent sends
-# by name on protobuf (T-0036, `check`); the others are guessed: the methods of `Object`, the conversions,
-# `Enumerable`, `Array`, `Hash`, `String` and `IO`. The most frequent sends linked by name (`push`, `pop`, `first`,
-# `delete`) are protobuf's `RepeatedField` and `Map`, which mirror `Array` and `Hash`: left out. shortcut: a
+# The common names: `new` (892 sends `C.new`, 9 `def self.new` in protobuf), `each` (38) and `pack` (6 of its 9 sends
+# `Array#pack`, linked to `Any.pack`), measured on protobuf (T-0036, `check`); the others are guessed: the methods of
+# `Object`, the conversions, `Enumerable`, `Array`, `Hash`, `String` and `IO`. A name whose sends are mostly protobuf's
+# is left out: `push`, `pop`, `first`, `delete`, `keys` (its `RepeatedField` and `Map` mirror `Array` and `Hash`),
+# `eql?` (its messages'). shortcut: a
 # hand-kept list; to extend when `check` shows a standard name among the most frequent sends linked by name (`ours?`)
 # on a host.
 RUBY = Language("ruby", {".rb": (tree_sitter.Language(tree_sitter_ruby.language()), RUBY_QUERY)}, frozenset({
-    "new", "each", "to_s", "inspect", "hash", "eql?", "dup", "clone", "freeze", "frozen?", "is_a?", "kind_of?",
+    "new", "each", "pack", "to_s", "inspect", "hash", "dup", "clone", "freeze", "frozen?", "is_a?", "kind_of?",
     "respond_to?", "send", "public_send", "nil?", "class", "tap", "then", "to_i", "to_f", "to_sym", "to_str",
     "to_proc", "map", "select", "reject", "each_with_index", "each_with_object", "each_pair", "include?", "any?",
     "all?", "find", "count", "sum", "min", "max", "sort", "sort_by", "reduce", "inject", "flat_map", "flatten",
-    "compact", "uniq", "zip", "join", "keys", "key?", "fetch", "merge", "dig", "empty?", "size", "split", "strip",
+    "compact", "uniq", "zip", "join", "key?", "fetch", "merge", "dig", "empty?", "size", "split", "strip",
     "gsub", "sub", "start_with?", "end_with?", "upcase", "downcase", "read", "write", "puts", "print", "close",
     "call"}))
 

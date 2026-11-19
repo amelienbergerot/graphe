@@ -271,8 +271,8 @@ def test_a_ruby_class_its_methods_and_its_explicit_calls():
 
 
 def test_a_ruby_local_variable_is_no_call():
-    """T-0036: the upstream `tags.scm` takes a bare identifier for a call; it may be a variable. shortcut: a bare
-    method call `e` is missed too (docs/readers.md)."""
+    """T-0036: the upstream `tags.scm` takes a bare identifier for a call; it may be a variable. A bare method call
+    `e` is missed too (docs/readers.md)."""
     _, uses = _read(RUBY, "lib/v.rb", """\
         def m
           v = 1
