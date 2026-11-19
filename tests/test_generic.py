@@ -80,6 +80,20 @@ def test_a_rust_function_of_an_impl_is_a_method_of_its_type():
                     ("reference", "T", 8, "T.f")}
 
 
+
+def test_rust_functions_of_one_name_in_a_file_are_one():
+    """libsignal (T-0033): `impl Debug for T` and `impl Display for T` both define `fmt`, one `T.fmt`; the `fn f` of two
+    `mod`s of one file, one `f`."""
+    definitions, _ = _read(RUST, "src/t.rs", """        impl Debug for T {
+            fn fmt(&self) {}
+        }
+        impl Display for T {
+            fn fmt(&self) {}
+        }
+        mod a { fn f() {} }
+        mod b { fn f() {} }
+        """)
+    assert definitions == {("class", "T", 1), ("method", "T.fmt", 2), ("function", "f", 7)}
 def test_a_java_class_its_methods_and_what_it_builds():
     definitions, uses = _read(JAVA, "src/C.java", """\
         class C extends B implements I {
@@ -102,6 +116,25 @@ def test_a_java_class_its_methods_and_what_it_builds():
                            ("method", "I.n", 14)}
     assert uses == {("reference", "B", 1, "C"), ("reference", "I", 1, "C"), ("call", "init", 3, "C.C"),
                     ("send", "add", 7, "C.m"), ("reference", "D", 7, "C.m"), ("send", "n", 8, "C.m")}
+
+
+def test_java_overloads_are_one_method_and_a_scoped_type_is_its_last_name():
+    """protobuf (T-0033): `o(int)` and `o(String)` are one `A.o`, else every call to it is ambiguous; generated code
+    builds and extends `Outer.Inner` and `com.x.D`."""
+    definitions, uses = _read(JAVA, "src/A.java", """        class A extends GeneratedMessage.Builder<A> {
+            void o(int i) {
+                new com.x.D();
+            }
+
+            void o(String s) {
+                o(1);
+                new Outer.Inner<A>();
+            }
+        }
+        """)
+    assert definitions == {("class", "A", 1), ("method", "A.o", 2)}
+    assert uses == {("reference", "Builder", 1, "A"), ("reference", "D", 3, "A.o"), ("call", "o", 7, "A.o"),
+                    ("reference", "Inner", 8, "A.o")}
 
 
 class Project:
@@ -171,3 +204,26 @@ def test_a_call_is_linked_by_its_name_only_when_the_language_defines_it_once(tmp
     rust = graphe_generic.contribute(RUST, project)
     assert not [e for e in rust["links"] if e["relation"] == "calls"]
     assert {s["text"]: s["verdict"] for s in rust["sites"]} == {"Unique": "external"}
+
+
+def test_a_java_class_is_referenced_by_what_extends_and_builds_it_and_its_overloads_are_one_callee(tmp_path: Path):
+    """protobuf (T-0033): `extends B` and `new B()` are `references` links; a call to `B`'s overloaded `o` is linked."""
+    project = Project(tmp_path, {
+        "b/B.java": """            class B {
+                void o(int i) {}
+                void o(String s) {}
+            }
+            """,
+        "c/C.java": """            class C extends B {
+                void m() {
+                    new B();
+                    o(1);
+                }
+            }
+            """,
+    })
+    java = graphe_generic.contribute(JAVA, project)
+    assert [n["id"] for n in java["nodes"] if n["kind"] == "method"] == ["b_b_java_b_o", "c_c_java_c_m"]
+    assert {(e["source"], e["target"], e["relation"]) for e in java["links"] if e["relation"] != "contains"} == {
+        ("c_c_java_c", "b_b_java_b", "references"), ("c_c_java_c_m", "b_b_java_b", "references"),
+        ("c_c_java_c_m", "b_b_java_b_o", "calls")}

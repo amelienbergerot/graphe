@@ -7,8 +7,8 @@ The queries follow one capture convention (docs/readers.md): `@function`, `@meth
 type when it is declared outside it (Go). A use belongs to the innermost definition that contains it; a function in
 a `@class` is its method; a method's class is its `@receiver`, or else the innermost `@class` that contains it.
 
-- a node per file, function, method (`Class.method`) and class; the classes of one name in a file are one node
-  (Rust's `struct T` and its `impl T`); the ids carry the extension (`a_t_go`);
+- a node per file, function, method (`Class.method`) and class; the definitions of one kind and name in a file are one
+  (Rust's `struct T` and its `impl T`, Java's overloads); the ids carry the extension (`a_t_go`);
 - every link a use makes is by the name alone (INFERRED), and only when the name has a single definition in the
   language: a call or a send to a function or a method, a reference to a class. A send never links a common name.
   Each call or send is a site: `ours?`, `ambiguous`, `common` or `external` (no definition of that name);
@@ -139,17 +139,32 @@ JAVA_QUERY = """
 (method_invocation object: (_) name: (identifier) @name) @send
 (object_creation_expression type: [
   (type_identifier) @name
-  (generic_type (type_identifier) @name)]) @reference
-(superclass [(type_identifier) @name (generic_type (type_identifier) @name)]) @reference
-(super_interfaces (type_list [(type_identifier) @name (generic_type (type_identifier) @name)])) @reference
+  (scoped_type_identifier (type_identifier) @name .)
+  (generic_type [(type_identifier) @name (scoped_type_identifier (type_identifier) @name .)])]) @reference
+(superclass [
+  (type_identifier) @name
+  (scoped_type_identifier (type_identifier) @name .)
+  (generic_type [(type_identifier) @name (scoped_type_identifier (type_identifier) @name .)])]) @reference
+(super_interfaces (type_list [
+  (type_identifier) @name
+  (scoped_type_identifier (type_identifier) @name .)
+  (generic_type [(type_identifier) @name (scoped_type_identifier (type_identifier) @name .)])])) @reference
 """
 
-# Not registered yet (T-0033): its queries proven here (T-0031). shortcut: common names guessed, not measured; to
-# tune on its sample host from `check`'s most frequent sends linked by name.
+# The common names: the JDK's (and JRuby's `newString`) that one method of protobuf would collect from every
+# `s.getBytes`, `clazz.getMethod`, `buffer.flip`, `map.keySet` (T-0033, `check`'s most frequent sends linked by name,
+# from `getBytes` to `getPackage` below); the others are guessed: the methods of the collections, `Object`,
+# `String`, `Optional`, the streams, the threads, the boxed numbers and `Arrays`. shortcut: a hand-kept list; to
+# extend when `check` shows a standard name among the most frequent sends linked by name (`ours?`) on a host.
 JAVA = Language("java", {".java": (tree_sitter.Language(tree_sitter_java.language()), JAVA_QUERY)}, frozenset({
     "get", "set", "add", "put", "remove", "size", "isEmpty", "contains", "equals", "hashCode", "toString", "length",
     "append", "close", "build", "of", "valueOf", "apply", "accept", "run", "call", "next", "hasNext", "stream",
-    "map", "filter", "collect", "forEach", "getName", "getValue", "getKey", "clear", "addAll", "format"}))
+    "map", "filter", "collect", "forEach", "getName", "getValue", "getKey", "clear", "addAll", "format",
+    "getBytes", "getMethod", "keySet", "flip", "remaining", "startsWith", "endsWith", "newString", "array",
+    "hasArray", "arrayOffset", "slice", "replace", "push", "emptySet", "empty", "loadClass", "getPackage",
+    "entrySet", "values", "iterator", "charAt", "substring", "indexOf", "trim", "split", "compareTo", "getClass",
+    "isPresent", "orElse", "ifPresent", "println", "print", "write", "read", "flush", "start", "join", "getMessage",
+    "intValue", "longValue", "parseInt", "asList", "sort", "copyOf", "max", "min"}))
 
 
 @functools.cache
@@ -175,7 +190,11 @@ def read(language: Language, file: str, source: bytes) -> tuple[list[Definition]
         node, name = captures[role][0], captures["name"][0]
         found.append((node.start_byte, node.end_byte, role, name, captures.get("receiver", [None])[0]))
     definitions, uses = [], []
-    classes: dict[str, Definition] = {}  # a file's classes of one name are one
+    # A file's definitions of one kind and name are one: Rust's `struct T` and its `impl T`, Java's overloads.
+    # shortcut: the line (and the extent) is the first one's; to give the node every line if `explain --source`
+    # needs the others. shortcut: nested classes of one name (`X.Builder`, `Y.Builder`) and their methods are one
+    # too; to name a nested class by its outer one if a host needs them apart.
+    by_kind_name: dict[tuple[str, str], Definition] = {}
     stack: list[tuple[int, Definition]] = []  # the open definitions: (their end, them)
     # By position, an outer node before the inner one it starts with (`f(g())`), a definition before a use there.
     for start, end, role, name_node, receiver in sorted(found, key=lambda f: (f[0], -f[1], f[2] in USES)):
@@ -186,17 +205,15 @@ def read(language: Language, file: str, source: bytes) -> tuple[list[Definition]
             used = source[start:name_node.end_byte].decode("utf-8", "replace")
             uses.append(Use(role, name, line, stack[-1][1] if stack else None, re.sub(r"\s+", "", used)[:60]))
             continue
-        if role == "class":
-            if name not in classes:
-                classes[name] = Definition("class", name, line)
-                definitions.append(classes[name])
-            stack.append((end, classes[name]))
-            continue
-        cls = receiver.text.decode("utf-8", "replace") if receiver is not None else \
-            next((d.name for _, d in reversed(stack) if d.kind == "class"), None)
-        definition = Definition("method", f"{cls}.{name}", line) if cls else Definition("function", name, line)
-        definitions.append(definition)
-        stack.append((end, definition))
+        kind = role
+        if role != "class":
+            cls = receiver.text.decode("utf-8", "replace") if receiver is not None else \
+                next((d.name for _, d in reversed(stack) if d.kind == "class"), None)
+            kind, name = ("method", f"{cls}.{name}") if cls else ("function", name)
+        if (kind, name) not in by_kind_name:
+            by_kind_name[kind, name] = Definition(kind, name, line)
+            definitions.append(by_kind_name[kind, name])
+        stack.append((end, by_kind_name[kind, name]))
     return definitions, uses
 
 

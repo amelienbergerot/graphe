@@ -10,6 +10,7 @@ A reader turns a host's files of one language into nodes, links and coverage sit
 | `js` | dedicated, `graphe_js.py` | JavaScript, TypeScript, Svelte | `.js`, `.mjs`, `.ts`, `.svelte` |
 | `go` | generic, `graphe_generic.py` | Go | `.go` |
 | `rust` | generic, `graphe_generic.py` | Rust | `.rs` |
+| `java` | generic, `graphe_generic.py` | Java | `.java` |
 
 A **dedicated reader** knows its language's imports and types, and links a call for sure where it can. The **generic reader** (ADR 0003, GLOSSARY.md) reads every other language the same way, by its name alone.
 
@@ -31,7 +32,7 @@ Every language's query captures the same names; a query is written from the `tag
 
 - A use belongs to the innermost definition that contains it; outside any, to its file.
 - A `@function` inside a `@class` is a method of that class. A method's class is its `@receiver`, or else the innermost `@class` that contains it. A method is named `Class.method`.
-- The classes of one name in one file are one node (Rust's `struct T` and its `impl T`, `impl Display for T`).
+- The definitions of one kind and name in one file are one node: Rust's `struct T` and its `impl T`, `impl Display for T`; Java's overloads `o(int)` and `o(String)`, one `A.o` (T-0033). Its line and extent are the first one's.
 
 ### Nodes
 
@@ -94,7 +95,7 @@ A quirk the query cannot express is a `shortcut:` in its section here. A languag
 - **Nodes**: a `function` per `fn f()` with a body; a `method` `T.f` per function of an `impl T`, `impl Tr for T`, `impl Tr for &'a T` (and their generic and `path::T` forms) or of a `trait T` (a default method); a `class` per `struct`, `enum`, `union`, `trait` and `impl`. A trait's signatures without a body are not nodes: each would make its implementations' name ambiguous.
 - **Links**: `f()` is `@call`; `x.f()`, `T::f()` and `crate::m::f()` are `@send`, so a path follows the common names. `T { .. }` and `path::T { .. }` are `references` to `T`. All `INFERRED`.
 - **Common names**: the standard library's and the usual crates' (tokio, futures, http) names that one function of libsignal would collect from every `Vec::with_capacity`, `std::future::ready`, `f.debug_struct(..).field`, `x.ok()` (measured from `graphe check` on libsignal, T-0032), and the methods of Rust's common traits (`new`, `default`, `clone`, `from`, `into`, `fmt`...). The list is `RUST.common`.
-- **Quirks**: `Ok(x)`, `Some(x)`, `Err(e)` and a tuple struct `T(x)` are calls, `external` (no function of that name).
+- **Quirks**: `Ok(x)`, `Some(x)`, `Err(e)` and a tuple struct `T(x)` are calls, `external` (no function of that name). The functions of one name in one file are one node: `fmt` of `impl Debug for T` and of `impl Display for T` is one `T.fmt`, the `fn f` of two `mod`s one `f` (libsignal: 513 merged in 89 files, T-0033).
 - **Limits**:
   - `shortcut:` a macro's arguments are tokens to the grammar: a call inside `assert_eq!`, `vec![]`, `format!` is not a use (libsignal: 8604 macro invocations, BACKLOG.md); to parse a token tree as expressions when it parses.
   - `shortcut:` the classes of one name are one node per file only: a `struct T` and its `impl` in another file are two classes, so `T { .. }` is ambiguous (libsignal: 605 of 3250); `impl<T> Tr for T` draws a class `T`, `impl Tr for Vec<X>` a class `Vec` (BACKLOG.md); to merge a class's nodes across files.
@@ -102,9 +103,19 @@ A quirk the query cannot express is a `shortcut:` in its section here. A languag
   - `shortcut:` a file with one error node is skipped whole: grammar 0.24.2 rejects `dyn 'a + Trait`, 1 of libsignal's 612 files (BACKLOG.md); to upgrade the grammar when one does, or to read the valid part of a tree.
 - **Sample host**: libsignal (docs/sample-hosts.md).
 
-## Java (not registered yet)
+## Java
 
-Its grammar (`tree-sitter-java` 0.23.5) and query are in `graphe_generic.py`, proven on a snippet (T-0031): a Java class, its methods and its constructor (`C.C`), `new C()`, `extends`, `implements` as `references`. Its `java` entry, section and sample host come with T-0033. The limits already probed (overloads, anonymous and nested classes) are in that ticket.
+- **Section**: `java`. **Suffixes**: `.java`.
+- **Grammar**: `tree-sitter-java` 0.23.5 (py-tree-sitter 0.26.1).
+- **Nodes**: a `class` per `class`, `interface`, `enum` and `record`; a `method` `C.m` per method with a body, and `C.C` per constructor; a method's class is the innermost class that contains it. An abstract method or an interface's signature is not a node: each would make its implementations' name ambiguous. The overloads of a class are one method.
+- **Links**: `m()` is `@call`; `x.m()`, `C.m()` and `com.x.C.m()` are `@send`, so a static method follows the common names. `new C()`, `extends C`, `implements I` are `references` to `C`, in their generic (`C<T>`) and qualified (`Outer.Inner`, `com.x.C`) forms, by the last name. All `INFERRED`.
+- **Common names**: the JDK's names (and JRuby's `newString`) that one method of protobuf would collect from every `s.getBytes`, `clazz.getMethod`, `buffer.flip`, `map.keySet`, `s.startsWith` (measured from `graphe check` on protobuf, T-0033), and, guessed, the methods of the collections, `Object`, `String`, `Optional`, the streams, the threads, the boxed numbers and `Arrays` (`get`, `add`, `equals`, `toString`, `substring`, `orElse`, `println`, `parseInt`...). The list is `JAVA.common`.
+- **Quirks**: an abstract method has no node, so `explain CodedInputStream.pushLimit` finds none: its implementations do (`ArrayDecoder.pushLimit`). A class named like another of the host, in any file, is ambiguous: generated code repeats its classes (`Builder`, `TestMessage`) in every file.
+- **Limits**:
+  - `shortcut:` a nested class is named by its own name: `X.Builder` and `Y.Builder` of one file are one class, their methods of one name one method; to name a nested class by its outer one if a host needs them apart.
+  - `shortcut:` an anonymous class (`new Runnable() { public void run() {..} }`) is not a class: its methods are the enclosing class's (`A.run`), 325 such methods on protobuf; to make the anonymous body a `@class` if a host needs it.
+  - `shortcut:` no imports nor types: `C.m()` is linked by `m` alone, so a static method named like another class's is ambiguous (BACKLOG.md, the item on Rust's `Type::f()`, which names Java's `C.f()` too); to link `C.m()` to the method `C.m` when `C` is a class of the host, if ADR 0003 allows it.
+- **Sample host**: protobuf (docs/sample-hosts.md).
 
 ## The dedicated readers
 

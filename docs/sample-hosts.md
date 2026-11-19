@@ -34,4 +34,12 @@ graphe build; graphe check
 - **Commit**: `956e1cab1d68291c92f2fcca3c29ec6c3b367e28` (2026-11-17).
 - **Languages**: Rust (612 of its 1852 files), Java (344), Swift (218), TypeScript (176), Kotlin (125).
 - **`graphe.toml`**: none. The Rust grammar does not parse 1 file (`dyn 's + FnOnce`): skipped and named at each build (BACKLOG.md).
-- **Measured by**: T-0032 (Rust). The JS reader read it first there: a comment among the names of `import { }` (`node/ts/NativeNice.ts`) made it fail, fixed in T-0032.
+- **Measured by**: T-0032 (Rust), T-0033 (its Java: 0 dangling, no file skipped). The JS reader read it first there: a comment among the names of `import { }` (`node/ts/NativeNice.ts`) made it fail, fixed in T-0032.
+
+## protobuf
+
+- **URL**: https://github.com/protocolbuffers/protobuf
+- **Commit**: `e08e1e7efe5b5e0c1a64fa3f9dbfffe400cf5190` (2026-11-18).
+- **Languages**: C/C++ (1355 of its 3795 files: `.h`, `.cc`, `.c`), Java (293), C# (224), PHP (158), Rust (128), Python (105), Objective-C (85), Ruby (54), Go (4).
+- **`graphe.toml`**: none. 11 of its Java files are one generated file, `Proto3GencodeTestProto.java`, as 9 old versions generated it (`compatibility/smoke/v*/`, full and lite): read as they are (BACKLOG.md).
+- **Measured by**: T-0033 (Java).
