@@ -186,12 +186,6 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   `TYPED_TEST` per file, so `callers` says `TEST_F` where grep says the test
   name. Naming a test by its suite and name (`Suite.Name`) would take a
   query of its own for a macro call with a body.
-- **PHP's pattern reader reads no class nor method.** [T-0044] (4cast,
-  Grid Zero, protobuf, 2026-11-19) Compared: on 4cast the generic entry links
-  the same 81 calls and adds a class; on protobuf it reads 1723 methods where
-  `graphe_php.py` reads 5 functions; it lacks Grid Zero's 8 `case 'x':`
-  actions. The user's decision: the generic entry replaces the PHP reader,
-  with the actions (T-0045).
 - **Only its author can install the tool.** (All hosts, 2026-11-18, the
   user's request) The install depends on `E:/dev/graphe`, an editable
   `uv tool install` and PowerShell (README); ADR 0001 says "for a single
@@ -206,10 +200,25 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   between languages belong with it (JNI, FFI, protobuf's generated code):
   the generic reader never links a call by name across languages (ADR 0003).
 
+- **PHP's generic reader misses a few uses.** [T-0044, T-0045] (4cast,
+  protobuf, 2026-11-20) A caught type (`catch (ErreurAmont $e)`) is no
+  reference: 4cast's 3 `catch` of `ErreurAmont` are not among its users.
+  PHP's names are case-insensitive, the links by the exact name. protobuf's
+  `php/tests/generated_previous/Previous/readonly.php` (`class readonly`, a
+  keyword since PHP 8.1) does not parse: skipped. A router's `case "x":` in
+  double quotes is no action. The `shortcut:`s of docs/readers.md's PHP.
+
 ## Settled
 
 Settled by tickets (2026-11-19):
 
+- **PHP's pattern reader reads no class nor method.** [T-0044, T-0045]
+  (4cast, Grid Zero, protobuf, 2026-11-19) `graphe_php.py` read 5 functions
+  of protobuf's PHP, the generic entry 156 classes and 1723 methods; on 4cast
+  both link the same 81 calls. Since T-0045 the generic entry is the `php`
+  reader, with the PHP reader's `case 'x':` actions (`@action`): Grid Zero's
+  8 actions, 2 `dispatches` and its extension's 6 `sends` kept, its graph the
+  same but for the ids (`_php`), the calls' lines and confidence (`INFERRED`).
 - **Java's nested classes lose their outer name.** [T-0043] (protobuf,
   sample host, 2026-11-19, T-0033) A nested class was named by its own name:
   each generated message's `Builder` of one file was one class, their

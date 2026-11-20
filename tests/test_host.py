@@ -394,12 +394,12 @@ def test_the_grid_zero_extension_links_the_state_the_actions_the_hints_and_the_j
     f, field = "simulation_game_etat_de_jeu_", "simulation_game_etat_de_jeu_etatdejeu_raison_du_jour"
     assert "writes" in links[(f"{f}construire", field)]  # by keyword, in the state's constructor
     assert "reads" in links[("godot_lecture_texte", field)]  # by its key
-    assert links[("godot_lecture_texte", "web_api_action_liste")] == ["sends"]
+    assert links[("godot_lecture_texte", "web_api_php_action_liste")] == ["sends"]
     assert "cites" in links[("hint_lecon_0", "godot_lecture_texte")]
     assert {t for s, t in links if s == "iteration_7"} == {"ticket_t_0998", "ticket_t_0999"}
     names, community_of = data["communities"], {n["id"]: n["community"] for n in data["nodes"]}
     assert names[str(community_of["iteration_7"])] == "journal" and names[str(community_of["hint_lecon_0"])] == "hints"
-    assert set(data["coverage"]) == {"python", "godot", "js", "dangling"}  # no server: no sites
+    assert set(data["coverage"]) == {"python", "godot", "js", "php", "dangling"}  # no server: no sites
 
 
 # T-0010: every Markdown file is a document; a document cites a node it names and another by its identifier.
@@ -639,7 +639,7 @@ def test_a_php_file_calls_from_its_top_level(tmp_path: Path):
     r = _run(host, "explain", "route_zones")
     assert r.returncode == 0 and "  calls (1)\n    api/index.php\n" in r.stdout, r.stdout + r.stderr
     r = _run(host, "explain", "aide")  # a body's call stays its own
-    assert "  calls (1)\n    api/index.php: route_zones:5\n" in r.stdout, r.stdout
+    assert "  calls (1) [by name]\n    api/index.php: route_zones:5\n" in r.stdout, r.stdout
 
 
 def test_a_document_names_a_function_written_with_its_arguments(tmp_path: Path):

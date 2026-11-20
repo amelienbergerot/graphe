@@ -14,6 +14,8 @@ Amended by T-0042 (2026-11-19): the "same language" of the linking is the same f
 
 Amended by T-0044 (2026-11-19): a third piece of data, still no code of its own. `apart`: a bare call is linked to a function only, a send to a method only, for a language where a bare `f()` is never a method. PHP takes it (its entry not yet in the registry, T-0045): on protobuf, 219 bare calls to PHP's built-ins (`count()` 185, `substr()` 19, `pack()`) went to its methods of that name.
 
+Amended by T-0045 (2026-11-20): PHP is in the registry, in place of the PHP reader by patterns (ADR 0002's amendment), and brings a new capture, `@action`: a `case 'x':` outside any function or method, a node whose body's uses are its own, one without a body leading to the next (`dispatches`, sure). It is code, not data: written once in `read()` and `contribute()` for any language whose query captures `@action`, not for PHP alone, and it keeps the one rule the PHP reader had beyond functions and calls, so that Grid Zero's 8 actions and the 6 `sends` of its extension (T-0009) survive. A language whose entry points need more than a captured node (routes resolved by a framework, decorators) is still the proof that it needs a dedicated reader.
+
 ## Options set aside
 
 - The upstream `tags.scm` as shipped, completed where they fall short: eight capture conventions, and a grammar's upgrade changes the graph silently.

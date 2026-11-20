@@ -6,7 +6,6 @@ A reader turns a host's files of one language into nodes, links and coverage sit
 |---|---|---|---|
 | `python` | dedicated, `graphe_python.py` | Python | `.py` |
 | `godot` | dedicated, `graphe_godot.py` | GDScript | `.gd` |
-| `php` | dedicated, `graphe_php.py` | PHP | `.php` |
 | `js` | dedicated, `graphe_js.py` | JavaScript, TypeScript, Svelte | `.js`, `.mjs`, `.ts`, `.svelte` |
 | `go` | generic, `graphe_generic.py` | Go | `.go` |
 | `rust` | generic, `graphe_generic.py` | Rust | `.rs` |
@@ -15,6 +14,7 @@ A reader turns a host's files of one language into nodes, links and coverage sit
 | `csharp` | generic, `graphe_generic.py` | C# | `.cs` |
 | `ruby` | generic, `graphe_generic.py` | Ruby | `.rb` |
 | `swift` | generic, `graphe_generic.py` | Swift | `.swift` |
+| `php` | generic, `graphe_generic.py` | PHP | `.php` |
 
 A **dedicated reader** knows its language's imports and types, and links a call for sure where it can. The **generic reader** (ADR 0003, GLOSSARY.md) reads every other language the same way, by its name alone.
 
@@ -33,26 +33,29 @@ Every language's query captures the same names; a query is written from the `tag
 | `@call` | A bare call `f()`, with `@name` the name called. |
 | `@send` | A call on a receiver `x.m()`, a package `pkg.F()` or a path `T::f()`, with `@name` the method's name. |
 | `@reference` | A use of a class that is not a call (`new C()`, `extends C`, Go's `T{}`), with `@name` the class. |
+| `@action` | An entry point's action (PHP's `case 'x':`, T-0045), with `@name` the action: a definition named as it is, in no class. |
 
 - A use belongs to the innermost definition that contains it; outside any, to its file.
+- An `@action` inside any definition is none (a function's own `switch`, one nested in an action): its uses stay that definition's. An `@action` holding nothing past its name (`case 'liste':`, then `case 'relister':`) leads to the next one.
 - A `@function` inside a `@class` is a method of that class. A method's class is its `@receiver`, or else the innermost `@class` that contains it. A method is named `Class.method`.
 - A `@class` inside a `@class` is named `Outer.Inner`, its methods `Outer.Inner.m` (T-0043), so that the nested classes of one name in one file (each generated message's `Builder`) stay apart; a class inside a method is named after the method's class (`A.Local`). A use still names a class by its last name: `new Outer.Inner()` and `new Inner()` reference every class `Inner`, nested or not. `explain Inner.m` designates `Outer.Inner.m`, or asks to pick among the classes `Inner` (`graphe.find`). A `@receiver` is a last name (`Inner`), so a method declared outside its nested class (C++'s `Outer::Inner::m`, Swift's `extension Outer.Inner`, Kotlin's `fun Outer.Inner.f()`) is `Inner.m`: the language's section says where.
 - The definitions of one kind and name in one file are one node: Rust's `struct T` and its `impl T`, `impl Display for T`; Java's overloads `o(int)` and `o(String)`, one `A.o` (T-0033). Its line and extent are the first one's.
 
 ### Nodes
 
-A node per file (`file`), function (`function`), method (`method`, `Class.method`) and class (`class`). Modules, packages and namespaces are not nodes. The ids carry the file's extension (`models/repo/repo.go` is `models_repo_repo_go`), so that `Foo.java` and `Foo.kt` never share an id; an id already taken gets `_2`, `_3`.
+A node per file (`file`), function (`function`), method (`method`, `Class.method`), class (`class`) and action (`action`, its id `<file>_action_<name>`, its label its bare name). Modules, packages and namespaces are not nodes. The ids carry the file's extension (`models/repo/repo.go` is `models_repo_repo_go`), so that `Foo.java` and `Foo.kt` never share an id; an id already taken gets `_2`, `_3`.
 
 A file `contains` its definitions; a class `contains` its methods when they are in its file. Elsewhere (a Go method of a type of another file), the method's file contains it.
 
 ### Links and their confidence
 
-Every link a use makes is by the name alone (`INFERRED`: `[by name]`, `?` in the answers), and made only when the name has **a single definition in the language**:
+Every link a call, a send or a reference makes is by the name alone (`INFERRED`: `[by name]`, `?` in the answers), and made only when the name has **a single definition in the language**:
 
 - `@call` and `@send` become `calls`, to the function or method of that bare name (`Save` for `T.Save`); in an `apart` language (PHP, T-0044), a `@call` to a function only, a `@send` to a method only;
 - `@reference` becomes `references`, to the class of that name;
 - a `@send` of a common name is never linked;
 - a call to its own definition (recursion) draws no link;
+- no call reaches an action; an action without a body `dispatches` to the case right after it, if that is an action (not past a `default:` or another case, nor into another switch) (`EXTRACTED`: the syntax says it, no name is guessed; no coverage site);
 - no call is linked to another language: each language is its own registry entry, and sees only its own definitions; a family is one entry (C and C++, `c`; Java and Kotlin, `java`), each file read by its own grammar.
 
 A bare call and a send are marked alike: both are by name.
@@ -224,11 +227,28 @@ A quirk the query cannot express is a `shortcut:` in its section here. A languag
   - `shortcut:` the grammar does not read a class body on one line (`class C { fun f() {} }`, an error node: the tests' snippets are on several lines; none on libsignal), and reads `Array<Int>(1)` without a trailing lambda, or after a `+`, as comparisons (no reference); to take a newer grammar when one is published, if a host loses code to them.
 - **Sample host**: libsignal (docs/sample-hosts.md).
 
+## PHP
+
+- **Section**: `php`, in place of the dedicated reader by patterns (`graphe_php.py`), compared with it in T-0044 and replaced in T-0045. **Suffixes**: `.php`.
+- **Grammar**: `tree-sitter-php` 0.25.2 (py-tree-sitter 0.26.1), its grammar with the HTML (`language_php`): a page's text outside `<?php ?>` holds no call (`<p>aide(x)</p>`). The query (`PHP_QUERY`) is ours.
+- **Nodes**: a `class` per `class`, `interface`, `trait` and `enum`; a namespace is none. A `method` `C.m` per method with a body (`C.__construct` the constructor); an interface's or abstract method is none, as Java's. A `function` per `function f()`, indented or not (the PHP reader read `^function` only). An `action` per `case 'x':` outside any function or method: an entry point's `switch ($action)` (Grid Zero's `web/api/scenarios.php`, 8 actions). A `case` in a function, or in a switch nested in an action, is none, its calls that definition's: protobuf's 9 (`Message.__debugInfo`, conformance's `doTest`) would have taken 7 calls from their methods.
+- **Links**: `f()` and `\A\f()` are `@call`; `$x->m()`, `$x?->m()`, `X::m()`, `self::m()`, `parent::m()` are `@send`. `apart`: a call is linked to a function only, a send to a method only (protobuf: 219 bare calls to built-ins, `count()` 185, went to its methods of that name; T-0044). `new C`, `extends`, `implements` and a trait's `use` are `references` by the last name. A call outside any definition is its file's (a router at a page's top, 4cast's `api/index.php`, T-0023). An action owns its body's calls; one without a body (`case 'signaler':` then `case 'noter':`) `dispatches` to the next, `EXTRACTED`. The others are `INFERRED`, where the PHP reader said `EXTRACTED` for the same links by name. A host's extension finds an action by its kind and name (Grid Zero's GDScript `{"action": "x"}` `sends` to it, T-0009).
+- **Common names**: none (`PHP.common` is empty): every send linked by a standard name on protobuf is to one of its own methods (`$any->pack`, `getFile`), PHP's library being functions (T-0044).
+- **Quirks**:
+  - Not `tolerant`: protobuf's `php/tests/generated_previous/Previous/readonly.php` (`class readonly`, a keyword since PHP 8.1) does not parse, skipped and named on stderr; the PHP reader read it (no function in it).
+  - The ids carry the extension, as every generic language's: 4cast's `api_lib_cache_par_cache` is `api_lib_cache_php_par_cache`, Grid Zero's actions `web_api_scenarios_php_action_liste`. Grid Zero's graph is otherwise the PHP reader's, its call links on the call's line where they were on the body's first (T-0045).
+- **Limits**:
+  - `shortcut:` PHP's function and method names are case-insensitive, the links by the exact name; to fold the case if a host calls `Foo()` for `foo()`.
+  - `shortcut:` a call through a variable (`$f()`, `$x->$m()`) is none, and an anonymous class at a file's top is no class, its methods functions; to capture them if a host's `explain` needs them.
+  - `shortcut:` a caught type (`catch (ErreurAmont $e)`) is no reference, as Java's: 4cast's 3; to capture it if a host's `explain` of an exception needs them.
+  - `shortcut:` an action is a `case` of a single-quoted word, as the PHP reader's: `case "x":`, a constant and `default:` are none; to take them if a host's router uses them. Beyond the PHP reader, which read `case 'x':` alone on its line: one on a line with its body, and an `endswitch` form's, are actions too.
+  - `shortcut:` the actions of one name in one file are one node, on the first one's line, owning both bodies' calls; to tell them apart if a host's file has two routers.
+- **Sample hosts**: protobuf (docs/sample-hosts.md); 4cast and Grid Zero, the user's (T-0044, T-0045).
+
 ## The dedicated readers
 
 Each is specified in its module's docstring.
 
 - **Python**, `graphe_python.py`: the `ast`, a call resolved by its receiver's type (annotations, constructions, returns), by the name alone otherwise; a cache of each file's definitions (T-0026).
 - **GDScript**, `graphe_godot.py`: by patterns, a `preload` constant designates its script, a variable typed by it or made by `X.new()` sends its calls there; `check` recounts the calls.
-- **PHP**, `graphe_php.py`: by patterns, its functions, the actions of a `switch ($action)`, the calls of the file's top (T-0023).
 - **JavaScript, TypeScript, Svelte**, `graphe_js.py`: tree-sitter, ES imports and re-exports followed, `new C()` and `f()` assigned typed, by the name otherwise; a Svelte component's script and markup (T-0014, T-0015, T-0022).

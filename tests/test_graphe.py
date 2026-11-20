@@ -205,22 +205,6 @@ switch ($action) {
 """
 
 
-def test_the_php_reader_reads_functions_actions_and_calls(tmp_path: Path):
-    import graphe_php
-    (tmp_path / "web").mkdir()
-    path = tmp_path / "web" / "api.php"
-    path.write_bytes(PHP.encode("utf-8"))
-    read = graphe_php.Reader([path], root=tmp_path)
-    links = {(e["source"], e["target"], e["relation"]) for e in read.links}
-    f = "web_api"
-    assert (f"{f}_gz_lire", f"{f}_gz_valider", "calls") in links
-    assert (f"{f}_gz_noter", f"{f}_gz_valider", "calls") in links  # T-0015: the brace on its own line (4cast)
-    # two cases in a row: the first leads to the second, which bears the body
-    assert (graphe_php.action_id(f, "liste"), graphe_php.action_id(f, "relister"), "dispatches") in links
-    assert (graphe_php.action_id(f, "relister"), f"{f}_gz_lire", "calls") in links
-    assert (graphe_php.action_id(f, "liste"), f"{f}_gz_lire", "calls") not in links
-
-
 def test_extent_and_notes_of_a_body():
     import graphe_core as gc
     lines = textwrap.dedent('''\
@@ -373,8 +357,8 @@ def test_godot_resolves_its_preloads():
     assert sum("reads" in g[s][accent]["relations"] and g[s][accent]["confidence"] == "EXTRACTED"
                for s in g.predecessors(accent)) >= 10
     assert [g.nodes[n]["source_file"] for n in graphe.find(g, "Progress.record")] == ["godot/settings/progress.gd"]
-    assert any("sends" in g[s]["web_api_scenarios_action_defi_envoyer"]["relations"]
-               for s in g.predecessors("web_api_scenarios_action_defi_envoyer"))
+    assert any("sends" in g[s]["web_api_scenarios_php_action_defi_envoyer"]["relations"]
+               for s in g.predecessors("web_api_scenarios_php_action_defi_envoyer"))
     # The keys of the state: the client reads `demand_rising_beyond` by its key.
     field = "simulation_game_etat_de_jeu_etatdejeu_demand_rising_beyond"
     assert "godot/map/lectures.gd" in {g.nodes[s]["source_file"] for s in g.predecessors(field)

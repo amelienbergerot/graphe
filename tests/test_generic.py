@@ -754,3 +754,55 @@ def test_a_php_bare_call_is_linked_to_a_function_only_and_a_send_to_a_method_onl
     assert calls == {("a_php_field_count", "L4"), ("a_php_pack", "L4"), ("a_php_field_pack", "L4")}
     verdicts = {s["text"]: s["verdict"] for s in php["sites"]}
     assert verdicts == {"count": "external", "$f->count": "ours?", "pack": "ours?", "$f->pack": "ours?"}
+
+
+def test_a_php_case_is_an_action_owning_its_calls_an_empty_one_dispatching_to_the_next(tmp_path: Path):
+    """Grid Zero (T-0045, as the PHP reader's): a `case 'x':` is an action, its body's calls its own; two `case` in a
+    row share a body, the first leads to the second. An action is no function: neither `liste()` nor `$x->liste()`
+    is linked to it. A `case` in a function is the function's own switch, no action: its calls stay the function's
+    (protobuf's `Message.__debugInfo`)."""
+    project = Project(tmp_path, {
+        "web/api.php": """\
+            <?php
+            function gz_lire($x) {
+                return gz_valider($x);
+            }
+
+            function gz_valider($x) {
+                return $x;
+            }
+
+            function gz_noter($x): int
+            {
+                switch ($x) { case 'un': return gz_valider($x); }
+            }
+
+            switch ($action) {
+                case 'liste':
+                case 'relister':
+                    gz_lire(1);
+                    break;
+                case 'noter': gz_noter(liste()); $x->liste(); break;
+                case 'vide':
+                case "pas_une": break;
+                case 'défi':
+                default: break;
+            }
+            switch ($autre) { case 'apres': switch ($y) { case 'dedans': gz_lire(2); } }
+            """,
+    })
+    php = graphe_generic.contribute(PHP, project)
+    actions = {n["id"]: (n["label"], n["name"]) for n in php["nodes"] if n["kind"] == "action"}
+    f = "web_api_php"
+    # an empty case leads to the next case only (not past `case "x":`, `default:` or into the next switch); a case in
+    # an action's nested switch is none, its calls the action's
+    assert actions == {f"{f}_action_liste": ("liste", "liste"), f"{f}_action_relister": ("relister", "relister"),
+                       f"{f}_action_noter": ("noter", "noter"), f"{f}_action_vide": ("vide", "vide"),
+                       f"{f}_action_défi": ("défi", "défi"), f"{f}_action_apres": ("apres", "apres")}
+    links = {(e["source"], e["target"], e["relation"], e["confidence"]) for e in php["links"]}
+    assert (f, f"{f}_action_liste", "contains", "EXTRACTED") in links
+    assert (f"{f}_action_liste", f"{f}_action_relister", "dispatches", "EXTRACTED") in links
+    assert {(s, t, r) for s, t, r, _ in links if r != "contains"} == {
+        (f"{f}_gz_lire", f"{f}_gz_valider", "calls"), (f"{f}_gz_noter", f"{f}_gz_valider", "calls"),
+        (f"{f}_action_liste", f"{f}_action_relister", "dispatches"), (f"{f}_action_relister", f"{f}_gz_lire", "calls"),
+        (f"{f}_action_noter", f"{f}_gz_noter", "calls"), (f"{f}_action_apres", f"{f}_gz_lire", "calls")}

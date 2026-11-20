@@ -5,13 +5,15 @@ blanked first. The reading, the owner of a call, the `Class.method` naming and t
 
 The queries follow one capture convention (docs/readers.md): `@function`, `@method`, `@class`, each with its
 `@name`; `@call` for `f()`, `@send` for `x.m()`; `@reference` for `new C()`, `extends C`; `@receiver` for a method's
-type when it is declared outside it (Go). A use belongs to the innermost definition that contains it; a function in
+type when it is declared outside it (Go); `@action` for an entry point's action outside any function (PHP's
+`case 'x':`), its body's uses its own, one without a body leading to the next (`dispatches`, sure). A use belongs to
+the innermost definition that contains it; a function in
 a `@class` is its method; a method's class is its `@receiver`, or else the innermost `@class` that contains it; a
 `@class` in a `@class` is `Outer.Inner` (T-0043), its methods `Outer.Inner.m`.
 
-- a node per file, function, method (`Class.method`) and class; the definitions of one kind and name in a file are one
+- a node per file, function, method (`Class.method`), class and action; the definitions of one kind and name in a file are one
   (Rust's `struct T` and its `impl T`, Java's overloads); the ids carry the extension (`a_t_go`);
-- every link a use makes is by the name alone (INFERRED), and only when the name has a single definition in the
+- every link a call, a send or a reference makes is by the name alone (INFERRED), and only when the name has a single definition in the
   language (or family: C/C++, Java/Kotlin): a call or a send to a function or a method (an `apart` language, PHP: a
   call to a function, a send to a method), a reference to a class. A send never links a common name.
   Each call or send is a site: `ours?`, `ambiguous`, `common` or `external` (no definition of that name);
@@ -50,20 +52,20 @@ class Language(NamedTuple):
 
 
 class Definition(NamedTuple):
-    kind: str  # function, method, class
-    name: str  # `f`, `T.m`, `T`
+    kind: str  # function, method, class, action
+    name: str  # `f`, `T.m`, `T`, `liste`
     line: int
 
 
 class Use(NamedTuple):
-    kind: str  # call, send, reference
+    kind: str  # call, send, reference; dispatches: from an action without a body (owner) to the next one (name)
     name: str  # the bare name used
     line: int
     owner: Definition | None  # None: the file
     text: str  # what is used, up to its name (`x.y.m`)
 
 
-DEFINITIONS = ("function", "method", "class")
+DEFINITIONS = ("function", "method", "class", "action")
 USES = ("call", "send", "reference")
 
 GO_QUERY = """
@@ -294,15 +296,16 @@ RUBY = Language("ruby", {".rb": (tree_sitter.Language(tree_sitter_ruby.language(
     "call"}))
 
 
-# PHP (T-0044), compared with the PHP reader by patterns (graphe_php.py), which hosts get: not in the readers'
-# registry. The grammar with its HTML (`language_php`), so a page's text holds no call. A class, an interface, a trait
+# PHP (T-0044), the `php` reader in place of the PHP reader by patterns since T-0045. The grammar with its HTML
+# (`language_php`), so a page's text holds no call. A class, an interface, a trait
 # and an enum are a class, a namespace none; as Java's, a method without a body (an interface's, abstract) is not
 # captured. `x->m()`, `x?->m()` and `X::m()` (`self::`, `parent::`) are sends; `new C`, `extends`, `implements` and a
 # trait's `use` references by the last name. shortcut: PHP's function and method names are case-insensitive, the
 # links by the exact name; to fold the case if a host calls `Foo()` for `foo()`. shortcut: a call through a variable
 # (`$f()`, `$x->$m()`) is none, and an anonymous class at a file's top is no class, its methods functions; to capture
-# them if a host's `explain` needs them. shortcut: no `case 'x':` action, as the PHP reader's (Grid Zero's 8); to add them
-# when this entry replaces it (T-0045).
+# them if a host's `explain` needs them. A `case 'x':` outside any function is an action (an entry point's
+# `switch ($action)`: Grid Zero's 8), on one line or not. shortcut: only a single-quoted word is, as the PHP reader's
+# (`case "x":`, a constant, `default:` are none); to take them if a host's router uses them.
 _PHP_NAME = "[(name) @name (qualified_name (name) @name .)]"
 PHP_QUERY = f"""
 [(class_declaration name: (name) @name) (interface_declaration name: (name) @name)
@@ -314,6 +317,7 @@ PHP_QUERY = f"""
  (scoped_call_expression name: (name) @name)] @send
 [(object_creation_expression {_PHP_NAME}) (base_clause {_PHP_NAME}) (class_interface_clause {_PHP_NAME})
  (use_declaration {_PHP_NAME})] @reference
+(case_statement value: (string (string_content) @name) (#match? @name "^\\\\w+$")) @action
 """
 
 # `apart`: on protobuf, 219 bare calls to PHP's built-ins (`count()` 185, `substr()` 19, `pack()`) went to its
@@ -533,13 +537,13 @@ def read(language: Language, file: str, source: bytes) -> tuple[list[Definition]
     # BACKLOG.md); to make it `tolerant` once measured on its host, or a newer grammar, when one is published.
     if root.has_error and not language.tolerant:
         raise SyntaxError(file)
-    found = []  # (start, end, role, name node, receiver)
+    found = []  # (start, end, role, name node, receiver, node)
     for _, captures in tree_sitter.QueryCursor(_query(grammar, text)).matches(root):
         role = next(r for r in DEFINITIONS + USES if r in captures)
         node, name = captures[role][0], captures["name"][0]
         if name.is_missing:  # a name the grammar inserted to recover: C++'s `enum : int {..}` (T-0034)
             continue
-        found.append((node.start_byte, node.end_byte, role, name, captures.get("receiver", [None])[0]))
+        found.append((node.start_byte, node.end_byte, role, name, captures.get("receiver", [None])[0], node))
     definitions, uses = [], []
     # A file's definitions of one kind and name are one: Rust's `struct T` and its `impl T`, Java's overloads.
     # shortcut: the line (and the extent) is the first one's; to give the node every line if `explain --source`
@@ -548,8 +552,9 @@ def read(language: Language, file: str, source: bytes) -> tuple[list[Definition]
     # `@class` if a host needs them apart.
     by_kind_name: dict[tuple[str, str], Definition] = {}
     stack: list[tuple[int, Definition]] = []  # the open definitions: (their end, them)
+    bare = None  # the last action without a body, and its node: it leads to the case that follows it
     # By position, an outer node before the inner one it starts with (`f(g())`), a definition before a use there.
-    for start, end, role, name_node, receiver in sorted(found, key=lambda f: (f[0], -f[1], f[2] in USES)):
+    for start, end, role, name_node, receiver, node in sorted(found, key=lambda f: (f[0], -f[1], f[2] in USES)):
         while stack and stack[-1][0] <= start:
             stack.pop()
         name, line = name_node.text.decode("utf-8", "replace"), name_node.start_point[0] + 1
@@ -557,6 +562,8 @@ def read(language: Language, file: str, source: bytes) -> tuple[list[Definition]
             used = source[start:name_node.end_byte].decode("utf-8", "replace")
             uses.append(Use(role, name, line, stack[-1][1] if stack else None, re.sub(r"\s+", "", used)[:60]))
             continue
+        if role == "action" and stack:
+            continue  # a function's own `switch`, or one nested in an action: no entry point's, its calls stay there
         kind = role
         # shortcut: a `@receiver` is a last name, so a method declared outside its nested class (C++'s
         # `Outer::Inner::m`, Kotlin's `fun Outer.Inner.f()`, Swift's `extension Outer.Inner`) is `Inner.m`, apart from
@@ -565,11 +572,21 @@ def read(language: Language, file: str, source: bytes) -> tuple[list[Definition]
             next((d.name for _, d in reversed(stack) if d.kind == "class"), None)
         if role == "class":
             name = f"{cls}.{name}" if cls else name
-        else:
+        elif role != "action":  # an action is named as it is, in no class
             kind, name = ("method", f"{cls}.{name}") if cls else ("function", name)
         if (kind, name) not in by_kind_name:
             by_kind_name[kind, name] = Definition(kind, name, line)
             definitions.append(by_kind_name[kind, name])
+        if bare and kind == "action" and bare[0].name != name:
+            following = bare[1].next_named_sibling
+            while following is not None and following.type == "comment":
+                following = following.next_named_sibling
+            if following == node:  # not past a `default:` or a case of another value, nor into another switch
+                uses.append(Use("dispatches", name, line, bare[0], name))
+        if kind == "action":
+            # without a body: nothing but punctuation after its name (`case 'liste':`)
+            empty = not re.search(rb"\w", source[name_node.end_byte:end])
+            bare = (by_kind_name[kind, name], node) if empty else None
         stack.append((end, by_kind_name[kind, name]))
     return definitions, uses
 
@@ -611,20 +628,26 @@ def contribute(language: Language, project) -> dict:
             print(f"graphe: {rel} does not parse ({language.name}): skipped", file=sys.stderr)
             continue
         fid = node(_id(rel), rel.rsplit("/", 1)[-1], "file", rel, 1, rel)
-        held = {d: node(f"{fid}_{_id(d.name)}", d.name if d.kind == "class" else f"{d.name}()", d.kind, rel, d.line,
-                        d.name) for d in definitions}
+        held = {d: node(f"{fid}_action_{_id(d.name)}" if d.kind == "action" else f"{fid}_{_id(d.name)}",
+                        d.name if d.kind in ("class", "action") else f"{d.name}()", d.kind, rel, d.line, d.name)
+                for d in definitions}
         in_file = {d.name: held[d] for d in definitions if d.kind == "class"}
         for d in definitions:
-            # by the bare name a use carries: `Inner` for `Outer.Inner`, `m` for `T.m`
-            (classes if d.kind == "class" else callables)[d.name.rsplit(".", 1)[-1]].append(held[d])
+            # by the bare name a use carries: `Inner` for `Outer.Inner`, `m` for `T.m`; no call reaches an action
+            if d.kind != "action":
+                (classes if d.kind == "class" else callables)[d.name.rsplit(".", 1)[-1]].append(held[d])
             # a method's class holds it when it is defined in the same file (Go's type is often in another one)
             cls = d.name.rsplit(".", 1)[0] if d.kind == "method" else None
             link(in_file.get(cls, fid), held[d], "contains", rel, d.line)
         files.append((rel, fid, held, uses))
     functions = {n["id"] for n in nodes if n["kind"] == "function"}
     for rel, fid, held, uses in files:
+        actions = {d.name: i for d, i in held.items() if d.kind == "action"}
         for u in uses:
             owner = held[u.owner] if u.owner else fid
+            if u.kind == "dispatches":
+                link(owner, actions[u.name], "dispatches", rel, u.line)
+                continue
             ours = (classes if u.kind == "reference" else callables).get(u.name, [])
             if u.kind != "reference":
                 if language.apart:

@@ -15,11 +15,11 @@ A node is designated by its id, its name (`help`, `Class.method`),
 constant that preloads its script (`Script.function`).
 
 The readers: graphe_python.py (the ast, calls resolved by types),
-graphe_godot.py (GDScript, by patterns), graphe_php.py (its functions, the
-actions of a `switch ($action)`, the calls of the file's top) and graphe_js.py
+graphe_godot.py (GDScript, by patterns) and graphe_js.py
 (`.js`, `.mjs`, `.ts`, the script and markup of `.svelte`, by tree-sitter: calls
 resolved by the imports, by `new C()` or `f()` assigned, else by the name); graphe_generic.py reads
-Go, Rust, Java/Kotlin, C/C++, C#, Ruby and Swift by tree-sitter, a call linked by its name only when the
+Go, Rust, Java/Kotlin, C/C++, C#, Ruby, Swift and PHP (with the actions of a
+`switch ($action)`) by tree-sitter, a call linked by its name only when the
 language (or family) defines it once (docs/readers.md lists every reader). The core, graphe_core.py, then
 reads the text: the end of each function and class, the texts it displays
 (the `displayed_text` pattern of graphe.toml), its comment, module variables
@@ -71,7 +71,6 @@ import graphe_core
 import graphe_generic
 import graphe_godot
 import graphe_js
-import graphe_php
 import graphe_python
 import graphe_root
 from graphe_root import CONFIGURATION, OUTPUT, ROOT
@@ -118,14 +117,15 @@ def _commit() -> str | None:
 
 
 # Each reader under the name of its graphe.toml section: the key of its configuration and of its coverage.
-READERS = {"python": graphe_python.contribute, "godot": graphe_godot.contribute, "php": graphe_php.contribute,
-           "js": graphe_js.contribute, "go": functools.partial(graphe_generic.contribute, graphe_generic.GO),
+READERS = {"python": graphe_python.contribute, "godot": graphe_godot.contribute, "js": graphe_js.contribute,
+           "go": functools.partial(graphe_generic.contribute, graphe_generic.GO),
            "rust": functools.partial(graphe_generic.contribute, graphe_generic.RUST),
            "java": functools.partial(graphe_generic.contribute, graphe_generic.JVM),
            "c": functools.partial(graphe_generic.contribute, graphe_generic.C),
            "csharp": functools.partial(graphe_generic.contribute, graphe_generic.CSHARP),
            "ruby": functools.partial(graphe_generic.contribute, graphe_generic.RUBY),
-           "swift": functools.partial(graphe_generic.contribute, graphe_generic.SWIFT)}
+           "swift": functools.partial(graphe_generic.contribute, graphe_generic.SWIFT),
+           "php": functools.partial(graphe_generic.contribute, graphe_generic.PHP)}
 NODE_FIELDS = ("id", "label", "kind", "source_file", "source_location", "name")
 LINK_FIELDS = ("source", "target", "relation", "confidence", "source_file", "source_location", "context")
 
