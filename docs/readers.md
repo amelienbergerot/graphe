@@ -241,7 +241,7 @@ A quirk the query cannot express is a `shortcut:` in its section here. A languag
   - `shortcut:` PHP's function and method names are case-insensitive, the links by the exact name; to fold the case if a host calls `Foo()` for `foo()`.
   - `shortcut:` a call through a variable (`$f()`, `$x->$m()`) is none, and an anonymous class at a file's top is no class, its methods functions; to capture them if a host's `explain` needs them.
   - `shortcut:` a caught type (`catch (ErreurAmont $e)`) is no reference, as Java's: 4cast's 3; to capture it if a host's `explain` of an exception needs them.
-  - `shortcut:` an action is a `case` of a single-quoted word, as the PHP reader's: `case "x":`, a constant and `default:` are none; to take them if a host's router uses them. Beyond the PHP reader, which read `case 'x':` alone on its line: one on a line with its body, and an `endswitch` form's, are actions too.
+  - `shortcut:` an action is a `case` of a single-quoted word, as the PHP reader's: `case "x":`, a constant and `default:` are none; to take them if a host's router uses them. Beyond the PHP reader, which read `case 'x':` alone on its line: one on a line with its body, an `endswitch` form's and one in a closure at a file's top are actions too.
   - `shortcut:` the actions of one name in one file are one node, on the first one's line, owning both bodies' calls; to tell them apart if a host's file has two routers.
 - **Sample hosts**: protobuf (docs/sample-hosts.md); 4cast and Grid Zero, the user's (T-0044, T-0045).
 

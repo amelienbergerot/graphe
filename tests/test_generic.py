@@ -783,6 +783,8 @@ def test_a_php_case_is_an_action_owning_its_calls_an_empty_one_dispatching_to_th
                     gz_lire(1);
                     break;
                 case 'noter': gz_noter(liste()); $x->liste(); break;
+                case 'deux':
+                case 'deux': break;
                 case 'vide':
                 case "pas_une": break;
                 case 'défi':
@@ -798,6 +800,7 @@ def test_a_php_case_is_an_action_owning_its_calls_an_empty_one_dispatching_to_th
     # an action's nested switch is none, its calls the action's
     assert actions == {f"{f}_action_liste": ("liste", "liste"), f"{f}_action_relister": ("relister", "relister"),
                        f"{f}_action_noter": ("noter", "noter"), f"{f}_action_vide": ("vide", "vide"),
+                       f"{f}_action_deux": ("deux", "deux"),
                        f"{f}_action_défi": ("défi", "défi"), f"{f}_action_apres": ("apres", "apres")}
     links = {(e["source"], e["target"], e["relation"], e["confidence"]) for e in php["links"]}
     assert (f, f"{f}_action_liste", "contains", "EXTRACTED") in links
