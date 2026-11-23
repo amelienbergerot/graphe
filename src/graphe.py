@@ -1,6 +1,8 @@
 """graphe: the code graph of a host project - what calls what, what cites what.
 
-    graphe build [--quiet]           graphe/: graphe.json, REPORT.md, graphe.html
+    graphe build [--quiet]           graphe/: graphe.json, REPORT.md
+    graphe view [X]                  graphe/graphe.html, opened (on X): the
+                                     nodes laid out by community, on demand
     graphe check                     the coverage of each contribution
     graphe path A B [--undirected]   the shortest path from A to B
     graphe explain X [--all] [--source]   what X calls, what calls X (and its code)
@@ -61,6 +63,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import webbrowser
 from collections import Counter, defaultdict
 from functools import cached_property
 from pathlib import Path
@@ -410,19 +413,16 @@ def build(quiet: bool = False) -> int:
     OUTPUT.mkdir(exist_ok=True)
     graph, coverage, dangling, sites = assemble()
     community_of, names = communities(graph)
-    positions = layout(graph, community_of)
     data = {
         "built": time.strftime("%Y-%m-%d %H:%M:%S"), "built_s": time.time(), "commit": _commit(),
         "coverage": coverage, "communities": {str(i): name for i, name in names.items()},
         "unattributed": _unattributed(graph, sites),
-        "nodes": [{**graph.nodes[n], "community": community_of[n], "x": positions[n][0], "y": positions[n][1]}
-                  for n in graph.nodes],
+        "nodes": [{**graph.nodes[n], "community": community_of[n]} for n in graph.nodes],
         "links": [{"source": s, "target": t, "relations": sorted(d["relations"]), "confidence": d["confidence"],
                    "locations": d["locations"], "contexts": d["contexts"]} for s, t, d in graph.edges(data=True)],
     }
     _write(JSON, json.dumps(data, ensure_ascii=False))
     _write(OUTPUT / "REPORT.md", report(graph, data, community_of, names))
-    _write(OUTPUT / "graphe.html", page(data))
     if not quiet:
         print(f"{graph.number_of_nodes()} nodes, {graph.number_of_edges()} links, {len(names)} communities, "
               f"{len(dangling)} dangling link(s) - {time.monotonic() - start:.1f} s -> {OUTPUT.relative_to(ROOT)}/")
@@ -737,6 +737,21 @@ def source_text(graph: nx.DiGraph, n: str) -> str:
     return "\n".join(f"{i:5d}  {lines[i - 1]}" for i in range(start, min(end, len(lines)) + 1))
 
 
+def view(graph: nx.DiGraph, x: str | None) -> int:
+    """T-0046: the page, on demand only: the build no longer pays for the layout. Its positions are those the build
+    gave: the graph read back from graphe.json keeps the order of its nodes and links (T-0381)."""
+    n = _one(graph, x) if x else ""
+    if n is None:
+        return 2
+    data = json.loads(JSON.read_bytes())
+    positions = layout(graph, {m: d["community"] for m, d in graph.nodes(data=True)})
+    for node in data["nodes"]:
+        node["x"], node["y"] = positions[node["id"]]
+    _write(OUTPUT / "graphe.html", page(data))
+    webbrowser.open((OUTPUT / "graphe.html").resolve().as_uri() + (f"#{n}" if n else ""))
+    return 0
+
+
 def explain(graph: nx.DiGraph, x: str, all_: bool, code: bool = False) -> int:
     n = _one(graph, x)
     if n is None:
@@ -959,6 +974,8 @@ def main(arguments: list[str] | None = None) -> int:
         return callers(load(), positionals[0], _option(rest, "--depth", 2))
     if command == "search" and len(positionals) == 1:
         return search(load(), positionals[0])
+    if command == "view" and len(positionals) <= 1:
+        return view(load(), positionals[0] if positionals else None)
     print(__doc__)
     return 2
 

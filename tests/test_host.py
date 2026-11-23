@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -24,7 +25,9 @@ CALLEE = "def aider():\n    return 1\n"
 def _run(host: Path, *arguments: str, env: dict | None = None) -> subprocess.CompletedProcess:
     # The root is fixed at import: a separate process, on the sample host (not on Grid Zero, cf. conftest).
     env = {**(env or os.environ), "GRAPHE_ROOT": str(host)}
-    return subprocess.run([sys.executable, "-c", "import sys, graphe; sys.exit(graphe.main(sys.argv[1:]))",
+    # T-0046: `view` prints the address it would open, the tests open no browser.
+    return subprocess.run([sys.executable, "-c", "import sys, webbrowser, graphe; webbrowser.open = print; "
+                                                 "sys.exit(graphe.main(sys.argv[1:]))",
                            *arguments], cwd=host, env=env, capture_output=True, text=True, encoding="utf-8")
 
 
@@ -522,25 +525,50 @@ def _many_communities(tmp_path: Path) -> Path:
     return _host(tmp_path, files, tracked=".")
 
 
+def _page(host: Path) -> list[list]:
+    """The nodes of `graphe.html`: [label, file, line, community, x, y, kind, id] each."""
+    html = (host / "graphe" / "graphe.html").read_text(encoding="utf-8")
+    return json.loads(re.search(r'<script id="data" type="application/json">(.*?)</script>', html, re.S)[1])["n"]
+
+
+def test_the_build_makes_no_page_and_view_makes_it_on_demand(tmp_path: Path):
+    """T-0046: the layout and the page leave the build; `view` makes them, and opens the page on a node."""
+    host = _host(tmp_path, {"outils.py": CALLEE, "travail.py": CALLER})
+    r = _run(host, "build")
+    assert r.returncode == 0, r.stderr
+    assert not (host / "graphe" / "graphe.html").exists()
+    assert not any("x" in n or "y" in n for n in json.loads((host / "graphe" / "graphe.json").read_bytes())["nodes"])
+    r = _run(host, "view")
+    assert r.returncode == 0, r.stderr
+    page = (host / "graphe" / "graphe.html").resolve().as_uri()
+    assert r.stdout.strip() == page
+    assert {n[7] for n in _page(host)} == {"outils_aider", "travail_travailler", "outils", "travail"}
+    r = _run(host, "view", "aider")
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.strip() == page + "#outils_aider"
+    r = _run(host, "view", "absent")
+    assert r.returncode == 2 and "no node for 'absent'" in r.stdout, r.stdout
+
+
 def test_the_layout_keeps_the_positions_of_the_tool_before_t_0016(tmp_path: Path):
     host = _many_communities(tmp_path)
-    r = _run(host, "build")
+    r = _run(host, "view")
     assert r.returncode == 0, r.stderr
     data = json.loads((host / "graphe" / "graphe.json").read_bytes())
     assert len(data["communities"]) > 30  # the spiral places many discs
-    assert {n["id"]: [n["x"], n["y"]] for n in data["nodes"]} == json.loads(LAYOUT_FIXTURE.read_bytes())
+    assert {n[7]: [n[4], n[5]] for n in _page(host)} == json.loads(LAYOUT_FIXTURE.read_bytes())
 
 
 def test_a_community_above_1000_nodes_is_laid_out_in_its_disc(tmp_path: Path):
     host = _host(tmp_path, {"etoile.py": "def centre():\n    return 0\n\n\n" + "".join(
         f"def b{j}():\n    return centre()\n\n\n" for j in range(1100))}, tracked=".")
-    r = _run(host, "build")
+    r = _run(host, "view")
     assert r.returncode == 0, r.stderr
-    data = json.loads((host / "graphe" / "graphe.json").read_bytes())
-    sizes = Counter(n["community"] for n in data["nodes"])
+    nodes = _page(host)
+    sizes = Counter(n[3] for n in nodes)
     big, size = sizes.most_common(1)[0]
     assert size > 1000  # the precondition: the sunflower's branch is taken
-    points = [(n["x"], n["y"]) for n in data["nodes"] if n["community"] == big]
+    points = [(n[4], n[5]) for n in nodes if n[3] == big]
     assert all(math.isfinite(x) and math.isfinite(y) for x, y in points)
     assert len(set(points)) == len(points)
     cx, cy = sum(x for x, _ in points) / len(points), sum(y for _, y in points) / len(points)

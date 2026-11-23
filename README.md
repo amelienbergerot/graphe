@@ -2,6 +2,42 @@
 
 The code graph of a host project: what calls what, what cites what. `graphe --help` lists the commands.
 
+## Why
+
+An agent that navigates code (or a person) finds its way with grep, then reads files to sort out what grep matched. Grep matches text: `.step(` finds the `step` of every class, plus comments and strings. Graphe reads the code once, links each call to its definition, and answers a question about a function in a few hundred bytes: what it calls, what calls it, and the tickets that cite it. One query costs 2 to 12 times fewer tokens than grep plus reading ([Tested on](#tested-on)), and it is more exact.
+
+It also links code to its documents. A Markdown ticket that names a function between backticks cites it, so `explain` says which tickets motivated some code. A text shown on screen (the `displayed_text` pattern of `graphe.toml`) leads back to the function that displays it.
+
+It says where it stops. A link guessed from the name alone is marked `[by name]` or `?`. When some calls cannot be attributed (a receiver of unknown type, a name several classes bear), the answer says so: "+ N calls named `f` the graph could not attribute: grep them".
+
+```
+$ graphe explain assemble
+assemble()  [function]  src/graphe.py:223-254
+
+what it calls:
+  calls (5)
+    src/graphe.py: _declared_extensions:153, _extension:157, _insert:174, _take_over:207, _sorted:263
+  cites (2)
+    T-0007, T-0008
+
+what calls it:
+  calls (2)
+    src/graphe.py: build:408, check:836
+  names (3) [by name]
+    T-0012, T-0025, T-0034
+```
+
+## How it works
+
+1. **Files**: graphe reads the files git tracks, plus untracked files that are not ignored, minus the folders listed in `exclude` in the host's optional `graphe.toml`. Each file goes to the reader for its extension.
+2. **Readers** turn the files into nodes (files, classes, functions, methods, fields, constants) and links between them (`calls`, `contains`, `uses`, `reads`). A *dedicated reader* (Python through its ast, JavaScript/TypeScript/Svelte, GDScript) follows imports and types, so it can link a call to its definition with certainty. The *generic reader* (tree-sitter: Go, Rust, Java/Kotlin, C/C++, C#, Ruby, Swift, PHP) links a call by name, and only when the language defines that name once. It never does this for a common name like `get` or `push`.
+3. **The core** reads the text: where each body ends, its comment, the texts it displays, module variables and who reads them, and the Markdown documents with what they cite (code between backticks, other documents by identifier, `T-0012`).
+4. **Local extensions** add enrichments that only make sense for one host. They live in the host's repository and are declared in its `graphe.toml` ([ADR 0001](docs/adr/0001-one-tool-local-extensions.md), [the contract](docs/contribution.md)).
+5. **Output**, in the host's `graphe/` folder (git-ignored): `graphe.json` (the graph, its communities found with Louvain) and `REPORT.md` (counts, the most connected nodes). The page that draws the nodes by community, `graphe.html`, is made only on demand, whatever the host's size: `graphe view` writes and opens it, `graphe view X` on node X.
+6. **Freshness**: the git hooks rebuild the graph in the background after a commit, merge, checkout or rewrite. A query on a graph older than the code or the tool rebuilds it first, so the answer can be trusted.
+
+Words such as *reader*, *contribution* and *takeover* are defined in [GLOSSARY.md](GLOSSARY.md).
+
 ## Install
 
 Once for the account, both in editable mode, so that a fix in this repository serves every host at once:
