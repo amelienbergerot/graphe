@@ -10,16 +10,13 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
 
 ## Open
 
-- **On a large repository, a stale query waits for a whole build.** [T-0026] (Django,
-  sample host, 2026-11-18, T-0016) 2943 Python files: 48 s per build, and
-  one edit not yet committed is enough to make the graph stale. The Python
-  reader takes most of it now. A rebuild of only the files that changed
-  (or a query that answers from the old graph and says so) would avoid it.
-  T-0026: 45 s, then a cache of each Python file's definitions (about
-  4.6 s less); the layout outside the queries is the lever left. protobuf
-  with its C/C++ (T-0034, 57327 nodes): 70.2 s, 35.1 s before; under the
-  profiler the layout takes 44 of 82 s, the generic reader about 8 s for its
-  1363 C/C++ files (parsing 4.9 s): no cache of its own yet.
+- **On a large repository, a stale query still waits for the whole
+  resolution.** (Django, sample host, 2026-11-25, T-0026) ~68 s per stale
+  query on this machine: each Python file's definitions are cached, but the
+  resolution across modules is redone in full. Only an incremental build
+  (the resolution redone where a change reaches) would cut it: a large
+  change, its own ticket if a host of Django's size comes. protobuf's C/C++
+  has no cache of its own (the generic reader about 8 s of its build).
 - **A Go generic method is no node.** (gitea, sample host, 2026-11-19,
   T-0031, T-0039) `tree-sitter-go` 0.25.0, the last on PyPI, knows neither
   `new(expr)` nor generic methods (`func (f *Flash) Error[T ...]`). Since
@@ -209,6 +206,15 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   double quotes is no action. The `shortcut:`s of docs/readers.md's PHP.
 
 ## Settled
+
+Settled by tickets (2026-11-25):
+
+- **On a large repository, a stale query waits for a whole build.** [T-0026,
+  T-0046] (Django, sample host, 2026-11-18, T-0016) 48 s per build. T-0026:
+  each Python file's parse and definitions cached (about 4.6 s less), the
+  graph identical; T-0046: the layout out of `build`, made by `graphe view`
+  on demand: a stale query 81.0 -> 67.7 s (medians, cache warm), the graph
+  identical but for `x`/`y`. What remains is in Open.
 
 Settled by tickets (2026-11-19):
 
