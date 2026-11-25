@@ -298,6 +298,68 @@ def test_a_value_written_on_both_sides(tmp_path: Path):
     assert names[community_of["value_coupee"]] == "values"
 
 
+def test_a_keyed_link_from_the_body_that_names_a_key_to_the_code_that_answers_it(tmp_path: Path):
+    """T-0047: 4cast's front names its routes, its PHP answers them; `sends`, by the key alone."""
+    import networkx as nx
+
+    (tmp_path / "front.ts").write_text(textwrap.dedent('''\
+        export const lister = () => api<Zone[]>("zones");
+        export const lire = (id: number) => api<Zone>(`zones/${id}?champ=${x}`);
+        export const meteo = (q: string) =>
+          api(`meteo?q=${q}`);
+        // api("session") in a comment names nothing
+        export const tout = (c: string) => api(`${c}`);
+        export const perdu = () => api("inconnue");
+        export const session = () => api("session");
+    '''), encoding="utf-8")
+    (tmp_path / "index.php").write_text(textwrap.dedent('''\
+        <?php
+        if ($chemin === '/api/session') {
+            connecter();
+        }
+        match (true) {
+            $chemin === '/api/meteo' => route_meteo(),
+        };
+        function route_zones($chemin) {
+            if ($chemin === '/api/zones') {
+                return 1;
+            }
+            if (preg_match('#^/api/zones/(\\d+)$#', $chemin, $m)) {
+                return 2;
+            }
+        }
+        function route_meteo() {
+        }
+    '''), encoding="utf-8")
+    (tmp_path / "graphe.toml").write_text(textwrap.dedent('''\
+        [keys]
+        names = \'\'\'\\bapi(?:<.*?>)?\\(\\s*[`"']([^`"'?]+)\'\'\'
+        answers = \'\'\'(?:\\$chemin\\s*===\\s*'|preg_match\\('#\\^)/api/([^'#$]+)\'\'\'
+        parameters = '\\$\\{[^}]*\\}|\\([^)]*\\)'
+    '''), encoding="utf-8")
+    g = nx.DiGraph()
+    nodes = [("f", "front.ts", "file", 1), ("lister", "front.ts", "function", 1), ("lire", "front.ts", "function", 2),
+             ("meteo", "front.ts", "function", 3), ("tout", "front.ts", "function", 6),
+             ("perdu", "front.ts", "function", 7), ("session", "front.ts", "function", 8),
+             ("index", "index.php", "file", 1), ("route_zones", "index.php", "function", 8),
+             ("route_meteo", "index.php", "function", 16), ("connecter", "session.php", "function", 1)]
+    for n, rel, kind, line in nodes:
+        g.add_node(n, id=n, label=n, kind=kind, source_file=rel, source_location=f"L{line}", name=n)
+    for t, line in (("connecter", 3), ("route_meteo", 6)):
+        g.add_edge("index", t, relations={"calls"}, confidence="INFERRED", locations=[f"index.php:{line}"],
+                   contexts=[])
+    _enrich(g, tmp_path)
+    sends = {(s, t, tuple(d["contexts"]), d["locations"][0]) for s, t, d in g.edges(data=True)
+             if "sends" in d["relations"]}
+    assert sends == {
+        ("lister", "route_zones", ("zones",), "front.ts:1"),       # a one-line arrow names on its head
+        ("lire", "route_zones", ("zones/*",), "front.ts:2"),       # `${id}` and `(\d+)`, the query string out
+        ("meteo", "route_meteo", ("meteo",), "front.ts:4"),        # the second line; the line's call answers
+    }  # `tout` (`*` alone), `perdu` (no answer) and `session` (a top-level `if` without a call: not its file) link
+    # nothing, nor the comment
+    assert all(g[s][t]["confidence"] == "INFERRED" for s, t, *_ in sends)
+
+
 def test_fields_import_aliases_and_tickets(tmp_path: Path):
     """BACKLOG.md: the fields of a class, the Python import alias, the
     ticket cited by the code and the one that names a function."""

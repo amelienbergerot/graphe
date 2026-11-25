@@ -27,7 +27,10 @@ And:
   to the functions it names between backticks (`names`, by the name);
 - a `value` node per string (an identifier, `"coupee"`) written both in
   Python and in GDScript, linked to each body that writes it (`value`): what
-  one side emits and what the other compares.
+  one side emits and what the other compares;
+- a keyed link (T-0047, `[keys]` of graphe.toml): `sends` from the body
+  that names a key (`api("zones")`) to the code that answers it
+  (`$chemin === '/api/zones'`), where no name joins them.
 """
 
 from __future__ import annotations
@@ -148,19 +151,35 @@ def _add_link(graph: nx.DiGraph, s: str, t: str, relation: str, location: str, c
         graph.add_edge(s, t, relations={relation}, confidence=confidence, locations=[location], contexts=[])
 
 
-def displayed_text_pattern(root: Path) -> re.Pattern | None:
-    """`displayed_text` (graphe.toml): the pattern of a call that displays a text, the text in its only group."""
-    raw = graphe_root.configuration(root).get("displayed_text")
+def _pattern(raw, where: str, group: str | None) -> re.Pattern | None:
+    """A pattern of graphe.toml; `group` names what its only group holds (None: no group required)."""
     if raw is None:
         return None
     try:
         pattern = re.compile(raw)
     except (re.error, TypeError) as e:
-        raise RuntimeError(f"displayed_text ({graphe_root.CONFIGURATION}): {e}") from None
-    if pattern.groups != 1:
-        raise RuntimeError(f"displayed_text ({graphe_root.CONFIGURATION}): it needs exactly one group, the "
-                           f"displayed text; it has {pattern.groups}")
+        raise RuntimeError(f"{where} ({graphe_root.CONFIGURATION}): {e}") from None
+    if group and pattern.groups != 1:
+        raise RuntimeError(f"{where} ({graphe_root.CONFIGURATION}): it needs exactly one group, the "
+                           f"{group}; it has {pattern.groups}")
     return pattern
+
+
+def displayed_text_pattern(root: Path) -> re.Pattern | None:
+    """`displayed_text` (graphe.toml): the pattern of a call that displays a text, the text in its only group."""
+    return _pattern(graphe_root.configuration(root).get("displayed_text"), "displayed_text", "displayed text")
+
+
+def _key_patterns(root: Path) -> tuple[re.Pattern, re.Pattern, re.Pattern | None] | None:
+    """`[keys]` (graphe.toml, T-0047): where the code names a key, where it answers it, what is a parameter."""
+    keys = graphe_root.configuration(root).get("keys")
+    if keys is None:
+        return None
+    for required in ("names", "answers"):
+        if required not in keys:
+            raise RuntimeError(f"keys ({graphe_root.CONFIGURATION}): it needs `{required}`")
+    return (_pattern(keys["names"], "keys.names", "key"), _pattern(keys["answers"], "keys.answers", "key"),
+            _pattern(keys.get("parameters"), "keys.parameters", None))
 
 
 def enrich(graph: nx.DiGraph, root: Path) -> None:
@@ -275,7 +294,54 @@ def enrich(graph: nx.DiGraph, root: Path) -> None:
                     uses[v].append((n, location, Path(rel).suffix))
 
     _link_values(graph, uses)
+    keys = _key_patterns(root)
+    if keys:
+        _link_keys(graph, keys, file_lines, bodies, file_id)
     _link_documents(graph, root, bodies, file_lines)
+
+
+def _link_keys(graph: nx.DiGraph, keys: tuple[re.Pattern, re.Pattern, re.Pattern | None],
+               file_lines: dict[str, list[str]], bodies: dict[str, tuple[str, int, int]],
+               file_id: dict[str, str]) -> None:
+    """T-0047: a keyed link (`sends`), from the body that names a key to the code that answers it: what the
+    answering line calls, else its body (not its file). Two keys match when equal, `*` for each parameter."""
+    names, answers, parameters = keys
+    # The head line too: a one-line arrow (`f = () => api("zones")`) names on it.
+    holders: dict[str, dict[int, str]] = defaultdict(dict)
+    for n, (rel, start, end) in sorted(bodies.items(), key=lambda b: b[1][2] - b[1][1], reverse=True):
+        for i in range(start, end + 1):
+            holders[rel][i] = n
+    called: dict[str, list[str]] = defaultdict(list)
+    for _, t, d in graph.edges(data=True):
+        if "calls" in d["relations"]:
+            for location in d["locations"]:
+                called[location].append(t)
+
+    def key(raw: str) -> str:
+        return parameters.sub("*", raw) if parameters else raw
+
+    # shortcut: a route's HTTP method is no part of its key (4cast checks it on another line than the path), so
+    # GET and POST of a path lead to the same code; to take it in when a host answers them apart.
+    named: list[tuple[str, str, str]] = []
+    answerers: dict[str, set[str]] = defaultdict(set)
+    for rel, lines in file_lines.items():
+        for i, line in enumerate(lines, 1):
+            if _comment(line) is not None:
+                continue
+            body = holders[rel].get(i)
+            location = f"{rel}:{i}"
+            if namer := body or file_id.get(rel):
+                named += [(namer, key(m.group(1)), location) for m in names.finditer(line)]
+            # Not a file: its top-level router calls every route, `callers` would go from one route to all.
+            if answerer := called.get(location) or ([body] if body else []):
+                for m in answers.finditer(line):
+                    answerers[key(m.group(1))].update(answerer)
+    for n, k, location in named:
+        for t in sorted(answerers.get(k, ())):
+            if t != n:
+                _add_link(graph, n, t, "sends", location, "INFERRED")
+                if k not in graph[n][t]["contexts"]:
+                    graph[n][t]["contexts"].append(k)
 
 
 def _link_values(graph: nx.DiGraph, uses: dict[str, list[tuple[str, str, str]]]) -> None:

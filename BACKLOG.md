@@ -189,13 +189,22 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   user". The direction is other people's repositories: a published package,
   any OS, and ADR 0001 revisited. A separate effort, after the readers; until
   then a reader holds nothing specific to this machine.
-- **The links a framework creates are outside the graph.** (All hosts,
-  2026-11-18, the user's request) A Django URL to its view, a JSX
+- **The links a framework creates are outside the graph.** [T-0047] (All
+  hosts, 2026-11-18, the user's request) A Django URL to its view, a JSX
   `<Component/>`, a Spring injection, a Rails route: no call carries them.
   Neither the core, nor a reader (one language), nor a local extension (one
-  host): a notion to name. Its own session, after the readers. The bridges
-  between languages belong with it (JNI, FFI, protobuf's generated code):
-  the generic reader never links a call by name across languages (ADR 0003).
+  host): a notion to name. Named (2026-11-25): a keyed link (GLOSSARY.md).
+  T-0047: the core makes it from the host's `[keys]` patterns (4cast's front
+  to its PHP routes: 22 of its 25 front calls linked, not the 3 to
+  `session`, answered at `api/index.php`'s top). Left: the frameworks, whose
+  key is no string on one line (a decorator, a JSX tag, an injection), with
+  the install effort; a route's HTTP method, no part of the key.
+- **A call across languages by a translated name is not linked.** (libsignal,
+  protobuf, sample hosts, 2026-11-25) JNI (`Java_pkg_Class_method` in C),
+  FFI (a C function called from Swift), protobuf's generated code: the
+  generic reader never links a call by name across languages (ADR 0003).
+  Not a keyed link (the name is translated, not shared as a string); split
+  from the entry above, none of the user's hosts has one.
 
 - **PHP's generic reader misses a few uses.** [T-0044, T-0045] (4cast,
   protobuf, 2026-11-20) A caught type (`catch (ErreurAmont $e)`) is no

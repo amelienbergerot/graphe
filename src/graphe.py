@@ -27,7 +27,9 @@ reads the text: the end of each function and class, the texts it displays
 (the `displayed_text` pattern of graphe.toml), its comment, module variables
 and who reads them, and the documents (the host's Markdown, `[documents]` of
 graphe.toml) - who cites them, what they name. The fields of a class are
-nodes (the Python reader).
+nodes (the Python reader). A keyed link (`[keys]` of graphe.toml: `names`,
+`answers`, `parameters`) is a `sends` from the code that names a key (a
+front's `api("zones")`) to the code that answers it (`'/api/zones'`).
 
 Communities (`[communities]` of graphe.toml): `separate` gives kinds outside
 the code their own community (kind -> name), after tickets, values and

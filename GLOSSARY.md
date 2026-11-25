@@ -50,3 +50,7 @@ _Avoid_: number, key
 
 **Citation**:
 The link from a document to a node it names, or to another document it designates by its identifier.
+
+**Keyed link**:
+A link from the place that names a **key** (a string shared by both ends: a route, a command, an action) to the code that answers that key, where no name in the code joins them.
+_Avoid_: framework link, magic link, convention link
