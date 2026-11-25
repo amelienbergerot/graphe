@@ -300,6 +300,7 @@ def test_a_value_written_on_both_sides(tmp_path: Path):
 
 def test_a_keyed_link_from_the_body_that_names_a_key_to_the_code_that_answers_it(tmp_path: Path):
     """T-0047: 4cast's front names its routes, its PHP answers them; `sends`, by the key alone."""
+    import graphe_core
     import networkx as nx
 
     (tmp_path / "front.ts").write_text(textwrap.dedent('''\
@@ -358,6 +359,10 @@ def test_a_keyed_link_from_the_body_that_names_a_key_to_the_code_that_answers_it
     }  # `tout` (`*` alone), `perdu` (no answer) and `session` (a top-level `if` without a call: not its file) link
     # nothing, nor the comment
     assert all(g[s][t]["confidence"] == "INFERRED" for s, t, *_ in sends)
+    for keys, message in (("names = 'api'\nanswers = '(x)'", "keys.names"), ("names = '(x)'", "answers")):
+        (tmp_path / "graphe.toml").write_text(f"[keys]\n{keys}\n", encoding="utf-8")
+        with pytest.raises(RuntimeError, match=message):
+            graphe_core.enrich(nx.DiGraph(), tmp_path)
 
 
 def test_fields_import_aliases_and_tickets(tmp_path: Path):

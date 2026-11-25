@@ -322,6 +322,8 @@ def _link_keys(graph: nx.DiGraph, keys: tuple[re.Pattern, re.Pattern, re.Pattern
 
     # shortcut: a route's HTTP method is no part of its key (4cast checks it on another line than the path), so
     # GET and POST of a path lead to the same code; to take it in when a host answers them apart.
+    # shortcut: a call in the answering condition (`$chemin === '/api/x' && autorise()`) answers in place of the
+    # body; to take only the calls after the key when a host's router does that.
     named: list[tuple[str, str, str]] = []
     answerers: dict[str, set[str]] = defaultdict(set)
     for rel, lines in file_lines.items():
