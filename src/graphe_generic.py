@@ -299,8 +299,8 @@ RUBY = Language("ruby", {".rb": (tree_sitter.Language(tree_sitter_ruby.language(
 # PHP (T-0044), the `php` reader in place of the PHP reader by patterns since T-0045. The grammar with its HTML
 # (`language_php`), so a page's text holds no call. A class, an interface, a trait
 # and an enum are a class, a namespace none; as Java's, a method without a body (an interface's, abstract) is not
-# captured. `x->m()`, `x?->m()` and `X::m()` (`self::`, `parent::`) are sends; `new C`, `extends`, `implements` and a
-# trait's `use` references by the last name. shortcut: PHP's function and method names are case-insensitive, the
+# captured. `x->m()`, `x?->m()` and `X::m()` (`self::`, `parent::`) are sends; `new C`, `extends`, `implements`, a
+# trait's `use` and a caught type (`catch (A | B $e)`) references by the last name. shortcut: PHP's function and method names are case-insensitive, the
 # links by the exact name; to fold the case if a host calls `Foo()` for `foo()`. shortcut: a call through a variable
 # (`$f()`, `$x->$m()`) is none, and an anonymous class at a file's top is no class, its methods functions; to capture
 # them if a host's `explain` needs them. A `case 'x':` outside any function is an action (an entry point's
@@ -316,7 +316,7 @@ PHP_QUERY = f"""
 [(member_call_expression name: (name) @name) (nullsafe_member_call_expression name: (name) @name)
  (scoped_call_expression name: (name) @name)] @send
 [(object_creation_expression {_PHP_NAME}) (base_clause {_PHP_NAME}) (class_interface_clause {_PHP_NAME})
- (use_declaration {_PHP_NAME})] @reference
+ (use_declaration {_PHP_NAME}) (catch_clause type: (type_list (named_type {_PHP_NAME})))] @reference
 (case_statement value: (string (string_content) @name) (#match? @name "^\\\\w+$")) @action
 """
 

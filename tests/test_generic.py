@@ -756,6 +756,26 @@ def test_a_php_bare_call_is_linked_to_a_function_only_and_a_send_to_a_method_onl
     assert verdicts == {"count": "external", "$f->count": "ours?", "pack": "ours?", "$f->pack": "ours?"}
 
 
+def test_a_php_caught_type_is_a_reference_to_its_class(tmp_path: Path):
+    """4cast: its 3 `catch (ErreurAmont $e)` were not among `ErreurAmont`'s users; a caught type, alone, qualified or
+    in a union, is a reference by the last name, as `new C`."""
+    project = Project(tmp_path, {
+        "api/lib.php": """\
+            <?php
+            class ErreurAmont extends Exception {}
+            class Autre extends Exception {}
+            function lire() {
+                try { ouvrir(); } catch (\\App\\ErreurAmont $e) {} catch (Autre | ErreurAmont) {}
+            }
+            """,
+    })
+    php = graphe_generic.contribute(PHP, project)
+    references = {(e["source"], e["target"], e["source_location"]) for e in php["links"]
+                  if e["relation"] == "references"}
+    assert references == {("api_lib_php_lire", "api_lib_php_erreuramont", "L5"),
+                          ("api_lib_php_lire", "api_lib_php_autre", "L5")}
+
+
 def test_a_php_case_is_an_action_owning_its_calls_an_empty_one_dispatching_to_the_next(tmp_path: Path):
     """Grid Zero (T-0045, as the PHP reader's): a `case 'x':` is an action, its body's calls its own; two `case` in a
     row share a body, the first leads to the second. An action is no function: neither `liste()` nor `$x->liste()`

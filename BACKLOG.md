@@ -207,9 +207,7 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   from the entry above, none of the user's hosts has one.
 
 - **PHP's generic reader misses a few uses.** [T-0044, T-0045] (4cast,
-  protobuf, 2026-11-20) A caught type (`catch (ErreurAmont $e)`) is no
-  reference: 4cast's 3 `catch` of `ErreurAmont` are not among its users.
-  PHP's names are case-insensitive, the links by the exact name. protobuf's
+  protobuf, 2026-11-20) PHP's names are case-insensitive, the links by the exact name. protobuf's
   `php/tests/generated_previous/Previous/readonly.php` (`class readonly`, a
   keyword since PHP 8.1) does not parse: skipped. A router's `case "x":` in
   double quotes is no action. The `shortcut:`s of docs/readers.md's PHP.
