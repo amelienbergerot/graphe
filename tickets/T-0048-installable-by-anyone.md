@@ -1,4 +1,4 @@
-Status: open
+Status: closed
 Type: map
 Created: 2026-11-26
 
@@ -28,12 +28,17 @@ A spec, ready for `/to-spec` then `/to-tickets`: any developer, on Windows, macO
 - T-0058, the version and the release: SemVer from `0.1.0`; a pushed tag publishes by Trusted Publishing; one number in `pyproject.toml` and `plugin.json`, checked by the workflow; caps raised by ordinary commits; a contract change announced in `CHANGELOG.md`, at least a minor bump.
 - T-0059, a stranger's first contact: the README reordered (What it reads, Install, First graph; the author's part last); `graphe.toml` optional, no `init`; the code warning in one line; gaps to GitHub issues; an expected error in one line, no traceback.
 - T-0054, the tests on the three OS: the history rewritten and force-pushed (noreply, the fixture `layout_01a698e.json`); CI locked 3.14 on the three OS; Windows passes, Linux and macOS fail one test only (a `.cmd` fake Godot); no `LICENSE` yet, old SHAs to purge at GitHub.
+- T-0060 to T-0068, the build: MIT licence, one package `graphe-code`, Python 3.13+ and ranges, CI green on the three OS, the Claude Code plugin, an expected error on one line, the README for a stranger, the release workflow; `graphe-code 0.1.0` released on 2026-11-27.
 
 ## Not yet specified
 
-- Nothing left: the way is clear, the map ready for `/to-spec`.
+- Nothing left: the way was cleared, then built (T-0060 to T-0068).
 
 ## Out of scope
 
 - The readers' precision (the rest of BACKLOG.md), the incremental build (Django), the keyed links of the frameworks: features, not the install.
 - The other agents' integration: the door stays open (Notes), the work is another effort.
+
+## Comments
+
+- 2026-11-27: destination reached. `graphe-code 0.1.0` is on PyPI and in a GitHub release (run 45910794675); installed from PyPI in a clean Linux container, where `graphe build` and `graphe explain` answer; the plugin installed on another machine, the skill `graphe:graphe` loaded in Claude Code. CI green on Windows, macOS and Linux, 3.13 and 3.15. Left outside the map: GitHub's purge of the old commits (T-0070); the T-0069 fix awaits a 0.1.1.
