@@ -1,5 +1,5 @@
 [project]
-name = "graphe"
+name = "graphe-code"
 version = "0.1.0"
 description = "The code graph of a host project: what calls what, what cites what."
 license = "MIT"

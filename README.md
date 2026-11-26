@@ -118,6 +118,12 @@ The author's install, from the root of a clone, editable, so that a change in th
 uv tool install -e .
 ```
 
+An install made before the distribution became `graphe-code` is named `graphe` for uv: remove it once, then install as above.
+
+```
+uv tool uninstall graphe
+```
+
 The skill, as a link to the clone rather than the plugin (a plugin is a cached copy, which would lag the clone):
 
 ```powershell
@@ -131,3 +137,11 @@ ln -s "$PWD/skills/graphe" ~/.claude/skills/graphe
 ```
 
 The gaps met while using the graph go in `BACKLOG.md`, naming the host (`AGENTS.md`).
+
+A release (`.github/workflows/release.yml`), in one commit then a tag:
+
+1. Set the same version `X.Y.Z` in `pyproject.toml` and `.claude-plugin/plugin.json`.
+2. Add its entry `## X.Y.Z` to `CHANGELOG.md`, with a **Contract** section if it changes `contribute(project)`, `Project` or the shape of the nodes and links.
+3. Commit, then push the tag: `git tag vX.Y.Z` and `git push origin vX.Y.Z`. The workflow stops before the upload if the tag and the two versions differ (`python .github/check_release.py vX.Y.Z` checks it locally), then uploads `graphe-code` to PyPI and creates the GitHub release.
+
+Raising a grammar's cap, when the newest-versions job flags one, is an ordinary commit, not a release step.

@@ -20,6 +20,12 @@ def test_the_plugin_carries_the_package_version_and_the_marketplace_none():
     assert "version" not in entry and "version" not in marketplace.get("metadata", {})
 
 
+def test_the_distribution_is_graphe_code_and_its_command_graphe():
+    project = tomllib.loads((REPO / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+    assert project["name"] == "graphe-code"
+    assert project["scripts"] == {"graphe": "graphe.cli:main"}
+
+
 def test_the_skill_allows_the_graphe_command_for_its_turn():
     skill = (REPO / "skills" / "graphe" / "SKILL.md").read_text(encoding="utf-8")
     frontmatter = skill.split("---")[1]

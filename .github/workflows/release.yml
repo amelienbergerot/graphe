@@ -1,0 +1,57 @@
+# T-0067 (T-0058): a tag vX.Y.Z the author pushes builds graphe-code, uploads it to PyPI by Trusted Publishing
+# (no stored token) and creates the GitHub release, linking to its CHANGELOG.md entry.
+# PyPI's side, once: a (pending) trusted publisher for this repository, release.yml, the environment pypi.
+name: Release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: read
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.4.0
+      - run: uv run --no-project python .github/check_release.py "$GITHUB_REF_NAME"
+  build:
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.4.0
+      - run: uv build
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/
+  pypi:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/graphe-code
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+  release:
+    needs: pypi
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+      # GitHub's anchor for the heading "## 0.1.0" is #010.
+      - run: >-
+          gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME"
+          --notes "The changes: https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/CHANGELOG.md#${GITHUB_REF_NAME//[v.]/}"
+        env:
+          GH_TOKEN: ${{ github.token }}
