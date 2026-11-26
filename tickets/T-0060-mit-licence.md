@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: closed
 Part of: T-0048
 Created: 2026-11-26
 
@@ -13,3 +13,7 @@ The public repository carries the licence T-0050 decided: MIT, `Copyright (c) 20
 - [ ] A `LICENSE` file at the root, the MIT text with that holder.
 - [ ] The package metadata says `license = "MIT"` and lists the licence file; a built wheel carries it.
 - [ ] No per-file headers.
+
+## Comments
+
+- 2026-11-26: done on `integration/installable`, code-reviewed: the MIT `LICENSE` and the PEP 639 fields; the wheel carries the licence.

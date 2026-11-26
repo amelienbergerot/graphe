@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: closed
 Part of: T-0048
 Created: 2026-11-26
 
@@ -15,3 +15,7 @@ A Claude Code user installs the skill from the public repository, its own market
 - [ ] The shipped skill no longer says "note a gap" in a clone's backlog: when the graph falls short, grep; a gap in the tool, tell the user, who may report it on the repository's issues; the agent files none. The backlog rule moves to this repository's `AGENTS.md`.
 - [ ] The skill drops the clone path to the readers doc, keeps its inline list of languages, and gives the public repository's URL once.
 - [ ] Nothing in the skill's text ties it to Claude Code where a neutral wording costs nothing.
+
+## Comments
+
+- 2026-11-26: done on `integration/installable`, code-reviewed: the plugin and marketplace manifests (validated), `allowed-tools` in the skill, the backlog rule moved to AGENTS.md. Untested: the install from the public repository before the push.

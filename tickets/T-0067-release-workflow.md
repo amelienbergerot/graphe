@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: closed
 Part of: T-0048
 Blocked by: T-0063, T-0064
 Created: 2026-11-26
@@ -15,3 +15,7 @@ A release is a tag the author pushes (T-0058): a workflow builds the package, up
 - [ ] The workflow fails, before uploading, when the tag, the package's version and the plugin's version differ.
 - [ ] A changelog at the root with a `0.1.0` entry; its header says a release changing `contribute(project)`, `Project` or the shape of the nodes and links carries a **Contract** section and is at least a minor bump in `0.x`.
 - [ ] The release steps written for the author in Developing graphe (set both versions, the changelog entry, push the tag); the grammar caps are not a release step.
+
+## Comments
+
+- 2026-11-26: done on `integration/installable`, code-reviewed: the release workflow (version check before any upload, Trusted Publishing, the GitHub release), CHANGELOG.md 0.1.0; also the distribution renamed `graphe-code` (T-0055), which no ticket carried.

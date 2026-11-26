@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: closed
 Part of: T-0048
 Blocked by: T-0061, T-0064
 Created: 2026-11-26
@@ -18,3 +18,7 @@ A developer who has never seen graphe goes from the README to a first graph on W
 - [ ] One line: a `graphe.toml` declaring extensions runs their code at every build, git hooks included.
 - [ ] Gaps go to the GitHub issues.
 - [ ] The contribution doc says the contract is public, an extension runs in graphe's environment (the standard library and graphe's dependencies), and shows a small invented extension, not Grid Zero's.
+
+## Comments
+
+- 2026-11-26: done on `integration/installable`, code-reviewed: the README for a stranger and the contribution doc (the contract public, an invented extension).

@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: closed
 Part of: T-0048
 Blocked by: T-0061
 Created: 2026-11-26
@@ -14,3 +14,7 @@ A user installed by `uv tool install` gets what the ranges allow, on any Python 
 - [ ] The tests pass on 3.13 and 3.14 at the locked versions.
 - [ ] The stale "scipy does not exist yet for 3.15" comment and the "pinned for Grid Zero's reference test" comment go; the ruff target follows 3.13.
 - [ ] The README's install line no longer forces `--python 3.14`.
+
+## Comments
+
+- 2026-11-26: done on `integration/installable`, code-reviewed: `>=3.13`, ranges, the grammars capped; the locked versions unchanged; tests pass on 3.13 and 3.14. The README part done by T-0066.

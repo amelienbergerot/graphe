@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: closed
 Part of: T-0048
 Created: 2026-11-26
 
@@ -15,3 +15,7 @@ The seven top-level modules become one package imported as `graphe` (T-0057), so
 - [ ] The docs naming a module (the README, the contribution contract, the readers) name the new modules.
 - [ ] Grid Zero follows in its own commit: its extension's two imports read from `graphe.core` and `graphe.godot`; its `graphe build` and reference test pass.
 - [ ] The git hooks and the layout fixture unchanged.
+
+## Comments
+
+- 2026-11-26: done on `integration/installable`, code-reviewed: one package `src/graphe/`, entry point `graphe.cli:main`; the tool-freshness check follows the package. Grid Zero's patch is ready (its two imports), to apply in Grid Zero when this reaches master.
