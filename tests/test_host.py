@@ -254,9 +254,8 @@ def test_an_expected_error_on_a_query_prints_one_line(tmp_path: Path):
     (tmp_path / "dehors").mkdir()
     r = _run(tmp_path / "dehors", "explain", "aider")
     assert r.returncode == 1 and "Traceback" not in r.stderr
-    line = r.stderr.strip().splitlines()[-1]
+    [line] = r.stderr.strip().splitlines()  # T-0069: the error alone, no rebuilding line before it
     assert line.startswith("graphe: ") and "dehors" in line and "files git tracks" in line
-    assert r.stderr.strip().splitlines()[-2].startswith("(the graph is older")  # nothing between
     host = _host(tmp_path / "hote", {"outils.py": CALLEE, "graphe.toml": WITH_EXTENSION,
                                      "ext/regles_du_temoin.py": "SALUT = 1\n"})
     r = _run(host, "search", "aider")

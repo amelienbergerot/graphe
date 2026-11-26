@@ -596,10 +596,12 @@ const anchor=()=>{const n=N.find(n=>n.id===decodeURIComponent(location.hash.slic
 
 def load(as_is: bool = False) -> nx.DiGraph:
     """The graph; rebuilt first if it is older than the host's code or than the tool."""
-    if not JSON.exists() or (not as_is and max((p.stat().st_mtime for p in _sources() + _tool()), default=0)
-                             > JSON.stat().st_mtime):
-        print("(the graph is older than the code or the tool: rebuilding)", file=sys.stderr)
-        build(quiet=True)
+    if not (as_is and JSON.exists()):
+        # The sources first: outside a git repository, their one-line error comes before any rebuilding line (T-0069).
+        newest = max((p.stat().st_mtime for p in _sources() + _tool()), default=0)
+        if not JSON.exists() or newest > JSON.stat().st_mtime:
+            print("(the graph is older than the code or the tool: rebuilding)", file=sys.stderr)
+            build(quiet=True)
     data = json.loads(JSON.read_bytes())
     graph = nx.DiGraph(communities=data["communities"], unattributed=data.get("unattributed", {}))
     for n in data["nodes"]:
