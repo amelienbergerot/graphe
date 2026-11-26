@@ -17,6 +17,8 @@ A spec, ready for `/to-spec` then `/to-tickets`: any developer, on Windows, macO
 
 ## Decisions so far
 
+- T-0049, the distribution channel: `graphe` taken on PyPI and as a command (`graphe-cli`); uv the smoother channel (it fetches the Python); a plugin ships the skill, not the CLI nor the permission rules.
+
 ## Not yet specified
 
 - The packaging: a `src/graphe/` package in place of the seven top-level modules (`graphe_core` and the others would collide in a user's environment).
