@@ -25,7 +25,7 @@ Le graphe quitte `grid_zero/tools/` pour devenir un paquet Python dans ce dépô
 **2026-11-17, fait (Grid Zero : son ticket T-0382).**
 
 - Le code vient du commit 23072de de Grid Zero : `src/` garde ses cinq modules à plat (`graphe`, `graphe_python`, `graphe_godot`, `graphe_php`, `graphe_enrichir`), plus `graphe_racine`, seul calcul de la racine : `GRAPHE_RACINE`, sinon `git rev-parse --show-toplevel` depuis le répertoire courant, sinon ce répertoire. `GRAPHE_RACINE` reste pour l'arbre figé, qui n'est pas un dépôt git.
-- Installation : `uv tool install -e E:/dev/graphe --python 3.14`. networkx, numpy et scipy sont figés aux versions de Grid Zero : la partition de Louvain et les positions de l'instantané en dépendent. Python 3.14 seulement (pas de scipy pour 3.15).
+- Installation : `uv tool install -e <graphe> --python 3.14`. networkx, numpy et scipy sont figés aux versions de Grid Zero : la partition de Louvain et les positions de l'instantané en dépendent. Python 3.14 seulement (pas de scipy pour 3.15).
 - `graphe_reference.py comparer` : identique à l'instantané, avec l'ancien outil comme avec l'outil extrait.
 - Tests : ceux des lecteurs sont ici (`tests/test_graphe.py`, seuls les imports ont changé). Deux tests lisent le vrai Grid Zero, à côté de ce dépôt (`conftest.py`, sautés s'il manque). La couverture de Grid Zero (`graphe verifier`) et le test de référence restent dans Grid Zero.
 - Le relais `tools/graphe.py` de Grid Zero pose `GRAPHE_RACINE` sur son dépôt, s'il n'est pas déjà posé, et transmet le code de sortie. Les crochets ont été posés, le post-commit lancé à la main (graphe reconstruit, pas d'`erreur.txt`), puis retirés : il n'y en avait pas avant.

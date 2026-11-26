@@ -40,14 +40,14 @@ Words such as *reader*, *contribution* and *takeover* are defined in [GLOSSARY.m
 
 ## Install
 
-Once for the account, both in editable mode, so that a fix in this repository serves every host at once:
+Once for the account, from the root of this repository's clone, both in editable mode, so that a fix in this repository serves every host at once:
 
 ```powershell
 # The command (Python 3.14: scipy does not exist yet for 3.15).
-uv tool install -e E:/dev/graphe --python 3.14
+uv tool install -e . --python 3.14
 
 # The Claude Code skill that teaches it to the agent in every project: a junction, not a copy.
-New-Item -ItemType Junction -Path "$HOME\.claude\skills\graphe" -Target "E:\dev\graphe\skills\graphe"
+New-Item -ItemType Junction -Path "$HOME\.claude\skills\graphe" -Target "$PWD\skills\graphe"
 ```
 
 Without an allow rule, each `graphe` query asks for approval (and a headless `claude -p` falls back to grep): add `Bash(graphe:*)` and `PowerShell(graphe *)` to `permissions.allow` in `~/.claude/settings.json`.

@@ -184,7 +184,7 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   name. Naming a test by its suite and name (`Suite.Name`) would take a
   query of its own for a macro call with a body.
 - **Only its author can install the tool.** (All hosts, 2026-11-18, the
-  user's request) The install depends on `E:/dev/graphe`, an editable
+  user's request) The install depends on a local clone, an editable
   `uv tool install` and PowerShell (README); ADR 0001 says "for a single
   user". The direction is other people's repositories: a published package,
   any OS, and ADR 0001 revisited. A separate effort, after the readers; until

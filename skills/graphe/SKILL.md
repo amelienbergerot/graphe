@@ -20,13 +20,15 @@ description: Locate code with the `graphe` command before grep or reading files 
 
 The graph rebuilds itself when the code or the tool is newer than it: trust the answer. Done when the answer names the code you need, or when it falls short (next section).
 
-The readers: listed in `E:/dev/graphe/docs/readers.md` (Python, GDScript, PHP, JavaScript/TypeScript/Svelte, Go, Rust, Java, C/C++, C#, Ruby, Swift, Kotlin...), and the Markdown documents (a document cites code between backticks, and other documents by identifier, `T-0012`). In a host whose code no reader takes yet, use grep and read the files. Outside the graph too: dynamic calls (`getattr`, stored callbacks), tests a host excludes, `.toml`, shaders - grep is the tool there.
+`<graphe>` below is the graphe repository, the target of the `~/.claude/skills/graphe` junction.
+
+The readers: listed in `<graphe>/docs/readers.md` (Python, GDScript, PHP, JavaScript/TypeScript/Svelte, Go, Rust, Java, C/C++, C#, Ruby, Swift, Kotlin...), and the Markdown documents (a document cites code between backticks, and other documents by identifier, `T-0012`). In a host whose code no reader takes yet, use grep and read the files. Outside the graph too: dynamic calls (`getattr`, stored callbacks), tests a host excludes, `.toml`, shaders - grep is the tool there.
 
 A new host: `graphe install` sets the git hooks that rebuild it and ignores its `graphe/` output folder. `graphe check` gives each contribution's coverage.
 
 ## Note a gap
 
-Each time the graph does not answer and you search by hand (grep, reading), add an entry to the tool's single backlog, `E:/dev/graphe/BACKLOG.md`, under "Open", as soon as the gap appears:
+Each time the graph does not answer and you search by hand (grep, reading), add an entry to the tool's single backlog, `<graphe>/BACKLOG.md`, under "Open", as soon as the gap appears:
 
 ```markdown
 - **What the graph could not tell, in one line.** (Host, YYYY-MM-DD)
@@ -35,6 +37,6 @@ Each time the graph does not answer and you search by hand (grep, reading), add 
 ```
 
 - One entry per gap: when it is already noted, extend that entry.
-- Commit it in the `E:/dev/graphe` repository, apart from the host's work.
+- Commit it in the `<graphe>` repository, apart from the host's work.
 - A settled entry moves to "Settled", with the commit that settles it.
 - A gap the language's missing reader explains (no reader for that host yet) is already known: skip it.
