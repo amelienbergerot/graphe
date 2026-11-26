@@ -25,10 +25,11 @@ A spec, ready for `/to-spec` then `/to-tickets`: any developer, on Windows, macO
 - T-0053, shipping the skill: a plugin, the repository its own marketplace; `allowed-tools` in the skill, the lasting rule a README line; "note a gap" leaves the shipped skill for `AGENTS.md`; the author keeps the junction; one version for skill and CLI.
 - T-0056, what going public publishes: Grid Zero and 4cast stay named, their extensions private; the history rewritten for the author alone (GitHub noreply), the cited hashes and the layout fixture renamed after it, as T-0054's first steps; the GitHub repository goes public, by the user, when the effort is done.
 - T-0057, the package: one package `src/graphe/` (`cli`, `core`, `root`, … the prefix dropped), entry point `graphe.cli:main`; the public contract `contribute(project)` alone, the rest internal; Grid Zero's two imports follow at once.
+- T-0058, the version and the release: SemVer from `0.1.0`; a pushed tag publishes by Trusted Publishing; one number in `pyproject.toml` and `plugin.json`, checked by the workflow; caps raised by ordinary commits; a contract change announced in `CHANGELOG.md`, at least a minor bump.
 
 ## Not yet specified
 
-- A stranger's first contact: the README, a minimal `graphe.toml`, what happens on a repository without one; one line on the `graphe` command of `graphe-cli` (T-0055); one line that a `graphe.toml` runs code (T-0051); the plugin install, the `permissions.allow` line, the copy for other agents (T-0053). Waits on the release (T-0058).
+- Nothing left in the fog: the remaining work is the open tickets.
 
 ## Out of scope
 
