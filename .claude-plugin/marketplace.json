@@ -1,5 +1,6 @@
 {
   "name": "graphe",
+  "description": "The graphe skill, from the graphe repository.",
   "owner": { "name": "amelienbergerot", "url": "https://github.com/amelienbergerot" },
   "plugins": [
     {
