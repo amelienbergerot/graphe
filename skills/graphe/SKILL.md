@@ -1,6 +1,7 @@
 ---
 name: graphe
-description: Locate code with the `graphe` command before grep or reading files - where X is defined, who calls it, what a change reaches, how A leads to B, which ticket motivated some code, the code behind a text seen on screen. Also use when the graph falls short and the gap goes in the tool's backlog.
+description: Locate code with the `graphe` command before grep or reading files - where X is defined, who calls it, what a change reaches, how A leads to B, which ticket motivated some code, the code behind a text seen on screen.
+allowed-tools: Bash(graphe *) PowerShell(graphe *)
 ---
 
 # graphe
@@ -20,23 +21,12 @@ description: Locate code with the `graphe` command before grep or reading files 
 
 The graph rebuilds itself when the code or the tool is newer than it: trust the answer. Done when the answer names the code you need, or when it falls short (next section).
 
-`<graphe>` below is the root of the graphe repository: the `~/.claude/skills/graphe` junction points to `<graphe>/skills/graphe`.
-
-The readers: listed in `<graphe>/docs/readers.md` (Python, GDScript, PHP, JavaScript/TypeScript/Svelte, Go, Rust, Java, C/C++, C#, Ruby, Swift, Kotlin...), and the Markdown documents (a document cites code between backticks, and other documents by identifier, `T-0012`). In a host whose code no reader takes yet, use grep and read the files. Outside the graph too: dynamic calls (`getattr`, stored callbacks), tests a host excludes, `.toml`, shaders - grep is the tool there.
+The readers: Python, GDScript, PHP, JavaScript/TypeScript/Svelte, Go, Rust, Java, C/C++, C#, Ruby, Swift, Kotlin..., and the Markdown documents (a document cites code between backticks, and other documents by identifier, `T-0012`). In a host whose code no reader takes yet, use grep and read the files. Outside the graph too: dynamic calls (`getattr`, stored callbacks), tests a host excludes, `.toml`, shaders - grep is the tool there.
 
 A new host: `graphe install` sets the git hooks that rebuild it and ignores its `graphe/` output folder. `graphe check` gives each contribution's coverage.
 
-## Note a gap
+## When the graph falls short
 
-Each time the graph does not answer and you search by hand (grep, reading), add an entry to the tool's single backlog, `<graphe>/BACKLOG.md`, under "Open", as soon as the gap appears:
+Grep and read the files.
 
-```markdown
-- **What the graph could not tell, in one line.** (Host, YYYY-MM-DD)
-  What you were looking for, what the graph answered, how you found it,
-  and the improvement that would have avoided the search.
-```
-
-- One entry per gap: when it is already noted, extend that entry.
-- Commit it in the `<graphe>` repository, apart from the host's work.
-- A settled entry moves to "Settled", with the commit that settles it.
-- A gap the language's missing reader explains (no reader for that host yet) is already known: skip it.
+A gap in the tool itself (a relation the graph should have known, an answer that misled you): tell the user in one line, what you looked for and what the graph answered. The user may report it on the repository's issues, https://github.com/amelienbergerot/graphe/issues; the report is the user's to file. A gap the language's missing reader explains (no reader for that host yet) is already known: skip it.

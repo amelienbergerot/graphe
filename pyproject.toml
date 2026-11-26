@@ -2,6 +2,8 @@
 name = "graphe"
 version = "0.1.0"
 description = "The code graph of a host project: what calls what, what cites what."
+license = "MIT"
+license-files = ["LICENSE"]
 # scipy (the layout of large graphs) does not exist yet for 3.15.
 requires-python = "==3.14.*"
 # Pinned: the communities (Louvain) and the positions of Grid Zero's reference test depend on them.
