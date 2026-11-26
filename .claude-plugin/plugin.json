@@ -1,0 +1,8 @@
+{
+  "name": "graphe",
+  "version": "0.1.0",
+  "description": "The skill that has the agent locate code with the graphe command (the code graph of the current git repository) before grep or reading files.",
+  "author": { "name": "amelienbergerot", "url": "https://github.com/amelienbergerot" },
+  "homepage": "https://github.com/amelienbergerot/graphe",
+  "repository": "https://github.com/amelienbergerot/graphe"
+}

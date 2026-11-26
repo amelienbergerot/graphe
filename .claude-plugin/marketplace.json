@@ -1,0 +1,11 @@
+{
+  "name": "graphe",
+  "owner": { "name": "amelienbergerot", "url": "https://github.com/amelienbergerot" },
+  "plugins": [
+    {
+      "name": "graphe",
+      "source": ".",
+      "description": "The skill that has the agent locate code with the graphe command before grep or reading files. The command installs apart (see the README)."
+    }
+  ]
+}
