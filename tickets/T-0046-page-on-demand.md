@@ -10,7 +10,7 @@ Created: 2026-11-23
 
 A new command, `graphe view [X]`, makes the page whenever the user asks, whatever the host's size: it rebuilds a stale graph first (as a query does), reads `graphe.json`, lays out the nodes with `layout()` as it is, writes `graphe/graphe.html` and opens it in the browser, on node X when given (`#<id>`, X designated as in `explain`). It rewrites the page each time; a page left from an earlier build stays (it shows its date and commit).
 
-Decided with the user (grilling, 2026-11-23): the layout leaves the build; a subcommand rather than a `build` option; no size threshold, either to make the page or to refuse it; `view` reads `graphe.json` rather than assembling again; the positions stay those of the fixture `layout_7681fac.json`; no `--no-open`; the skill does not mention `view` (an agent has no use for the page); Grid Zero follows in this ticket.
+Decided with the user (grilling, 2026-11-23): the layout leaves the build; a subcommand rather than a `build` option; no size threshold, either to make the page or to refuse it; `view` reads `graphe.json` rather than assembling again; the positions stay those of the fixture `layout_01a698e.json`; no `--no-open`; the skill does not mention `view` (an agent has no use for the page); Grid Zero follows in this ticket.
 
 ## Acceptance criteria
 

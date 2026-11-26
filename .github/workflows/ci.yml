@@ -1,0 +1,18 @@
+# T-0054: the tests and a build on the three OS, at the locked versions.
+# shortcut: Python 3.14 only, as `requires-python` pins it; the 3.13 and newest-versions jobs come with T-0052's ranges.
+name: CI
+on: [push, pull_request]
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --locked
+      - run: uv run --locked pytest -q -rs
+      # The sample host is graphe itself.
+      - run: uv run --locked graphe build

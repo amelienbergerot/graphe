@@ -514,8 +514,8 @@ def test_answers_name_each_neighbour_as_the_agent_designates_it_next(tmp_path: P
     assert "  flotte.py: Flotte.avancer:2, Reparations.avancer:7\n" in r.stdout, r.stdout
 
 
-# T-0017: the layout keeps the positions of the tool of 7681fac (T-0016 made it faster, not different).
-LAYOUT_FIXTURE = Path(__file__).parent / "layout_7681fac.json"
+# T-0017: the layout keeps the positions of the tool of 01a698e (T-0016 made it faster, not different).
+LAYOUT_FIXTURE = Path(__file__).parent / "layout_01a698e.json"
 
 
 def _many_communities(tmp_path: Path) -> Path:
