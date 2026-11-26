@@ -27,10 +27,11 @@ A spec, ready for `/to-spec` then `/to-tickets`: any developer, on Windows, macO
 - T-0057, the package: one package `src/graphe/` (`cli`, `core`, `root`, … the prefix dropped), entry point `graphe.cli:main`; the public contract `contribute(project)` alone, the rest internal; Grid Zero's two imports follow at once.
 - T-0058, the version and the release: SemVer from `0.1.0`; a pushed tag publishes by Trusted Publishing; one number in `pyproject.toml` and `plugin.json`, checked by the workflow; caps raised by ordinary commits; a contract change announced in `CHANGELOG.md`, at least a minor bump.
 - T-0059, a stranger's first contact: the README reordered (What it reads, Install, First graph; the author's part last); `graphe.toml` optional, no `init`; the code warning in one line; gaps to GitHub issues; an expected error in one line, no traceback.
+- T-0054, the tests on the three OS: the history rewritten and force-pushed (noreply, the fixture `layout_01a698e.json`); CI locked 3.14 on the three OS; Windows passes, Linux and macOS fail one test only (a `.cmd` fake Godot); no `LICENSE` yet, old SHAs to purge at GitHub.
 
 ## Not yet specified
 
-- Nothing left in the fog: the remaining ticket is the three-OS CI (T-0054).
+- Nothing left: the way is clear, the map ready for `/to-spec`.
 
 ## Out of scope
 
