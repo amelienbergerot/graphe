@@ -38,6 +38,7 @@ jobs:
         with:
           name: dist
           path: dist/
+      # @release/v1 is the ref the action's README documents (a branch that follows the v1 releases); setup-uv is pinned to a tag
       - uses: pypa/gh-action-pypi-publish@release/v1
   release:
     needs: pypi

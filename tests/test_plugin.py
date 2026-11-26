@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import tomllib
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
+_spec = importlib.util.spec_from_file_location("check_release", REPO / ".github" / "check_release.py")
+check_release = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(check_release)  # the release workflow's check: one comparison of the versions
 
 
 def test_the_plugin_carries_the_package_version_and_the_marketplace_none():
@@ -14,7 +18,7 @@ def test_the_plugin_carries_the_package_version_and_the_marketplace_none():
     plugin = json.loads((REPO / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
     marketplace = json.loads((REPO / ".claude-plugin" / "marketplace.json").read_text(encoding="utf-8"))
     assert plugin["name"] == "graphe"
-    assert plugin["version"] == package
+    assert check_release.mismatch(f"v{package}", REPO) is None
     [entry] = marketplace["plugins"]
     assert entry["name"] == "graphe" and entry["source"] == "."
     assert "version" not in entry and "version" not in marketplace.get("metadata", {})

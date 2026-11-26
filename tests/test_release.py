@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 CHECK = REPO / ".github" / "check_release.py"
+VERSION = tomllib.loads((REPO / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
 
 
 def check(tag: str, root: Path = REPO) -> subprocess.CompletedProcess[str]:
@@ -15,13 +17,13 @@ def check(tag: str, root: Path = REPO) -> subprocess.CompletedProcess[str]:
 
 
 def test_the_tag_of_the_package_version_passes():
-    assert check("v0.1.0").returncode == 0
+    assert check(f"v{VERSION}").returncode == 0
 
 
 def test_a_tag_other_than_the_package_version_fails_naming_both():
-    result = check("v0.2.0")
+    result = check("v0.0.0")
     assert result.returncode != 0
-    assert "v0.2.0" in result.stderr and "0.1.0" in result.stderr
+    assert "v0.0.0" in result.stderr and VERSION in result.stderr
 
 
 def test_a_plugin_version_other_than_the_package_fails(tmp_path):

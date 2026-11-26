@@ -55,7 +55,7 @@ The Claude Code skill, which teaches the command to the agent in every project, 
 claude plugin install graphe --marketplace amelienbergerot/graphe
 ```
 
-Without an allow rule, each `graphe` query asks for approval (and a headless `claude -p` falls back to grep): add `Bash(graphe:*)` and `PowerShell(graphe *)` to `permissions.allow` in `~/.claude/settings.json`.
+Without an allow rule, each `graphe` query asks for approval (and a headless `claude -p` falls back to grep): add `Bash(graphe *)` and `PowerShell(graphe *)` to `permissions.allow` in `~/.claude/settings.json`.
 
 Another agent: copy the [`skills/graphe/`](skills/graphe) folder where that agent reads its skills (the Agent Skills format).
 

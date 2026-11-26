@@ -16,8 +16,8 @@ A node is designated by its id, its name (`help`, `Class.method`),
 `file::name` (`tools.py::help`), a file by its path, or, in GDScript, by the
 constant that preloads its script (`Script.function`).
 
-The readers: python.py (the ast, calls resolved by types),
-godot.py (GDScript, by patterns) and js.py
+The readers: graphe/python.py (the ast, calls resolved by types),
+graphe/godot.py (GDScript, by patterns) and graphe/js.py
 (`.js`, `.mjs`, `.ts`, the script and markup of `.svelte`, by tree-sitter: calls
 resolved by the imports, by `new C()` or `f()` assigned, else by the name); generic.py reads
 Go, Rust, Java/Kotlin, C/C++, C#, Ruby, Swift and PHP (with the actions of a
@@ -72,7 +72,8 @@ from pathlib import Path
 
 import networkx as nx
 
-from graphe import core, generic, godot, js, python, root
+from graphe import core, generic, godot, js, python
+from graphe import root as graphe_root  # `root` is the host's path in this module's signatures
 from graphe.root import CONFIGURATION, OUTPUT, ROOT
 
 JSON = OUTPUT / "graphe.json"
@@ -90,7 +91,7 @@ OFF_CODE_WEIGHT = 4
 
 def _communities_config() -> tuple[dict[str, str], list[str]]:
     """`[communities]` of graphe.toml: the separate kinds (kind -> name), and the prefixes removed from names."""
-    table = root.configuration().get("communities", {})
+    table = graphe_root.configuration().get("communities", {})
     return {**SEPARATE, **table.get("separate", {})}, table.get("strip_prefixes", [])
 
 
@@ -98,7 +99,7 @@ def _communities_config() -> tuple[dict[str, str], list[str]]:
 
 def _sources() -> list[Path]:
     """T-0009: all the host's files, not only the readers' (an extension reads what it wants)."""
-    return root.files("") + [p for p in [ROOT / CONFIGURATION]  # files() tests is_file already
+    return graphe_root.files("") + [p for p in [ROOT / CONFIGURATION]  # files() tests is_file already
                                     + [ROOT / e.get("path", "") for e in _declared_extensions()] if p.is_file()]
 
 
@@ -141,7 +142,7 @@ class Project:
         self._graph = graph
 
     def files(self, suffix: str) -> list[Path]:
-        return root.files(suffix, self.root)
+        return graphe_root.files(suffix, self.root)
 
     @cached_property
     def graph(self) -> dict:
@@ -151,7 +152,7 @@ class Project:
 
 
 def _declared_extensions() -> list[dict]:
-    return root.configuration().get("extensions", [])
+    return graphe_root.configuration().get("extensions", [])
 
 
 def _extension(declaration: dict):
@@ -224,7 +225,7 @@ def assemble(checking: bool = False) -> tuple[nx.DiGraph, dict, list[dict], dict
     """The readers (and the `with_readers` extensions), then the core, then the other local extensions
     in the order of graphe.toml: the directed graph,
     the coverage, the dangling links and the sites of each contribution."""
-    configuration = root.configuration()
+    configuration = graphe_root.configuration()
     graph = nx.DiGraph()
     dangling: list[dict] = []
     # The readers together: their nodes come in sorted all at once, as before the contract (T-0007).
