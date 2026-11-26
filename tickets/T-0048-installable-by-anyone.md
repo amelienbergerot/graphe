@@ -26,10 +26,11 @@ A spec, ready for `/to-spec` then `/to-tickets`: any developer, on Windows, macO
 - T-0056, what going public publishes: Grid Zero and 4cast stay named, their extensions private; the history rewritten for the author alone (GitHub noreply), the cited hashes and the layout fixture renamed after it, as T-0054's first steps; the GitHub repository goes public, by the user, when the effort is done.
 - T-0057, the package: one package `src/graphe/` (`cli`, `core`, `root`, … the prefix dropped), entry point `graphe.cli:main`; the public contract `contribute(project)` alone, the rest internal; Grid Zero's two imports follow at once.
 - T-0058, the version and the release: SemVer from `0.1.0`; a pushed tag publishes by Trusted Publishing; one number in `pyproject.toml` and `plugin.json`, checked by the workflow; caps raised by ordinary commits; a contract change announced in `CHANGELOG.md`, at least a minor bump.
+- T-0059, a stranger's first contact: the README reordered (What it reads, Install, First graph; the author's part last); `graphe.toml` optional, no `init`; the code warning in one line; gaps to GitHub issues; an expected error in one line, no traceback.
 
 ## Not yet specified
 
-- Nothing left in the fog: the remaining work is the open tickets.
+- Nothing left in the fog: the remaining ticket is the three-OS CI (T-0054).
 
 ## Out of scope
 
