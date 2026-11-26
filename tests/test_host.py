@@ -181,6 +181,10 @@ def test_help_or_an_unknown_flag_prints_the_help_and_runs_nothing(tmp_path: Path
     for flag, code in (("--help", 0), ("-h", 0), ("--uninstall", 2)):
         r = _run(host, "install", flag)
         assert r.returncode == code and "graphe install" in r.stdout, flag
+    # `graphe --help` alone, the README's first command (T-0063's wheel job): the help, exit 0.
+    for flag, code in (("--help", 0), ("-h", 0), ("--nothing", 2)):
+        r = _run(host, flag)
+        assert r.returncode == code and "graphe install" in r.stdout, flag
     assert _hooks(host) == {} and not (host / ".gitignore").exists()
 
 

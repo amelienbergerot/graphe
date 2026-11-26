@@ -949,6 +949,9 @@ def _command(arguments: list[str]) -> int:
     if not sys.stdout.isatty():
         sys.stdout.reconfigure(encoding="utf-8")
     command, rest = (arguments[0], arguments[1:]) if arguments else ("", [])
+    if command in ("-h", "--help"):
+        print(__doc__)
+        return 0
     # An unknown flag ran the command: `install --help` installed the hooks.
     unknown = [a for a in rest if a == "-h" or (a.startswith("--") and a not in FLAGS)]
     if unknown:
