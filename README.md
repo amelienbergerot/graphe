@@ -12,17 +12,17 @@ It says where it stops. A link guessed from the name alone is marked `[by name]`
 
 ```
 $ graphe explain assemble
-assemble()  [function]  src/graphe.py:223-254
+assemble()  [function]  src/graphe/cli.py:223-254
 
 what it calls:
   calls (5)
-    src/graphe.py: _declared_extensions:153, _extension:157, _insert:174, _take_over:207, _sorted:263
+    src/graphe/cli.py: _declared_extensions:153, _extension:157, _insert:174, _take_over:207, _sorted:263
   cites (2)
     T-0007, T-0008
 
 what calls it:
   calls (2)
-    src/graphe.py: build:408, check:836
+    src/graphe/cli.py: build:408, check:848
   names (3) [by name]
     T-0012, T-0025, T-0034
 ```

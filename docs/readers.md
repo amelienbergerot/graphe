@@ -1,26 +1,26 @@
 # The readers
 
-A reader turns a host's files of one language into nodes, links and coverage sites, through `contribute(project)` (docs/contribution.md). Each is registered in `READERS` (`src/graphe.py`) under the name of its `graphe.toml` section, the key of its configuration and of its coverage in `graphe check`.
+A reader turns a host's files of one language into nodes, links and coverage sites, through `contribute(project)` (docs/contribution.md). Each is registered in `READERS` (`src/graphe/cli.py`) under the name of its `graphe.toml` section, the key of its configuration and of its coverage in `graphe check`.
 
 | Section | Reader | Languages | Suffixes |
 |---|---|---|---|
-| `python` | dedicated, `graphe_python.py` | Python | `.py` |
-| `godot` | dedicated, `graphe_godot.py` | GDScript | `.gd` |
-| `js` | dedicated, `graphe_js.py` | JavaScript, TypeScript, Svelte | `.js`, `.mjs`, `.ts`, `.svelte` |
-| `go` | generic, `graphe_generic.py` | Go | `.go` |
-| `rust` | generic, `graphe_generic.py` | Rust | `.rs` |
-| `java` | generic, `graphe_generic.py` | Java, Kotlin | `.java`, `.kt` |
-| `c` | generic, `graphe_generic.py` | C, C++ | `.c`, `.h`, `.cpp`, `.cc`, `.cxx`, `.hpp` |
-| `csharp` | generic, `graphe_generic.py` | C# | `.cs` |
-| `ruby` | generic, `graphe_generic.py` | Ruby | `.rb` |
-| `swift` | generic, `graphe_generic.py` | Swift | `.swift` |
-| `php` | generic, `graphe_generic.py` | PHP | `.php` |
+| `python` | dedicated, `graphe/python.py` | Python | `.py` |
+| `godot` | dedicated, `graphe/godot.py` | GDScript | `.gd` |
+| `js` | dedicated, `graphe/js.py` | JavaScript, TypeScript, Svelte | `.js`, `.mjs`, `.ts`, `.svelte` |
+| `go` | generic, `graphe/generic.py` | Go | `.go` |
+| `rust` | generic, `graphe/generic.py` | Rust | `.rs` |
+| `java` | generic, `graphe/generic.py` | Java, Kotlin | `.java`, `.kt` |
+| `c` | generic, `graphe/generic.py` | C, C++ | `.c`, `.h`, `.cpp`, `.cc`, `.cxx`, `.hpp` |
+| `csharp` | generic, `graphe/generic.py` | C# | `.cs` |
+| `ruby` | generic, `graphe/generic.py` | Ruby | `.rb` |
+| `swift` | generic, `graphe/generic.py` | Swift | `.swift` |
+| `php` | generic, `graphe/generic.py` | PHP | `.php` |
 
 A **dedicated reader** knows its language's imports and types, and links a call for sure where it can. The **generic reader** (ADR 0003, GLOSSARY.md) reads every other language the same way, by its name alone.
 
 ## The generic reader
 
-`src/graphe_generic.py`. A language is data only, a `Language`: its tree-sitter grammars by file suffix, a query of ours per grammar, its **common names**, the method names never linked from a call on a receiver, two switches for C/C++'s macros, C#'s `#if`, Swift's and Go's newer syntax and Rust's `dyn 'a + Trait`: `tolerant` (a file with error nodes is read, not skipped) and `erased` (a pattern blanked before parsing; ADR 0003's amendment), and `apart` (a bare call is linked to a function only, a send to a method only: PHP's, T-0044). The reading, the owner of a call, the `Class.method` naming and the linking are written once.
+`src/graphe/generic.py`. A language is data only, a `Language`: its tree-sitter grammars by file suffix, a query of ours per grammar, its **common names**, the method names never linked from a call on a receiver, two switches for C/C++'s macros, C#'s `#if`, Swift's and Go's newer syntax and Rust's `dyn 'a + Trait`: `tolerant` (a file with error nodes is read, not skipped) and `erased` (a pattern blanked before parsing; ADR 0003's amendment), and `apart` (a bare call is linked to a function only, a send to a method only: PHP's, T-0044). The reading, the owner of a call, the `Class.method` naming and the linking are written once.
 
 ### The capture convention
 
@@ -74,10 +74,10 @@ A file that does not parse (any error node in its tree) is skipped and named on 
 ### Adding a language
 
 1. Pin its grammar in the main dependencies (`pyproject.toml`, `uv add tree-sitter-<language>==<version>`).
-2. Write its query in `graphe_generic.py` from the grammar's `tags.scm`, in the capture convention above: definitions with a body only (an abstract method or a signature would make each name ambiguous with its implementation).
+2. Write its query in `graphe/generic.py` from the grammar's `tags.scm`, in the capture convention above: definitions with a body only (an abstract method or a signature would make each name ambiguous with its implementation).
 3. Its `Language`: the name of its `graphe.toml` section, the grammar and query per suffix, a first list of common names; `tolerant` if valid code leaves error nodes, `erased` for what the grammar cannot read and blanks keep in place (C/C++, T-0034; C#'s `#if` lines, T-0035); `apart` if a bare call can never be a method (PHP, T-0044).
 4. A snippet test at the seam `read(language, file, source)` (`tests/test_generic.py`): its definitions and its uses with their owners.
-5. Its entry in `READERS` (`functools.partial(graphe_generic.contribute, graphe_generic.<LANGUAGE>)`).
+5. Its entry in `READERS` (`functools.partial(generic.contribute, generic.<LANGUAGE>)`).
 6. Its sample host (docs/sample-hosts.md): build, no dangling link, `graphe check`; tune the common names from the most frequent sends linked by name; three queries compared with grep; its README row and its section here; what it misses in BACKLOG.md, naming the host.
 
 A quirk the query cannot express is a `shortcut:` in its section here. A language that needs code of its own is the proof that it needs a dedicated reader (ADR 0003).
@@ -249,6 +249,6 @@ A quirk the query cannot express is a `shortcut:` in its section here. A languag
 
 Each is specified in its module's docstring.
 
-- **Python**, `graphe_python.py`: the `ast`, a call resolved by its receiver's type (annotations, constructions, returns), by the name alone otherwise; a cache of each file's definitions (T-0026).
-- **GDScript**, `graphe_godot.py`: by patterns, a `preload` constant designates its script, a variable typed by it or made by `X.new()` sends its calls there; `check` recounts the calls.
-- **JavaScript, TypeScript, Svelte**, `graphe_js.py`: tree-sitter, ES imports and re-exports followed, `new C()` and `f()` assigned typed, by the name otherwise; a Svelte component's script and markup (T-0014, T-0015, T-0022).
+- **Python**, `graphe/python.py`: the `ast`, a call resolved by its receiver's type (annotations, constructions, returns), by the name alone otherwise; a cache of each file's definitions (T-0026).
+- **GDScript**, `graphe/godot.py`: by patterns, a `preload` constant designates its script, a variable typed by it or made by `X.new()` sends its calls there; `check` recounts the calls.
+- **JavaScript, TypeScript, Svelte**, `graphe/js.py`: tree-sitter, ES imports and re-exports followed, `new C()` and `f()` assigned typed, by the name otherwise; a Svelte component's script and markup (T-0014, T-0015, T-0022).

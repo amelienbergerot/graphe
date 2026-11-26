@@ -29,8 +29,8 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import graphe_root
-from graphe_root import ROOT
+from graphe import root
+from graphe.root import ROOT
 
 BUILTINS = set(dir(builtins))
 # The methods of the containers we know how to type: what they return.
@@ -39,7 +39,7 @@ TO_CONTAINER = {"values", "copy", "keys"}
 
 
 def files() -> list[Path]:
-    return graphe_root.files(".py")
+    return root.files(".py")
 
 
 def _id(text: str) -> str:
@@ -901,7 +901,7 @@ class Reader:
 
 def contribute(project) -> dict:
     """The Python reader's contribution (docs/contribution.md): a site per call, and its alerts."""
-    reader = Reader(project.files(".py"), project.root, project.root / graphe_root.OUTPUT.name / "cache")
+    reader = Reader(project.files(".py"), project.root, project.root / root.OUTPUT.name / "cache")
     our_names = set(reader.by_name) | reader.class_names
     sites = []
     for s in reader.sites:

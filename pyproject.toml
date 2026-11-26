@@ -25,7 +25,7 @@ dependencies = [
 ]
 
 [project.scripts]
-graphe = "graphe:main"
+graphe = "graphe.cli:main"
 
 [dependency-groups]
 dev = ["pytest==9.1.1"]
@@ -36,7 +36,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 package-dir = { "" = "src" }
-py-modules = ["graphe", "graphe_root", "graphe_python", "graphe_godot", "graphe_js", "graphe_generic", "graphe_core"]
+packages = ["graphe"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -7,14 +7,13 @@ from pathlib import Path
 
 import networkx as nx
 
-import graphe
-import graphe_generic
-from graphe_generic import C, CSHARP, GO, JAVA, JVM, KOTLIN, PHP, RUBY, RUST, SWIFT
+from graphe import cli, generic
+from graphe.generic import C, CSHARP, GO, JAVA, JVM, KOTLIN, PHP, RUBY, RUST, SWIFT
 
 
 def _read(language, file: str, source: str):
     """The definitions (kind, name, line) and the uses (kind, name, line, owner's name) an agent would see."""
-    definitions, uses = graphe_generic.read(language, file, textwrap.dedent(source).encode())
+    definitions, uses = generic.read(language, file, textwrap.dedent(source).encode())
     return ({(d.kind, d.name, d.line) for d in definitions},
             {(u.kind, u.name, u.line, u.owner.name if u.owner else None) for u in uses})
 
@@ -600,10 +599,10 @@ def test_a_call_is_linked_by_its_name_only_when_the_language_defines_it_once(tmp
         "broken/x.go": "package x\n\nfunc (( {\n",
     })
     # a host without Java: no contribution at all, no coverage (T-0031)
-    assert graphe_generic.contribute(JAVA, project) == {}
+    assert generic.contribute(JAVA, project) == {}
 
     # not tolerant, so that the broken file is skipped and named (Go is tolerant since T-0039)
-    go = graphe_generic.contribute(GO._replace(common=frozenset({"Get"}), tolerant=False), project)
+    go = generic.contribute(GO._replace(common=frozenset({"Get"}), tolerant=False), project)
     nodes = {n["id"]: (n["kind"], n["name"], n["source_location"]) for n in go["nodes"]}
     assert nodes["a_a_go"] == ("file", "a/a.go", "L1")
     assert nodes["a_a_go_store_save"] == ("method", "Store.Save", "L5")
@@ -616,7 +615,7 @@ def test_a_call_is_linked_by_its_name_only_when_the_language_defines_it_once(tmp
     verdicts = {s["text"]: s["verdict"] for s in go["sites"]}
     assert verdicts == {"Unique": "ours?", "x.Save": "ours?", "x.Get": "common", "b.Twice": "ambiguous",
                         "Shared": "external", "fmt.Println": "external"}
-    rust = graphe_generic.contribute(RUST, project)
+    rust = generic.contribute(RUST, project)
     assert not [e for e in rust["links"] if e["relation"] == "calls"]
     assert {s["text"]: s["verdict"] for s in rust["sites"]} == {"Unique": "external"}
 
@@ -637,7 +636,7 @@ def test_a_java_class_is_referenced_by_what_extends_and_builds_it_and_its_overlo
             }
             """,
     })
-    java = graphe_generic.contribute(JAVA, project)
+    java = generic.contribute(JAVA, project)
     assert [n["id"] for n in java["nodes"] if n["kind"] == "method"] == ["b_b_java_b_o", "c_c_java_c_m"]
     assert {(e["source"], e["target"], e["relation"]) for e in java["links"] if e["relation"] != "contains"} == {
         ("c_c_java_c", "b_b_java_b", "references"), ("c_c_java_c_m", "b_b_java_b", "references"),
@@ -659,7 +658,7 @@ def test_a_cpp_call_to_a_c_function_is_linked_and_its_header_prototype_is_no_def
         "upb/arena.c": "upb_Arena* upb_Arena_New(void) { return 0; }\n",
         "src/user.cc": "void Use() { upb_Arena_New(); }\n",
     })
-    c = graphe_generic.contribute(C, project)
+    c = generic.contribute(C, project)
     assert {(n["kind"], n["name"]) for n in c["nodes"] if n["kind"] != "file"} == {
         ("class", "Holder"), ("method", "Holder.Reset"), ("function", "upb_Arena_New"), ("function", "Use")}
     assert sorted((e["source"], e["target"]) for e in c["links"] if e["relation"] == "calls") == [
@@ -686,7 +685,7 @@ def test_a_kotlin_call_to_a_java_method_is_linked_and_the_reverse(tmp_path: Path
             fun fromKotlin() {}
             """,
     })
-    jvm = graphe_generic.contribute(JVM, project)
+    jvm = generic.contribute(JVM, project)
     ids = [n["id"] for n in jvm["nodes"]]
     assert "src_foo_java" in ids and "src_foo_kt" in ids and len(ids) == len(set(ids))
     assert {(e["source"], e["target"], e["relation"]) for e in jvm["links"] if e["relation"] != "contains"} == {
@@ -719,7 +718,7 @@ def test_two_nested_builders_of_one_file_are_two_nodes_and_a_call_both_define_is
             }
             """,
     })
-    java = graphe_generic.contribute(JAVA, project)
+    java = generic.contribute(JAVA, project)
     names = {n["id"]: n["name"] for n in java["nodes"]}
     assert names["src_msgs_java_foo_builder"] == "Foo.Builder" and names["src_msgs_java_bar_builder"] == "Bar.Builder"
     assert names["src_msgs_java_foo_builder_build"] == "Foo.Builder.build"
@@ -732,10 +731,10 @@ def test_two_nested_builders_of_one_file_are_two_nodes_and_a_call_both_define_is
 
     graph = nx.DiGraph()
     graph.add_nodes_from((n["id"], n) for n in java["nodes"])
-    assert graphe.find(graph, "Foo.Builder.build") == ["src_msgs_java_foo_builder_build"]
-    assert graphe.find(graph, "Builder.build") == ["src_msgs_java_bar_builder_build", "src_msgs_java_foo_builder_build"]
-    assert graphe.find(graph, "Only") == ["src_msgs_java_bar_only"]
-    assert graphe._designation(graph, "src_msgs_java_foo_builder_build") == "Foo.Builder.build"
+    assert cli.find(graph, "Foo.Builder.build") == ["src_msgs_java_foo_builder_build"]
+    assert cli.find(graph, "Builder.build") == ["src_msgs_java_bar_builder_build", "src_msgs_java_foo_builder_build"]
+    assert cli.find(graph, "Only") == ["src_msgs_java_bar_only"]
+    assert cli._designation(graph, "src_msgs_java_foo_builder_build") == "Foo.Builder.build"
 
 
 def test_a_php_bare_call_is_linked_to_a_function_only_and_a_send_to_a_method_only(tmp_path: Path):
@@ -749,7 +748,7 @@ def test_a_php_bare_call_is_linked_to_a_function_only_and_a_send_to_a_method_onl
             function caller($f) { count($f); $f->count(); pack(); $f->pack(); }
             """,
     })
-    php = graphe_generic.contribute(PHP, project)
+    php = generic.contribute(PHP, project)
     calls = {(e["target"], e["source_location"]) for e in php["links"] if e["relation"] == "calls"}
     assert calls == {("a_php_field_count", "L4"), ("a_php_pack", "L4"), ("a_php_field_pack", "L4")}
     verdicts = {s["text"]: s["verdict"] for s in php["sites"]}
@@ -769,7 +768,7 @@ def test_a_php_caught_type_is_a_reference_to_its_class(tmp_path: Path):
             }
             """,
     })
-    php = graphe_generic.contribute(PHP, project)
+    php = generic.contribute(PHP, project)
     references = {(e["source"], e["target"], e["source_location"]) for e in php["links"]
                   if e["relation"] == "references"}
     assert references == {("api_lib_php_lire", "api_lib_php_erreuramont", "L5"),
@@ -813,7 +812,7 @@ def test_a_php_case_is_an_action_owning_its_calls_an_empty_one_dispatching_to_th
             switch ($autre) { case 'apres': switch ($y) { case 'dedans': gz_lire(2); } }
             """,
     })
-    php = graphe_generic.contribute(PHP, project)
+    php = generic.contribute(PHP, project)
     actions = {n["id"]: (n["label"], n["name"]) for n in php["nodes"] if n["kind"] == "action"}
     f = "web_api_php"
     # an empty case leads to the next case only (not past `case "x":`, `default:` or into the next switch); a case in

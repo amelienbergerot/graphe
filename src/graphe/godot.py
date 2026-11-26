@@ -1,6 +1,6 @@
 """The code graph, client side: the host's GDScript scripts (res://: godot/).
 
-Each .gd script of the host becomes nodes and links, which graphe.py merges
+Each .gd script of the host becomes nodes and links, which cli.py merges
 with those of the other readers.
 
 What the reader reads, by patterns and not by a grammar:
@@ -29,8 +29,8 @@ import tokenize
 from collections import Counter, defaultdict
 from pathlib import Path
 
-import graphe_root
-from graphe_root import OUTPUT, ROOT
+from graphe import root
+from graphe.root import OUTPUT, ROOT
 
 # shortcut: res:// starts at godot/, as in the first host; a .gd elsewhere breaks - look for project.godot if
 # needed.
@@ -46,7 +46,7 @@ CALLS_BY_NAME = re.compile(r"""\b(?:call_deferred|callv?|has_method|Callable\(\s
 
 
 def scripts() -> list[Path]:
-    return graphe_root.files(".gd")
+    return root.files(".gd")
 
 
 def _id(path: Path) -> str:
@@ -305,7 +305,7 @@ def _engine_api(api: dict | None) -> tuple[set[str], set[str]]:
     cached = OUTPUT / "extension_api.json"
     if api is None and not cached.exists():
         # Looked for after the cache: a frozen tree can receive the API without Godot.
-        godot = graphe_root.executable("godot", "godot")
+        godot = root.executable("godot", "godot")
         if godot is None:
             return set(), set()  # nothing in cache: the key, once set, serves at the next build
         with tempfile.TemporaryDirectory() as folder:

@@ -5,7 +5,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-import graphe_root
+from graphe import root
 
 
 def test_the_root_is_the_git_repository_of_the_current_directory(tmp_path: Path, monkeypatch):
@@ -13,6 +13,6 @@ def test_the_root_is_the_git_repository_of_the_current_directory(tmp_path: Path,
     subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
     (tmp_path / "a" / "b").mkdir(parents=True)
     monkeypatch.chdir(tmp_path / "a" / "b")
-    assert graphe_root.root() == tmp_path.resolve()
+    assert root.root() == tmp_path.resolve()
     monkeypatch.setenv("GRAPHE_ROOT", str(tmp_path / "a"))  # the frozen tree of the reference test
-    assert graphe_root.root() == (tmp_path / "a").resolve()
+    assert root.root() == (tmp_path / "a").resolve()

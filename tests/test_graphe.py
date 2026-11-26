@@ -13,8 +13,7 @@ from pathlib import Path
 
 import pytest
 
-import graphe
-import graphe_python
+from graphe import cli, python
 from conftest import grid_zero
 
 ENGINE_PY = '''
@@ -99,14 +98,14 @@ def handle_command(moteur: Moteur, message: dict) -> dict:
 
 
 @pytest.fixture
-def reader(tmp_path: Path) -> graphe_python.Reader:
+def reader(tmp_path: Path) -> python.Reader:
     (tmp_path / "simulation").mkdir()
     paths = []
     for name, text in (("moteur", ENGINE_PY), ("flotte", FLEET_PY), ("server", SERVER_PY)):
         path = tmp_path / "simulation" / f"{name}.py"
         path.write_bytes(textwrap.dedent(text).encode("utf-8"))
         paths.append(path)
-    return graphe_python.Reader(paths, root=tmp_path)
+    return python.Reader(paths, root=tmp_path)
 
 
 def _links(reader, relation: str = "calls") -> set[tuple[str, str]]:
@@ -140,14 +139,14 @@ def test_a_module_variable_computed_from_itself_ends(tmp_path: Path):
     """T-0015, 4cast's script: `for l in rows: l = l[1:]` at the top of a module looped the typing forever."""
     path = tmp_path / "script.py"
     path.write_text("rows = [[1]]\nfor l in rows:\n    l = l[1:]\n    l.count(1)\n", encoding="utf-8")
-    graphe_python.Reader([path], root=tmp_path)
+    python.Reader([path], root=tmp_path)
 
 
 def test_the_cache_gives_the_same_reading_and_reads_an_edited_file_again(reader, tmp_path: Path):
     """T-0026: each file's parse and definitions come from the cache; the resolution is redone in full."""
     paths = sorted((tmp_path / "simulation").glob("*.py"))
     def read(cache):
-        r = graphe_python.Reader(paths, root=tmp_path, cache=cache)
+        r = python.Reader(paths, root=tmp_path, cache=cache)
         return r.nodes, r.links, r.sites
     cache = tmp_path / "cache"
     assert read(cache) == read(None)
@@ -175,10 +174,10 @@ def test_find_a_node_by_its_name(reader):
     g = nx.DiGraph()
     for n in reader.nodes:
         g.add_node(n["id"], **n)
-    assert graphe.find(g, "Moteur.pas") == [f"{M}moteur_pas"]
-    assert graphe.find(g, "moteur.py::pas") == [f"{M}moteur_pas"]
-    assert set(graphe.find(g, "pousser")) == {f"{F}flotte_pousser"}
-    assert graphe.find(g, "inexistant") == []
+    assert cli.find(g, "Moteur.pas") == [f"{M}moteur_pas"]
+    assert cli.find(g, "moteur.py::pas") == [f"{M}moteur_pas"]
+    assert set(cli.find(g, "pousser")) == {f"{F}flotte_pousser"}
+    assert cli.find(g, "inexistant") == []
 
 
 PHP = """<?php
@@ -206,7 +205,7 @@ switch ($action) {
 
 
 def test_extent_and_notes_of_a_body():
-    import graphe_core as gc
+    from graphe import core as gc
     lines = textwrap.dedent('''\
         # Le pas du moteur,
         # en deux lignes.
@@ -228,9 +227,9 @@ def test_extent_and_notes_of_a_body():
 
 def _enrich(g, root: Path) -> None:
     """The core, on sources written in `root`: a git repository, from which it draws the documents (T-0010)."""
-    import graphe_core
+    from graphe import core
     subprocess.run(["git", "init", "-q", str(root)], check=True)
-    graphe_core.enrich(g, root)
+    core.enrich(g, root)
 
 
 def test_enrich_links_variables_and_finds_by_the_text(tmp_path: Path):
@@ -251,7 +250,7 @@ def test_enrich_links_variables_and_finds_by_the_text(tmp_path: Path):
     ''').encode("utf-8"))
     # T-0009: the pattern of the call that displays a text comes from the host.
     (tmp_path / "graphe.toml").write_text("displayed_text = '\\btr\\(\"([^\"]*)\"'\n", encoding="utf-8")
-    read = graphe_python.Reader([path], root=tmp_path)
+    read = python.Reader([path], root=tmp_path)
     g = nx.DiGraph()
     for n in read.nodes:
         g.add_node(n["id"], **n)
@@ -260,9 +259,9 @@ def test_enrich_links_variables_and_finds_by_the_text(tmp_path: Path):
     assert "reads" in g[f"{f}avancer"][f"{f}limite"]["relations"]
     assert "writes" in g[f"{f}avancer"][f"{f}compte"]["relations"]
     assert g.nodes[f"{f}avancer"]["texts"] == ["Réseau stable"]
-    assert [n for n, _ in graphe.search_nodes(g, "réseau stable")] == [f"{f}avancer"]
-    assert [n for n, _ in graphe.search_nodes(g, "clarte")] == [f"{f}avancer"]
-    assert [n for n, _ in graphe.search_nodes(g, "def avancer")] == [f"{f}avancer"]
+    assert [n for n, _ in cli.search_nodes(g, "réseau stable")] == [f"{f}avancer"]
+    assert [n for n, _ in cli.search_nodes(g, "clarte")] == [f"{f}avancer"]
+    assert [n for n, _ in cli.search_nodes(g, "def avancer")] == [f"{f}avancer"]
 
 
 def test_a_value_written_on_both_sides(tmp_path: Path):
@@ -284,7 +283,7 @@ def test_a_value_written_on_both_sides(tmp_path: Path):
         \t\treturn "ok"
         \treturn ""
     ''').encode("utf-8"))
-    read = graphe_python.Reader(sorted((tmp_path / "serveur").rglob("*.py")), root=tmp_path)
+    read = python.Reader(sorted((tmp_path / "serveur").rglob("*.py")), root=tmp_path)
     g = nx.DiGraph()
     for n in read.nodes:
         g.add_node(n["id"], **n)
@@ -293,14 +292,14 @@ def test_a_value_written_on_both_sides(tmp_path: Path):
     _enrich(g, tmp_path)
     assert {s for s, _ in g.in_edges("value_coupee")} == {"serveur_etat_construire", "godot_lecture_texte"}
     assert "value_voisin" not in g  # written on one side only
-    assert [n for n, _ in graphe.search_nodes(g, "coupee")] == ["value_coupee"]
-    community_of, names = graphe.communities(g)
+    assert [n for n, _ in cli.search_nodes(g, "coupee")] == ["value_coupee"]
+    community_of, names = cli.communities(g)
     assert names[community_of["value_coupee"]] == "values"
 
 
 def test_a_keyed_link_from_the_body_that_names_a_key_to_the_code_that_answers_it(tmp_path: Path):
     """T-0047: 4cast's front names its routes, its PHP answers them; `sends`, by the key alone."""
-    import graphe_core
+    from graphe import core
     import networkx as nx
 
     (tmp_path / "front.ts").write_text(textwrap.dedent('''\
@@ -362,7 +361,7 @@ def test_a_keyed_link_from_the_body_that_names_a_key_to_the_code_that_answers_it
     for keys, message in (("names = 'api'\nanswers = '(x)'", "keys.names"), ("names = '(x)'", "answers")):
         (tmp_path / "graphe.toml").write_text(f"[keys]\n{keys}\n", encoding="utf-8")
         with pytest.raises(RuntimeError, match=message):
-            graphe_core.enrich(nx.DiGraph(), tmp_path)
+            core.enrich(nx.DiGraph(), tmp_path)
 
 
 def test_fields_import_aliases_and_tickets(tmp_path: Path):
@@ -395,7 +394,7 @@ def test_fields_import_aliases_and_tickets(tmp_path: Path):
     ''').encode("utf-8"))
     (tmp_path / "tickets" / "T-0999-essai.md").write_bytes(
         b"---\nid: T-0999\ntitle: Un essai\n---\n\n`lire` lit la demande.\n")
-    read = graphe_python.Reader(sorted((tmp_path / "simulation").glob("*.py")), root=tmp_path)
+    read = python.Reader(sorted((tmp_path / "simulation").glob("*.py")), root=tmp_path)
     g = nx.DiGraph()
     for n in read.nodes:
         g.add_node(n["id"], **n)
@@ -419,11 +418,11 @@ def test_fields_import_aliases_and_tickets(tmp_path: Path):
 def test_godot_resolves_its_preloads():
     """On the real repository: `Charte.ACCENT` read through the preload,
     `Progress.record` found through it, a send from the client leads to its action."""
-    g, *_ = graphe.assemble()
+    g, *_ = cli.assemble()
     accent = next(n for n, d in g.nodes(data=True) if d["source_file"] == "godot/menu/charte.gd" and d["name"] == "ACCENT")
     assert sum("reads" in g[s][accent]["relations"] and g[s][accent]["confidence"] == "EXTRACTED"
                for s in g.predecessors(accent)) >= 10
-    assert [g.nodes[n]["source_file"] for n in graphe.find(g, "Progress.record")] == ["godot/settings/progress.gd"]
+    assert [g.nodes[n]["source_file"] for n in cli.find(g, "Progress.record")] == ["godot/settings/progress.gd"]
     assert any("sends" in g[s]["web_api_scenarios_php_action_defi_envoyer"]["relations"]
                for s in g.predecessors("web_api_scenarios_php_action_defi_envoyer"))
     # The keys of the state: the client reads `demand_rising_beyond` by its key.
@@ -437,10 +436,10 @@ def test_godot_resolves_its_preloads():
 
 @grid_zero
 def test_the_graph_does_not_change_from_one_build_to_the_next():
-    g1, *_ = graphe.assemble()
-    g2, *_ = graphe.assemble()
+    g1, *_ = cli.assemble()
+    g2, *_ = cli.assemble()
     assert sorted(g1.edges) == sorted(g2.edges)
-    assert graphe.communities(g1) == graphe.communities(g2)
+    assert cli.communities(g1) == cli.communities(g2)
 
 
 def test_undirected_the_path_prefers_the_code(capsys):
@@ -454,10 +453,10 @@ def test_undirected_the_path_prefers_the_code(capsys):
     for s, t, rel in (("a", "b", "calls"), ("b", "c", "calls"), ("c", "d", "calls"),
                       ("a", "value_x", "value"), ("d", "value_x", "value")):
         g.add_edge(s, t, relations={rel}, confidence="EXTRACTED", locations=["f.py:1"], contexts=[])
-    assert graphe.path(g, "a", "d", undirected=True) == 0
+    assert cli.path(g, "a", "d", undirected=True) == 0
     assert "value_x" not in capsys.readouterr().out
     g.remove_edge("b", "c")
-    assert graphe.path(g, "a", "d", undirected=True) == 0
+    assert cli.path(g, "a", "d", undirected=True) == 0
     assert "value_x" in capsys.readouterr().out
 
 
@@ -491,11 +490,11 @@ JS = {
 
 
 def _js(tmp_path: Path, files: dict[str, str]):
-    import graphe_js
+    from graphe import js
     for rel, text in files.items():
         (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
         (tmp_path / rel).write_text(text, encoding="utf-8")
-    return graphe_js.Reader([tmp_path / rel for rel in sorted(files)], root=tmp_path)
+    return js.Reader([tmp_path / rel for rel in sorted(files)], root=tmp_path)
 
 
 def test_the_js_reader_follows_named_and_default_imports_and_method_calls(tmp_path: Path):

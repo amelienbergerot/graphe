@@ -16,13 +16,13 @@ A node is designated by its id, its name (`help`, `Class.method`),
 `file::name` (`tools.py::help`), a file by its path, or, in GDScript, by the
 constant that preloads its script (`Script.function`).
 
-The readers: graphe_python.py (the ast, calls resolved by types),
-graphe_godot.py (GDScript, by patterns) and graphe_js.py
+The readers: python.py (the ast, calls resolved by types),
+godot.py (GDScript, by patterns) and js.py
 (`.js`, `.mjs`, `.ts`, the script and markup of `.svelte`, by tree-sitter: calls
-resolved by the imports, by `new C()` or `f()` assigned, else by the name); graphe_generic.py reads
+resolved by the imports, by `new C()` or `f()` assigned, else by the name); generic.py reads
 Go, Rust, Java/Kotlin, C/C++, C#, Ruby, Swift and PHP (with the actions of a
 `switch ($action)`) by tree-sitter, a call linked by its name only when the
-language (or family) defines it once (docs/readers.md lists every reader). The core, graphe_core.py, then
+language (or family) defines it once (docs/readers.md lists every reader). The core, core.py, then
 reads the text: the end of each function and class, the texts it displays
 (the `displayed_text` pattern of graphe.toml), its comment, module variables
 and who reads them, and the documents (the host's Markdown, `[documents]` of
@@ -37,11 +37,11 @@ documents; `strip_prefixes` removes prefixes from community names.
 
 The contract (docs/contribution.md): readers and local extensions return a
 contribution through `contribute(project)`. Assembly runs the readers, then
-the core (graphe_core), then the extensions declared by `[[extensions]]`
+the core (core.py), then the extensions declared by `[[extensions]]`
 in graphe.toml, in their order. A `with_readers` extension comes in with the
 readers, before the core, and may take over their links.
 
-Files read (graphe_root.py): those git tracks, plus untracked files that
+Files read (root.py): those git tracks, plus untracked files that
 are not ignored, each to the reader of its extension; `exclude`, in an
 optional graphe.toml at the host root, removes folders.
 
@@ -72,13 +72,8 @@ from pathlib import Path
 
 import networkx as nx
 
-import graphe_core
-import graphe_generic
-import graphe_godot
-import graphe_js
-import graphe_python
-import graphe_root
-from graphe_root import CONFIGURATION, OUTPUT, ROOT
+from graphe import core, generic, godot, js, python, root
+from graphe.root import CONFIGURATION, OUTPUT, ROOT
 
 JSON = OUTPUT / "graphe.json"
 HOOKS = ("post-commit", "post-merge", "post-checkout", "post-rewrite")
@@ -95,7 +90,7 @@ OFF_CODE_WEIGHT = 4
 
 def _communities_config() -> tuple[dict[str, str], list[str]]:
     """`[communities]` of graphe.toml: the separate kinds (kind -> name), and the prefixes removed from names."""
-    table = graphe_root.configuration().get("communities", {})
+    table = root.configuration().get("communities", {})
     return {**SEPARATE, **table.get("separate", {})}, table.get("strip_prefixes", [])
 
 
@@ -103,13 +98,13 @@ def _communities_config() -> tuple[dict[str, str], list[str]]:
 
 def _sources() -> list[Path]:
     """T-0009: all the host's files, not only the readers' (an extension reads what it wants)."""
-    return graphe_root.files("") + [p for p in [ROOT / CONFIGURATION]  # files() tests is_file already
+    return root.files("") + [p for p in [ROOT / CONFIGURATION]  # files() tests is_file already
                                     + [ROOT / e.get("path", "") for e in _declared_extensions()] if p.is_file()]
 
 
 def _tool() -> list[Path]:
     """The tool's files (T-0006): a fixed reader makes every host's graph stale."""
-    return sorted(Path(__file__).parent.glob("graphe*.py"))
+    return sorted(Path(__file__).parent.glob("*.py"))
 
 
 def _commit() -> str | None:
@@ -122,15 +117,15 @@ def _commit() -> str | None:
 
 
 # Each reader under the name of its graphe.toml section: the key of its configuration and of its coverage.
-READERS = {"python": graphe_python.contribute, "godot": graphe_godot.contribute, "js": graphe_js.contribute,
-           "go": functools.partial(graphe_generic.contribute, graphe_generic.GO),
-           "rust": functools.partial(graphe_generic.contribute, graphe_generic.RUST),
-           "java": functools.partial(graphe_generic.contribute, graphe_generic.JVM),
-           "c": functools.partial(graphe_generic.contribute, graphe_generic.C),
-           "csharp": functools.partial(graphe_generic.contribute, graphe_generic.CSHARP),
-           "ruby": functools.partial(graphe_generic.contribute, graphe_generic.RUBY),
-           "swift": functools.partial(graphe_generic.contribute, graphe_generic.SWIFT),
-           "php": functools.partial(graphe_generic.contribute, graphe_generic.PHP)}
+READERS = {"python": python.contribute, "godot": godot.contribute, "js": js.contribute,
+           "go": functools.partial(generic.contribute, generic.GO),
+           "rust": functools.partial(generic.contribute, generic.RUST),
+           "java": functools.partial(generic.contribute, generic.JVM),
+           "c": functools.partial(generic.contribute, generic.C),
+           "csharp": functools.partial(generic.contribute, generic.CSHARP),
+           "ruby": functools.partial(generic.contribute, generic.RUBY),
+           "swift": functools.partial(generic.contribute, generic.SWIFT),
+           "php": functools.partial(generic.contribute, generic.PHP)}
 NODE_FIELDS = ("id", "label", "kind", "source_file", "source_location", "name")
 LINK_FIELDS = ("source", "target", "relation", "confidence", "source_file", "source_location", "context")
 
@@ -146,7 +141,7 @@ class Project:
         self._graph = graph
 
     def files(self, suffix: str) -> list[Path]:
-        return graphe_root.files(suffix, self.root)
+        return root.files(suffix, self.root)
 
     @cached_property
     def graph(self) -> dict:
@@ -156,7 +151,7 @@ class Project:
 
 
 def _declared_extensions() -> list[dict]:
-    return graphe_root.configuration().get("extensions", [])
+    return root.configuration().get("extensions", [])
 
 
 def _extension(declaration: dict):
@@ -229,7 +224,7 @@ def assemble(checking: bool = False) -> tuple[nx.DiGraph, dict, list[dict], dict
     """The readers (and the `with_readers` extensions), then the core, then the other local extensions
     in the order of graphe.toml: the directed graph,
     the coverage, the dangling links and the sites of each contribution."""
-    configuration = graphe_root.configuration()
+    configuration = root.configuration()
     graph = nx.DiGraph()
     dangling: list[dict] = []
     # The readers together: their nodes come in sorted all at once, as before the contract (T-0007).
@@ -242,7 +237,7 @@ def assemble(checking: bool = False) -> tuple[nx.DiGraph, dict, list[dict], dict
     readers += [(d.get("path", ""), _extension(d)(Project(d, graph, checking))) for d in with_]
     _take_over(readers)
     _insert(graph, readers, dangling)
-    graphe_core.enrich(graph, ROOT)
+    core.enrich(graph, ROOT)
     contributions = list(readers)
     for declaration in after:
         contribution = (declaration.get("path", ""), _extension(declaration)(Project(declaration, graph, checking)))
@@ -619,12 +614,12 @@ def _bare(label: str) -> str:
 
 def _preloads(root: Path = ROOT) -> dict[str, set[str]]:
     """The constants that preload a GDScript script, and that script:
-    `const Outils = preload("res://menu/outils.gd")` -> godot/menu/outils.gd (graphe_godot.GODOT)."""
+    `const Outils = preload("res://menu/outils.gd")` -> godot/menu/outils.gd (godot.GODOT)."""
     pattern = re.compile(r'^const\s+(\w+)\s*=\s*preload\("res://([^"]+\.gd)"\)', re.M)
     alias: dict[str, set[str]] = defaultdict(set)
-    for script in graphe_godot.scripts():
+    for script in godot.scripts():
         for name, target in pattern.findall(script.read_bytes().decode("utf-8", "replace")):
-            alias[name].add(graphe_godot.res(target))
+            alias[name].add(godot.res(target))
     return alias
 
 

@@ -41,8 +41,8 @@ from pathlib import Path
 
 import networkx as nx
 
-import graphe_godot
-import graphe_root
+from graphe import godot
+from graphe import root as graphe_root  # `root` is the host's path in this module's signatures
 
 BODIES = {"function", "method", "command", "action", "class"}
 # An extent and a comment, without being a body that owns its lines.
@@ -254,8 +254,8 @@ def enrich(graph: nx.DiGraph, root: Path) -> None:
     py_files = {rel for rel in file_lines if rel.endswith(".py")}
     for rel, lines in file_lines.items():
         local = variables.get(rel, {})
-        # GDScript: `Script.CONSTANT`, where Script preloads a script (res://: godot/, graphe_godot.GODOT).
-        alias = {name: graphe_godot.res(target) for name, target in PRELOAD.findall("\n".join(lines))} \
+        # GDScript: `Script.CONSTANT`, where Script preloads a script (res://: godot/, godot.GODOT).
+        alias = {name: godot.res(target) for name, target in PRELOAD.findall("\n".join(lines))} \
             if rel.endswith(".gd") else {}
         # Python: `alias.CONSTANT`, alias a module imported under that name.
         py_alias = _python_aliases(lines, py_files) if rel.endswith(".py") else {}

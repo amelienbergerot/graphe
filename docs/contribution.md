@@ -35,6 +35,8 @@ strip_prefixes = ["src/"]           # optional: removed from a community's name
 
 The file is a Python module that defines `contribute(project)`. An extension that is declared but not found stops the build, with a message that gives its path. So does a module without `contribute`.
 
+It runs in graphe's environment, so it may import the `graphe` package (`graphe.core`, `graphe.godot`, …). The contract is `contribute(project)`, `project` and the shape of the nodes and links below, nothing else: the rest of the package is internal, changed without notice (T-0057).
+
 The extension's file is a host file like any other: the Python reader reads it too, unless `exclude` excludes it.
 
 ## `project`
@@ -78,7 +80,7 @@ All fields are required.
 | Field | What it is |
 |---|---|
 | `source`, `target` | The ids of both ends. |
-| `relation` | `calls`, `contains`, `imports`, `reads`, `writes`, `cites`, `sends`, `dispatches`, … or a relation specific to the extension. `callers` follows only the call relations (`CALLS`, in `graphe.py`). |
+| `relation` | `calls`, `contains`, `imports`, `reads`, `writes`, `cites`, `sends`, `dispatches`, … or a relation specific to the extension. `callers` follows only the call relations (`CALLS`, in `graphe/cli.py`). |
 | `confidence` | `"EXTRACTED"` (a sure link) or `"INFERRED"` (a link made by the name alone). Between two nodes, an `EXTRACTED` link wins. |
 | `source_file`, `source_location` | The location of the link (`"L12"`). |
 | `context` | A word about the link (the alias of an import, the name of an order), or `""`. |

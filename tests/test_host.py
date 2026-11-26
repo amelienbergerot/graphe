@@ -26,8 +26,8 @@ def _run(host: Path, *arguments: str, env: dict | None = None) -> subprocess.Com
     # The root is fixed at import: a separate process, on the sample host (not on Grid Zero, cf. conftest).
     env = {**(env or os.environ), "GRAPHE_ROOT": str(host)}
     # T-0046: `view` prints the address it would open, the tests open no browser.
-    return subprocess.run([sys.executable, "-c", "import sys, webbrowser, graphe; webbrowser.open = print; "
-                                                 "sys.exit(graphe.main(sys.argv[1:]))",
+    return subprocess.run([sys.executable, "-c", "import sys, webbrowser, graphe.cli; webbrowser.open = print; "
+                                                 "sys.exit(graphe.cli.main(sys.argv[1:]))",
                            *arguments], cwd=host, env=env, capture_output=True, text=True, encoding="utf-8")
 
 
@@ -115,7 +115,7 @@ def test_with_the_key_the_engine_calls_are_resolved(tmp_path: Path):
 
 
 # T-0006: the graph is stale if a file of the host or of the tool is newer than it.
-TOOL = Path(__file__).resolve().parents[1] / "src"
+TOOL = Path(__file__).resolve().parents[1] / "src" / "graphe"
 REBUILDING = "rebuilding"
 
 
@@ -126,7 +126,7 @@ def test_a_graph_older_than_the_tool_is_rebuilt(tmp_path: Path):
     for f in ("outils.py", "travail.py"):
         os.utime(host / f, (0, 0))
     json_ = host / "graphe" / "graphe.json"
-    tool = max(p.stat().st_mtime for p in TOOL.glob("graphe*.py"))
+    tool = max(p.stat().st_mtime for p in TOOL.glob("*.py"))
     os.utime(json_, (tool + 3600, tool + 3600))  # control: newer than everything, nothing to rebuild
     r = _run(host, "explain", "aider")
     assert r.returncode == 0 and REBUILDING not in r.stderr, r.stderr
@@ -239,6 +239,18 @@ def test_an_extension_not_found_stops_the_build_and_names_itself(tmp_path: Path)
     assert r.returncode != 0
     assert "ext/regles_du_temoin.py" in r.stderr and "Traceback" not in r.stderr
     assert not (host / "graphe" / "graphe.json").exists()
+
+
+def test_an_extension_imports_the_graphe_package_beside_the_host_s_graphe_folder(tmp_path: Path):
+    # T-0061: Grid Zero's imports; the second build runs with the host's graphe/ output folder in the current directory.
+    host = _host(tmp_path, {"outils.py": CALLEE, "graphe.toml": WITH_EXTENSION,
+                            "ext/regles_du_temoin.py": "from graphe.core import BODIES, _comment\n"
+                                                       "from graphe.godot import Script\n\n\n"
+                                                       "def contribute(projet):\n    return {}\n"})
+    for _ in range(2):
+        r = _run(host, "build")
+        assert r.returncode == 0, r.stderr
+    assert (host / "graphe" / "graphe.json").exists()
 
 
 def test_a_new_node_without_its_fields_stops_the_build(tmp_path: Path):

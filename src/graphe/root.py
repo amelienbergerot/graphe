@@ -14,8 +14,8 @@ nothing, with a warning that names the key.
 
 The other keys of graphe.toml (T-0009): `displayed_text`, the pattern of the
 call that displays a text, and `[documents]`, `patterns` and `identifier`
-(T-0010, graphe_core); `[communities]`, `separate` and `strip_prefixes`
-(graphe.py); `[[extensions]]` (docs/contribution.md).
+(T-0010, core.py); `[communities]`, `separate` and `strip_prefixes`
+(cli.py); `[[extensions]]` (docs/contribution.md).
 """
 
 from __future__ import annotations
