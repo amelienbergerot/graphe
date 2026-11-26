@@ -241,6 +241,28 @@ def test_an_extension_not_found_stops_the_build_and_names_itself(tmp_path: Path)
     assert not (host / "graphe" / "graphe.json").exists()
 
 
+def test_an_expected_error_on_a_query_prints_one_line(tmp_path: Path):
+    # T-0065: outside a git repository, or an extension without contribute(project): one line, exit 1.
+    (tmp_path / "dehors").mkdir()
+    r = _run(tmp_path / "dehors", "explain", "aider")
+    assert r.returncode == 1 and "Traceback" not in r.stderr
+    line = r.stderr.strip().splitlines()[-1]
+    assert line.startswith("graphe: ") and "dehors" in line and "files git tracks" in line
+    assert r.stderr.strip().splitlines()[-2].startswith("(the graph is older")  # nothing between
+    host = _host(tmp_path / "hote", {"outils.py": CALLEE, "graphe.toml": WITH_EXTENSION,
+                                     "ext/regles_du_temoin.py": "SALUT = 1\n"})
+    r = _run(host, "search", "aider")
+    assert r.returncode == 1 and "Traceback" not in r.stderr
+    assert r.stderr.strip().splitlines()[-1].startswith("graphe: ") and "contribute(project)" in r.stderr
+
+
+def test_a_real_bug_keeps_its_traceback(tmp_path: Path):
+    host = _host(tmp_path, {"outils.py": CALLEE, "graphe.toml": WITH_EXTENSION,
+                            "ext/regles_du_temoin.py": "def contribute(projet):\n    return 1 / 0\n"})
+    r = _run(host, "search", "aider")
+    assert r.returncode == 1 and "Traceback" in r.stderr and "ZeroDivisionError" in r.stderr
+
+
 def test_an_extension_imports_the_graphe_package_beside_the_host_s_graphe_folder(tmp_path: Path):
     # T-0061: Grid Zero's imports; the second build runs with the host's graphe/ output folder in the current directory.
     host = _host(tmp_path, {"outils.py": CALLEE, "graphe.toml": WITH_EXTENSION,

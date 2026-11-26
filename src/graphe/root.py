@@ -61,7 +61,7 @@ def files(suffix: str, root: Path = ROOT) -> list[Path]:
     r = subprocess.run(["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"], cwd=root,
                        capture_output=True, text=True, encoding="utf-8", timeout=60)
     if r.returncode:
-        raise RuntimeError(f"{root} is not a git repository: graphe reads the files git tracks\n{r.stderr}")
+        raise RuntimeError(f"{root} is not a git repository: graphe reads the files git tracks")
     patterns = [OUTPUT.name, *configuration(root).get("exclude", [])]
     # Sorted Paths, like the old rglob: the reading order does not change.
     return sorted(root / rel for rel in set(r.stdout.split("\0"))

@@ -934,7 +934,16 @@ FLAGS = {"--quiet", "--undirected", "--all", "--source", "--depth", "--remove"}
 
 
 def main(arguments: list[str] | None = None) -> int:
-    arguments = sys.argv[1:] if arguments is None else arguments  # the `graphe` command
+    """The `graphe` command. An expected error (a RuntimeError: not a git repository, an extension not found, an
+    incomplete node) prints one line, `graphe: <message>`; a real bug keeps its traceback (T-0065)."""
+    try:
+        return _command(sys.argv[1:] if arguments is None else arguments)
+    except RuntimeError as e:
+        print(f"graphe: {e}", file=sys.stderr)
+        return 1
+
+
+def _command(arguments: list[str]) -> int:
     # Read by another program (an agent, a pipe), cp1252 printed « D?fi ».
     if not sys.stdout.isatty():
         sys.stdout.reconfigure(encoding="utf-8")
@@ -949,11 +958,8 @@ def main(arguments: list[str] | None = None) -> int:
     if command == "build":
         try:
             return build(quiet="--quiet" in rest)
-        except Exception as e:
+        except Exception:
             if "--quiet" not in rest:
-                if isinstance(e, RuntimeError):  # an extension not found, an incomplete node: the message suffices
-                    print(f"graphe: {e}", file=sys.stderr)
-                    return 1
                 raise
             import traceback  # noqa: PLC0415 - the error path only
             OUTPUT.mkdir(exist_ok=True)
