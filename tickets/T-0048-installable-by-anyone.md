@@ -26,10 +26,7 @@ A spec, ready for `/to-spec` then `/to-tickets`: any developer, on Windows, macO
 
 ## Not yet specified
 
-- The packaging: a `src/graphe/` package in place of the seven top-level modules (`graphe_core` and the others would collide in a user's environment). Its name, `graphe` or `graphe_code`: PyPI's `graphe` installs a `graphe` module too (T-0055).
-- The version number and the release process (the grammar caps raised at a release, T-0052); how a change to the `contribute(project)` contract is announced (T-0051); the plugin's `version` set with the package's (T-0053).
-- A stranger's first contact: the README, a minimal `graphe.toml`, what happens on a repository without one; one line on the `graphe` command of `graphe-cli` (T-0055); one line that a `graphe.toml` runs code (T-0051); the plugin install, the `permissions.allow` line, the copy for other agents (T-0053).
-- The local extensions of Grid Zero and 4cast: public examples, or kept private.
+- A stranger's first contact: the README, a minimal `graphe.toml`, what happens on a repository without one; one line on the `graphe` command of `graphe-cli` (T-0055); one line that a `graphe.toml` runs code (T-0051); the plugin install, the `permissions.allow` line, the copy for other agents (T-0053). Waits on the package (T-0057), the release (T-0058) and what goes public (T-0056).
 
 ## Out of scope
 
