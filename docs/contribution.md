@@ -35,7 +35,46 @@ strip_prefixes = ["src/"]           # optional: removed from a community's name
 
 The file is a Python module that defines `contribute(project)`. An extension that is declared but not found stops the build, with a message that gives its path. So does a module without `contribute`.
 
-It runs in graphe's environment, so it may import the `graphe` package (`graphe.core`, `graphe.godot`, …). The contract is `contribute(project)`, `project` and the shape of the nodes and links below, nothing else: the rest of the package is internal, changed without notice (T-0057).
+The contract is public: it is graphe's interface for anyone's extensions, and a change to it is announced in `CHANGELOG.md` (ADR 0004, T-0058). It is `contribute(project)`, `project` and the shape of the nodes and links below, nothing else.
+
+An extension runs in graphe's environment, not the host's: `uv tool` isolates graphe, so an extension imports the standard library and graphe's dependencies (networkx, tree-sitter…), not the host's packages, and declares none of its own. It may import the `graphe` package (`graphe.core`, `graphe.godot`, …), but outside the contract the package is internal, changed without notice (T-0057).
+
+A small extension, after the core: each `FIXME:` comment of the host's Python files becomes a `fixme` node that its file contains.
+
+```python
+# tools/fixmes.py
+import re
+
+MARK = re.compile(r"#\s*FIXME:\s*(.*)")
+
+
+def contribute(project):
+    files = {n["source_file"]: id for id, n in project.graph["nodes"].items() if n.get("kind") == "file"}
+    nodes, links = [], []
+    for path in project.files(".py"):
+        rel = path.relative_to(project.root).as_posix()
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if (found := MARK.search(line)) and rel in files:
+                id = f"fixme_{rel}_{number}"
+                nodes.append({"id": id, "label": found[1], "kind": "fixme", "name": found[1],
+                              "source_file": rel, "source_location": f"L{number}"})
+                links.append({"source": files[rel], "target": id, "relation": "contains",
+                              "confidence": "EXTRACTED", "source_file": rel,
+                              "source_location": f"L{number}", "context": ""})
+    return {"nodes": nodes, "links": links}
+```
+
+```toml
+exclude = ["tools"]                  # the extension is no code of the host to graph
+
+[[extensions]]
+path = "tools/fixmes.py"
+
+[communities]
+separate = { fixme = "fixmes" }
+```
+
+`graphe explain app.py` then lists the file's FIXMEs among what it contains.
 
 The extension's file is a host file like any other: the Python reader reads it too, unless `exclude` excludes it.
 
