@@ -18,12 +18,17 @@ A spec, ready for `/to-spec` then `/to-tickets`: any developer, on Windows, macO
 ## Decisions so far
 
 - T-0049, the distribution channel: `graphe` taken on PyPI and as a command (`graphe-cli`); uv the smoother channel (it fetches the Python); a plugin ships the skill, not the CLI nor the permission rules.
+- T-0055, the name: the command stays `graphe`, the distribution is `graphe-code`; the import name left to the packaging.
+- T-0050, the licence: MIT, `Copyright (c) 2026 Amélien Bergerot`, a root `LICENSE` and PEP 639 fields; the dependencies are all permissive.
+- T-0051, ADR 0001 revised: ADR 0004 replaces its install half (uv from PyPI for a user, editable for the author); local extensions stand, their contract now public, run in graphe's environment, a `graphe.toml` runs code (said in the README).
+- T-0052, Python and the pins: `>=3.13` uncapped (3.12 lacks `full_match`); ranges in `pyproject.toml` (grammars capped at the next minor), exact versions in `uv.lock`; the layout reproducible per set of versions; CI locked on 3 OS × 3.13/newest, plus one newest-versions job.
+- T-0053, shipping the skill: a plugin, the repository its own marketplace; `allowed-tools` in the skill, the lasting rule a README line; "note a gap" leaves the shipped skill for `AGENTS.md`; the author keeps the junction; one version for skill and CLI.
 
 ## Not yet specified
 
-- The packaging: a `src/graphe/` package in place of the seven top-level modules (`graphe_core` and the others would collide in a user's environment).
-- The version number and the release process.
-- A stranger's first contact: the README, a minimal `graphe.toml`, what happens on a repository without one.
+- The packaging: a `src/graphe/` package in place of the seven top-level modules (`graphe_core` and the others would collide in a user's environment). Its name, `graphe` or `graphe_code`: PyPI's `graphe` installs a `graphe` module too (T-0055).
+- The version number and the release process (the grammar caps raised at a release, T-0052); how a change to the `contribute(project)` contract is announced (T-0051); the plugin's `version` set with the package's (T-0053).
+- A stranger's first contact: the README, a minimal `graphe.toml`, what happens on a repository without one; one line on the `graphe` command of `graphe-cli` (T-0055); one line that a `graphe.toml` runs code (T-0051); the plugin install, the `permissions.allow` line, the copy for other agents (T-0053).
 - The local extensions of Grid Zero and 4cast: public examples, or kept private.
 
 ## Out of scope

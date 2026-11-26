@@ -1,5 +1,7 @@
 # One tool installed once, local extensions in each host
 
+The install half (editable mode from a clone, for a single user) is replaced by [ADR 0004](0004-published-install-editable-for-the-author.md); the local extensions stand.
+
 The graph was born in `grid_zero/tools/` with paths and notions of Grid Zero hard-coded (scenarios, the `EtatDeJeu` protocol, the `simulation_server_cmd_` commands). It becomes a separate repository, installed as a global command in editable mode (`uv tool install -e`), and everything that holds for one host only leaves the core: it is a local extension, stored in the host's repository and declared in its `graphe.toml`.
 
 ## Options set aside
