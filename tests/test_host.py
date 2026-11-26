@@ -102,12 +102,16 @@ def test_without_godot_the_gdscript_reader_goes_on_and_names_the_key(tmp_path: P
 
 
 def test_with_the_key_the_engine_calls_are_resolved(tmp_path: Path):
-    # A fake Godot: it writes an API where Node has add_child, where it is run.
-    # shortcut: a .cmd, Windows only (outside the scope of T-0001); a Python script if the tool leaves Windows.
+    # A fake Godot: a Python script that writes an API where Node has add_child, where it is run.
     api = '{"classes":[{"name":"Node","methods":[{"name":"add_child"}]}],' \
           '"builtin_classes":[],"utility_functions":[],"singletons":[]}'
-    host = _host(tmp_path, {"godot/main.gd": SCRIPT_GD, "outils/godot.cmd": f"@echo {api}> extension_api.json\n",
-                            "graphe.toml": '[godot]\nexecutable = "outils/godot.cmd"\n'}, tracked="godot/main.gd")
+    script = f"#!{sys.executable}\nopen('extension_api.json', 'w').write({api!r})\n"
+    # The key names one program: the script itself where a shebang runs it, a .cmd launching it on Windows.
+    launcher = {"outils/godot.cmd": f'@"{sys.executable}" "%~dp0godot.py"\n'} if os.name == "nt" else {}
+    executable = "outils/godot.cmd" if launcher else "outils/godot.py"
+    host = _host(tmp_path, {"godot/main.gd": SCRIPT_GD, "outils/godot.py": script, **launcher,
+                            "graphe.toml": f'[godot]\nexecutable = "{executable}"\n'}, tracked="godot/main.gd")
+    (host / "outils/godot.py").chmod(0o755)
     r = _run(host, "build", env=_without_godot())
     assert r.returncode == 0, r.stderr
     assert "not found" not in r.stderr
