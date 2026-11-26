@@ -23,10 +23,11 @@ A spec, ready for `/to-spec` then `/to-tickets`: any developer, on Windows, macO
 - T-0051, ADR 0001 revised: ADR 0004 replaces its install half (uv from PyPI for a user, editable for the author); local extensions stand, their contract now public, run in graphe's environment, a `graphe.toml` runs code (said in the README).
 - T-0052, Python and the pins: `>=3.13` uncapped (3.12 lacks `full_match`); ranges in `pyproject.toml` (grammars capped at the next minor), exact versions in `uv.lock`; the layout reproducible per set of versions; CI locked on 3 OS × 3.13/newest, plus one newest-versions job.
 - T-0053, shipping the skill: a plugin, the repository its own marketplace; `allowed-tools` in the skill, the lasting rule a README line; "note a gap" leaves the shipped skill for `AGENTS.md`; the author keeps the junction; one version for skill and CLI.
+- T-0056, what going public publishes: Grid Zero and 4cast stay named, their extensions private; the history rewritten for the author alone (GitHub noreply), the cited hashes and the layout fixture renamed after it, as T-0054's first steps; the GitHub repository goes public, by the user, when the effort is done.
 
 ## Not yet specified
 
-- A stranger's first contact: the README, a minimal `graphe.toml`, what happens on a repository without one; one line on the `graphe` command of `graphe-cli` (T-0055); one line that a `graphe.toml` runs code (T-0051); the plugin install, the `permissions.allow` line, the copy for other agents (T-0053). Waits on the package (T-0057), the release (T-0058) and what goes public (T-0056).
+- A stranger's first contact: the README, a minimal `graphe.toml`, what happens on a repository without one; one line on the `graphe` command of `graphe-cli` (T-0055); one line that a `graphe.toml` runs code (T-0051); the plugin install, the `permissions.allow` line, the copy for other agents (T-0053). Waits on the package (T-0057), and the release (T-0058).
 
 ## Out of scope
 
