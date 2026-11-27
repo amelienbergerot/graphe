@@ -530,6 +530,16 @@ def test_a_svelte_host_answers_path_and_explain_with_its_issues(tmp_path: Path):
     assert "35" in r.stdout, r.stdout  # an issue cites another
 
 
+def test_a_vue_host_answers_explain_with_a_call_of_its_template_among_the_callers(tmp_path: Path):
+    """T-0082: `{{ total(n) }}` in a Vue template calls the component's function."""
+    host = _host(tmp_path, {
+        "src/Compte.vue": "<template>\n  <p>{{ total(2) }}</p>\n</template>\n\n<script setup lang=\"ts\">\n"
+                          "function total(n: number): number {\n  return n\n}\n</script>\n",
+    }, tracked=".")
+    r = _run(host, "explain", "total")
+    assert r.returncode == 0 and "what calls it:\n  calls (1)\n    src/Compte.vue\n" in r.stdout, r.stdout + r.stderr
+
+
 def test_answers_name_each_neighbour_as_the_agent_designates_it_next(tmp_path: Path):
     """T-0016: neighbours by file, `Class.method:line`; tickets by their identifier; an ambiguous name by `file::name`."""
     host = _host(tmp_path, {

@@ -261,16 +261,19 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   build environment, which ADR 0002 set aside for the TypeScript compiler,
   and an index goes stale between runs. A local extension (ADR 0001) first,
   if a host has an index; set aside on 2026-11-27 (T-0071).
-- **Vue is not read.** (graphe, the user's request, 2026-11-27) README's
+
+## Settled
+
+Settled by tickets (2026-11-27):
+
+- **Vue is not read.** [T-0082] (graphe, the user's request, 2026-11-27) README's
   "Not read" row: a Vue host gets no graph of its components, nor of the
   calls in their template. `.jsx` and `.tsx` are read since T-0076 (the
   JavaScript grammar, the TSX one); what is left is Vue (T-0082): a `.vue`
   file's `<script>` and template would take Svelte's path. A JSX
   `<Component/>` as a link is the framework entry's (T-0047).
-
-## Settled
-
-Settled by tickets (2026-11-27):
+  T-0082: a `.vue` file's script and template take Svelte's path, the
+  script in the grammar its `lang` names.
 
 - **A module variable holding a multi-line string runs to the end of its
   file.** [T-0083] (graphe, 2026-11-27, T-0075) `graphe affected` listed

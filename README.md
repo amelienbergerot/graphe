@@ -31,11 +31,10 @@ what calls it:
 
 | How | What |
 |---|---|
-| Through imports and types (sure links) | Python, JavaScript, TypeScript, JSX and TSX (`.jsx`, `.tsx`), Svelte (script and markup), GDScript (Godot) |
+| Through imports and types (sure links) | Python, JavaScript, TypeScript, JSX and TSX (`.jsx`, `.tsx`), Svelte and Vue (script and template), GDScript (Godot) |
 | By name (the generic reader, `[by name]` links) | Go, Rust, Java, Kotlin, C, C++, C#, Ruby, Swift, PHP |
 | Documents | Markdown: tickets and documents, and what they cite |
 | Frameworks | None specifically: a front-to-back link (a route the front requests and the back answers) through `[keys]` of `graphe.toml` |
-| Not read | Vue |
 
 Each language in detail, with its suffixes: [docs/readers.md](docs/readers.md).
 
@@ -88,7 +87,7 @@ A gap in the graph (a call it should have linked, a language it misreads) is wel
 ## How it works
 
 1. **Files**: graphe reads the files git tracks, plus untracked files that are not ignored, minus the folders listed in `exclude` in the host's optional `graphe.toml`. Each file goes to the reader for its extension.
-2. **Readers** turn the files into nodes (files, classes, functions, methods, fields, constants) and links between them (`calls`, `contains`, `uses`, `reads`). A *dedicated reader* (Python through its ast, JavaScript/TypeScript/Svelte, GDScript) follows imports and types, so it can link a call to its definition with certainty. The *generic reader* (tree-sitter: Go, Rust, Java/Kotlin, C/C++, C#, Ruby, Swift, PHP) links a call by name, and only when the language defines that name once. It never does this for a common name like `get` or `push`.
+2. **Readers** turn the files into nodes (files, classes, functions, methods, fields, constants) and links between them (`calls`, `contains`, `uses`, `reads`). A *dedicated reader* (Python through its ast, JavaScript/TypeScript/Svelte/Vue, GDScript) follows imports and types, so it can link a call to its definition with certainty. The *generic reader* (tree-sitter: Go, Rust, Java/Kotlin, C/C++, C#, Ruby, Swift, PHP) links a call by name, and only when the language defines that name once. It never does this for a common name like `get` or `push`.
 3. **The core** reads the text: where each body ends, its comment, the texts it displays, module variables and who reads them, and the Markdown documents with what they cite (code between backticks, other documents by identifier, `T-0012`). With `[keys]` in `graphe.toml`, it links the code that names a key to the code that answers it (`sends`).
 4. **Local extensions** add enrichments that only make sense for one host. They live in the host's repository and are declared in its `graphe.toml` ([ADR 0001](docs/adr/0001-one-tool-local-extensions.md), [the contract](docs/contribution.md)). A `graphe.toml` that declares extensions runs their code at every build, the git hooks' included, like a Makefile: build a cloned repository only if you trust it.
 5. **Output**, in the host's `graphe/` folder (git-ignored): `graphe.json` (the graph, its communities found with Louvain) and `REPORT.md` (counts, the most connected nodes). The page that draws the nodes by community, `graphe.html`, is made only on demand, whatever the host's size: `graphe view` writes and opens it, `graphe view X` on node X.

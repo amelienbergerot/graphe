@@ -1,7 +1,8 @@
 """The host's JavaScript in the code graph (T-0014): `.js`, `.mjs` and `.jsx`, read by tree-sitter (ADR 0002); `.tsx`
 by the TSX grammar (T-0076), a JSX `<Component/>` no call; `.ts` and a `.svelte` component (T-0015) by the TypeScript
 grammar: its `<script>`, and the expressions of its markup as statements of the module, their calls the component's
-(T-0022); the rest blanked out to keep the lines.
+(T-0022); a `.vue` component likewise, its script in the grammar its `lang` names (T-0082); the rest blanked out
+to keep the lines.
 
 - a node per file, per top-level function (`function f`, `const f = () =>`), per class and per method
   (`Class.method`), per method of an object literal a function returns or a module's `const` holds (T-0020), per
@@ -34,7 +35,10 @@ JS = tree_sitter.Parser(tree_sitter.Language(tree_sitter_javascript.language()))
 TS = tree_sitter.Parser(tree_sitter.Language(tree_sitter_typescript.language_typescript()))
 # T-0076: the JavaScript grammar parses JSX; TypeScript's does not (`<T>x` is a cast there), its TSX sibling does.
 TSX = tree_sitter.Parser(tree_sitter.Language(tree_sitter_typescript.language_tsx()))
-PARSERS = {".js": JS, ".mjs": JS, ".jsx": JS, ".ts": TS, ".tsx": TSX, ".svelte": TS}
+PARSERS = {".js": JS, ".mjs": JS, ".jsx": JS, ".ts": TS, ".tsx": TSX, ".svelte": TS, ".vue": JS}  # `.vue`: by its `lang`
+# T-0082: a Vue component's script in the grammar its `lang` names, JavaScript without one.
+LANG = re.compile(rb"""<script\b[^>]*\slang=["']?(tsx?)\b""")
+VUE_GRAMMARS = {b"ts": TS, b"tsx": TSX}
 # The suffixes a relative specifier may leave out (`./lib/eau` is `./lib/eau.ts`); a component is imported with its
 # `.svelte`. shortcut: not NodeNext's `./x.js` for `x.ts`; to add when a host has some.
 SUFFIXES = (".js", ".mjs", ".jsx", ".ts", ".tsx")
@@ -47,6 +51,12 @@ NOT_MARKUP = re.compile(rb"<(script|style)\b[^>]*>.*?</\1>|<!--.*?-->", re.S)
 # (`{:else}`, `{/if}`, `{#snippet ...}`) keeps nothing.
 KEYWORD = re.compile(rb"(#if|#each|#await|#key|:else\s+if|@html|@render|@attach|@debug)\b\s*|@(?=const\b)")
 CUT = re.compile(rb"\s(?:as|then|catch)\s")
+# T-0082: a Vue template's expressions: `{{ }}`, and the value of a directive (`@click`, `:prop`, `v-on`, `v-bind`,
+# `v-if`...); `v-for` keeps what follows its `in` or `of`. Neither `v-slot` nor `#slot`: a pattern, no call.
+MUSTACHE = re.compile(rb"\{\{(.*?)\}\}", re.S)
+DIRECTIVE = re.compile(rb"""\s([@:]|v-(?:on|bind|if|else-if|show|model|html|text|memo|for)\b)[^\s=>]*\s*=\s*"""
+                       rb"""(?:"([^"]*)"|'([^']*)')""")
+FOR = re.compile(rb"\s(?:in|of)\s")
 FUNCTIONS = {"function_declaration", "generator_function_declaration"}
 FUNCTION_VALUES = {"arrow_function", "function_expression", "generator_function", "function"}
 CLASSES = {"class_declaration", "abstract_class_declaration", "class"}
@@ -61,7 +71,9 @@ GLOBALS = {"Array", "Boolean", "Date", "Error", "Map", "Number", "Object", "Prom
            "requestAnimationFrame", "alert", "confirm", "console", "Math", "JSON", "Reflect", "document", "window",
            "process", "localStorage", "navigator", "crypto", "performance", "Buffer", "Float32Array",
            "addEventListener", "scrollTo", "matchMedia",
-           "$state", "$derived", "$effect", "$props", "$bindable", "$inspect", "$host"}  # Svelte's runes
+           "$state", "$derived", "$effect", "$props", "$bindable", "$inspect", "$host",  # Svelte's runes
+           "defineProps", "defineEmits", "defineModel", "defineExpose", "defineOptions", "defineSlots", "withDefaults",
+           "$emit"}  # Vue's compiler macros, and its template's `$emit`
 # T-0021: the functions of node:test, vitest and jest whose callback is a test, named by its title. shortcut: neither
 # `test.only` nor `describe.each`; to add when a host has some.
 TESTS = {"test", "it", "describe"}
@@ -185,16 +197,28 @@ def _callee(call):
     return call.child_by_field_name("constructor" if call.type == "new_expression" else "function")
 
 
+def _component(data: bytes) -> tuple[bytearray, list[tuple[int, int]]]:
+    """A Svelte or Vue component blanked out byte for byte (lines kept) but its `<script>` blocks, and the spans its
+    markup's expressions are not read in."""
+    kept = bytearray(re.sub(rb"[^\n]", b" ", data))
+    for m in SCRIPT.finditer(data):
+        kept[m.start(1):m.end(1)] = m.group(1)
+    return kept, [m.span() for m in NOT_MARKUP.finditer(data)]
+
+
+def _alone(parser, expression: bytes) -> bool:
+    """An expression of a Vue template the grammar parses, its `;` a token (not swallowed by a `// comment`)."""
+    root = parser.parse(expression + b";").root_node
+    return not root.has_error and root.descendant_for_byte_range(len(expression), len(expression) + 1).type == ";"
+
+
 def _source(path: Path) -> bytes:
     """A file's code: a `.svelte` component's `<script>` blocks, and the expressions of its markup (T-0022) as
     statements of the module, `{f(x)}` read ` f(x);`; the rest blanked out byte for byte (lines kept)."""
     data = path.read_bytes()
     if path.suffix != ".svelte":
         return data
-    kept = bytearray(re.sub(rb"[^\n]", b" ", data))
-    for m in SCRIPT.finditer(data):
-        kept[m.start(1):m.end(1)] = m.group(1)
-    skipped = [m.span() for m in NOT_MARKUP.finditer(data)]
+    kept, skipped = _component(data)
     i = 0
     while (i := data.find(b"{", i)) >= 0:
         if (inside := next((end for start, end in skipped if start <= i < end), None)) is not None:
@@ -216,6 +240,28 @@ def _source(path: Path) -> bytes:
         kept[j] = ord(";")
         i = j + 1
     return bytes(kept)
+
+
+def _parse(path: Path):
+    """A file's tree; a `.vue` component's (T-0082): its `<script>` blocks, and its template's expressions as
+    statements of the module, each one alone, one the grammar cannot parse left out; the rest blanked out.
+    shortcut: the Options API's `methods: {}` are no nodes, a call to one stays `unknown`; to read when a host has some."""
+    if path.suffix != ".vue":
+        return PARSERS[path.suffix].parse(_source(path))
+    data = path.read_bytes()
+    parser = VUE_GRAMMARS[lang.group(1)] if (lang := LANG.search(data)) else JS
+    kept, skipped = _component(data)
+    expressions = [m.span(1) for m in MUSTACHE.finditer(data)]
+    for m in DIRECTIVE.finditer(data):
+        start, end = m.span(2 if m.group(2) is not None else 3)
+        if m.group(1) == b"v-for" and (cut := FOR.search(data, start, end)):
+            start = cut.end()
+        expressions.append((start, end))
+    for start, end in expressions:
+        if not any(s <= start < e for s, e in skipped) and _alone(parser, data[start:end]):
+            kept[start:end] = data[start:end]
+            kept[end] = ord(";")  # the `}` of `}}`, or the closing quote
+    return parser.parse(bytes(kept))
 
 
 def contribute(project) -> dict:
@@ -245,7 +291,7 @@ class Reader:
         self.modules: dict[str, Module] = {}
         for path in paths:
             rel = path.relative_to(root).as_posix()
-            self.modules[rel] = Module(rel, PARSERS[path.suffix].parse(_source(path)))
+            self.modules[rel] = Module(rel, _parse(path))
         self.ids: set[str] = set()
         self.methods: dict[str, list[str]] = defaultdict(list)  # method name -> ids
         self.by_name: dict[str, list[str]] = defaultdict(list)  # top-level function or class name -> ids

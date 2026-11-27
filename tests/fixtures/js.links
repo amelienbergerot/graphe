@@ -16,6 +16,13 @@ src_lib_water_ts contains src_lib_water_ts_reserve sure
 src_lib_water_ts_gauge contains src_lib_water_ts_gauge_level sure
 src_lib_water_ts_gauge_level calls src_lib_water_ts_reserve sure
 src_lib_water_ts_measure calls src_lib_water_ts_gauge_level by name
+src_meter_vue calls src_ui_panel_tsx_label sure
+src_meter_vue contains src_meter_vue_toggle sure
+src_meter_vue imports src_lib_water_ts sure
+src_meter_vue imports src_ui_panel_tsx sure
+src_meter_vue references src_meter_vue_toggle sure
+src_meter_vue_toggle calls src_lib_water_ts_gauge sure
+src_meter_vue_toggle calls src_lib_water_ts_gauge_level sure
 src_tile_svelte calls src_lib_water_ts_gauge sure
 src_tile_svelte calls src_lib_water_ts_reserve sure
 src_tile_svelte contains src_tile_svelte_refresh sure

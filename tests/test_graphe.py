@@ -670,3 +670,45 @@ def test_the_js_reader_reads_typescript_and_the_script_of_a_svelte_component(tmp
     verdicts = {(s["file"], s["text"]): s["verdict"] for s in read.sites}
     assert verdicts[("src/Tuile.svelte", "$props")] == "global"  # a rune: Svelte's
     assert verdicts[("src/Tuile.svelte", "$derived")] == "global"
+
+
+VUE = {
+    "src/lib/eau.ts": "export function reserve(p: number): number {\n  return p\n}\n",
+    "src/Carte.vue": textwrap.dedent("""\
+        <template>
+          <div :class="ton(niveau)" @click.prevent="garder">
+            {{ reserve(niveau) }}
+            <p v-if="pret()">{{ a + }}{{ a // b }}{{ garder() }}</p>
+            <li v-for="(x, i) in liste()" :key="i">{{ etiquette(x) }}</li>
+          </div>
+        </template>
+
+        <script setup lang="ts">
+        import { reserve } from './lib/eau'
+        const props = defineProps<{ niveau: number }>()
+        function ton(n: number): string { return reserve(n) > 1 ? 'haut' : 'bas' }
+        function garder() {}
+        function pret() { return true }
+        function liste(): number[] { return [] }
+        function etiquette(x: number) { return `${x}` }
+        </script>
+        """),
+}
+
+
+def test_the_js_reader_reads_the_script_and_template_of_a_vue_component(tmp_path: Path):
+    """T-0082: a `<script setup lang="ts">` read as TypeScript; the template's calls the component's, a broken
+    expression costing only itself."""
+    read = _js(tmp_path, VUE)
+    links = {(e["source"], e["target"], e["relation"], e["confidence"]) for e in read.links}
+    vue = "src_carte_vue"
+    assert (vue, "src_lib_eau_ts", "imports", "EXTRACTED") in links
+    assert (f"{vue}_ton", "src_lib_eau_ts_reserve", "calls", "EXTRACTED") in links  # typed: the TS grammar
+    for called in ("src_lib_eau_ts_reserve", f"{vue}_ton", f"{vue}_pret", f"{vue}_liste", f"{vue}_etiquette"):
+        assert (vue, called, "calls", "EXTRACTED") in links, called  # after `{{ a + }}` too
+    assert (vue, f"{vue}_garder", "calls", "EXTRACTED") in links  # `{{ a // b }}` swallows no neighbour
+    assert (vue, f"{vue}_garder", "references", "EXTRACTED") in links  # @click="garder"
+    lines = {n["id"]: n["source_location"] for n in read.nodes}
+    assert lines[f"{vue}_ton"] == "L12"
+    verdicts = {(s["file"], s["text"]): s["verdict"] for s in read.sites}
+    assert verdicts[("src/Carte.vue", "defineProps")] == "global"  # a compiler macro: Vue's
