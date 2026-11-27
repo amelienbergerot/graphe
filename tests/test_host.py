@@ -952,7 +952,8 @@ def test_the_hook_points_a_grep_for_a_node_s_name_to_explain(tmp_path: Path):
     assert _hint(_hook(host, "Grep", {"pattern": r"def aider\b"})) == hint
     for tool, command in (("Bash", "grep -rn aider ."), ("PowerShell", "rg aider"),
                           ("Bash", "cd src && rg -t py -n 'def aider' | head -5"), ("Bash", "grep -e aider -r ."),
-                          ("Bash", "grep -rn --include '*.py' aider .")):
+                          ("Bash", "grep -rn --include '*.py' aider ."), ("Bash", "grep -rn aider . | head"),
+                          ("Bash", "false || grep -rn aider ."), ("Bash", "git log | grep x; grep -rn aider .")):
         assert _hint(_hook(host, tool, {"command": command})) == hint, command
 
 
@@ -965,6 +966,7 @@ def test_the_hook_is_silent_unless_a_grep_names_a_node(tmp_path: Path):
     for tool, tool_input in (("Grep", {"pattern": "nothing"}), ("Grep", {"pattern": "md"}),  # README.md's suffix
                              ("Read", {"file_path": "aider"}),
                              ("Bash", {"command": "echo aider"}), ("Bash", {"command": "rg -t aider x"}),
+                             ("Bash", {"command": "ls | grep aider"}), ("Bash", {"command": "git log | rg aider"}),  # T-0086
                              ("Bash", {"command": "grep 'aider"}), ("Bash", {})):
         r = _hook(host, tool, tool_input)
         assert (r.returncode, r.stdout) == (0, ""), (tool_input, r.stdout, r.stderr)

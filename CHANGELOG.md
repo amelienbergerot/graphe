@@ -4,7 +4,9 @@ One entry per release, newest first. graphe follows [SemVer](https://semver.org)
 
 A release that changes `contribute(project)`, `Project`, the shape of the nodes and links, or another field of `graphe/graphe.json` carries a **Contract** section: what breaks, and how to adapt an extension or a tool that reads the file. Such a release is at least a minor bump in `0.x` (never a patch), a major from `1.0`.
 
-## Unreleased
+## 0.3.0
+
+The hook skips a grep that filters a pipe (`ls | grep x`): it searches no code (T-0086).
 
 The hook's line names the nodes of a name that designates several, as `explain` takes them (`Class.method`, else `file::name`), five at most (T-0085).
 

@@ -29,13 +29,15 @@ SHOWN = 5  # the designations named when a name designates several nodes
 
 
 def _grep_pattern(command: str) -> str | None:
-    """The pattern of the first grep or rg of a shell command: `-e`'s value, else its first operand."""
-    # shortcut: the first grep/rg only, a value glued to its option (`-eaider`) is missed, PowerShell is split by
+    """The pattern of the first grep or rg of a shell command that does not filter a pipe (T-0086): `-e`'s value,
+    else its first operand."""
+    # shortcut: the first such grep/rg only, a value glued to its option (`-eaider`) is missed, PowerShell is split by
     # POSIX rules; widen if agents' real commands go unhinted.
     lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
     lexer.whitespace_split = True
     words = list(lexer)  # an unbalanced quote raises: the hook stays silent
-    head = next((i for i, w in enumerate(words) if Path(w).name.removesuffix(".exe") in ("grep", "rg")), None)
+    head = next((i for i, w in enumerate(words) if Path(w).name.removesuffix(".exe") in ("grep", "rg")
+                 and not (i and words[i - 1] in ("|", "|&"))), None)  # `ls | grep x` searches no code
     if head is None:
         return None
     rest = iter(itertools.takewhile(lambda w: w.strip("();<>|&"), words[head + 1:]))  # up to `|`, `&&`, `;`
