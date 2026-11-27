@@ -211,8 +211,8 @@ JAVA = Language("java", {".java": (tree_sitter.Language(tree_sitter_java.languag
 
 
 # C# (T-0035): the upstream `tags.scm` captures only `x.M()`, the bare `F()` is ours. A type is named by its last name,
-# bare, generic, qualified or behind the `pb::` alias of generated code. As Java's, a method without a body (abstract,
-# an interface's) is not captured and a constructor is the method `C.C`. A property is the method `C.P` (T-0041), so the
+# bare, generic, qualified or behind the `pb::` alias of generated code. A method without a body (abstract, an
+# interface's) is not captured, where Java's is `@abstract` (T-0081), and a constructor is the method `C.C`. A property is the method `C.P` (T-0041), so the
 # calls of its `get`, `set` and `=> expr` are its own; read without a call, it has no caller but as a delegate invoked
 # (`codec.ValueWriter(..)`, 14 on protobuf), and an auto-property (`{ get; set; }`) is a node all the same. An
 # interface's or abstract property is written alike but has no body, as a signature: not captured (8 on protobuf).
@@ -312,8 +312,8 @@ RUBY = Language("ruby", {".rb": (tree_sitter.Language(tree_sitter_ruby.language(
 
 # PHP (T-0044), the `php` reader in place of the PHP reader by patterns since T-0045. The grammar with its HTML
 # (`language_php`), so a page's text holds no call. A class, an interface, a trait
-# and an enum are a class, a namespace none; as Java's, a method without a body (an interface's, abstract) is not
-# captured. `x->m()`, `x?->m()` and `X::m()` (`self::`, `parent::`) are sends; `new C`, `extends`, `implements`, a
+# and an enum are a class, a namespace none; a method without a body (an interface's, abstract) is not captured,
+# where Java's is `@abstract` (T-0081). `x->m()`, `x?->m()` and `X::m()` (`self::`, `parent::`) are sends; `new C`, `extends`, `implements`, a
 # trait's `use` and a caught type (`catch (A | B $e)`) references by the last name. shortcut: PHP's function and method names are case-insensitive, the
 # links by the exact name; to fold the case if a host calls `Foo()` for `foo()`. shortcut: a call through a variable
 # (`$f()`, `$x->$m()`) is none, and an anonymous class at a file's top is no class, its methods functions; to capture
@@ -439,10 +439,12 @@ KOTLIN_QUERY = f"""
 (call_expression (identifier) @name (#match? @name "^[A-Z]")) @reference
 (call_expression (navigation_expression . (_) @qualifier (identifier) @name .) (#not-match? @name "^[A-Z]")) @send
 (call_expression (navigation_expression (identifier) @name .) (#match? @name "^[A-Z]")) @reference
-(delegation_specifier {_KT_TYPE}) @reference @base
-(delegation_specifier (constructor_invocation {_KT_TYPE})) @reference @base
-(delegation_specifier (explicit_delegation {_KT_TYPE})) @reference @base
-"""
+""" + "".join(
+    # a base list (T-0081) but an anonymous object's (`object : Listener`), whose methods are no class's own
+    f"({parent} (delegation_specifiers {specifier} @reference{'' if parent == 'object_literal' else ' @base'}))\n"
+    for parent in ("class_declaration", "object_declaration", "companion_object", "object_literal")
+    for specifier in (f"(delegation_specifier {_KT_TYPE})", f"(delegation_specifier (constructor_invocation {_KT_TYPE}))",
+                      f"(delegation_specifier (explicit_delegation {_KT_TYPE}))"))
 
 # The common names: `get` (78 sends, `CompletableFuture.get`, linked to `TestingIntBox.get`), `toString` (32), `map`
 # (31, mostly a collection's, linked to `RequestResult.map`) and `hashCode`, measured on libsignal (T-0038, `check`);
@@ -711,25 +713,32 @@ def contribute(language: Language, project) -> dict:
         files.append((rel, fid, held, uses))
     functions = {n["id"] for n in nodes if n["kind"] == "function"}
     declarations = {n["id"] for n in nodes if n["kind"] == "abstract"}
-    # T-0081: a method overrides the declaration of its name in its class or in a class its base list names, when
-    # there is one, by the bare names (a class's bases gathered from all its files: Swift's extensions).
+    # T-0081: a method overrides the declaration of its name in its class (Swift's protocol extension) or in a class
+    # its base list names, when there is one: its class by its whole name (its bases gathered from all its files,
+    # Swift's extensions), a base by its bare name, as a use names it.
     # shortcut: the direct bases only, so `C extends A implements I` where `A` leaves `I.m` abstract does not
     # override `I.m`; to walk the bases when a host's calls through an inherited interface stay ambiguous.
-    bases: dict[str, set[str]] = defaultdict(set)
+    # shortcut: by the name, not the signature, so a concrete `f()` beside an `abstract f(int)` of its class overrides
+    # it; to compare the parameters if a host's overloads are linked to their abstract sibling.
+    bases: dict[str, set[str]] = defaultdict(set)  # a class's whole name -> the bare names in its base lists
     for *_, uses in files:
         for u in uses:
             if u.heir:
-                bases[u.heir.rsplit(".", 1)[-1]].add(u.name)
+                bases[u.heir].add(u.name)
+    abstracts: dict[str, list[str]] = defaultdict(list)  # a declaration's whole name -> its ids
+    for n in nodes:
+        if n["id"] in declarations:
+            abstracts[n["name"]].append(n["id"])
     overrides: dict[str, set[str]] = defaultdict(set)  # a method's id -> the declarations it overrides
     for rel, _, held, _ in files:
         for d, i in held.items():
             if d.kind == "method":
-                cls, name = d.name.rsplit(".", 2)[-2:]
-                for base in {cls} | bases[cls]:
-                    found = [t for t in methods.get((base, name), []) if t in declarations]
-                    if len(found) == 1 and found[0] not in overrides[i]:
-                        overrides[i].add(found[0])
-                        link(i, found[0], "overrides", rel, d.line, sure=False)
+                cls, name = d.name.rsplit(".", 1)
+                for targets in [abstracts.get(d.name, [])] + [
+                        [t for t in methods.get((base, name), []) if t in declarations] for base in sorted(bases[cls])]:
+                    if len(targets) == 1 and targets[0] not in overrides[i]:
+                        overrides[i].add(targets[0])
+                        link(i, targets[0], "overrides", rel, d.line, sure=False)
     for rel, fid, held, uses in files:
         actions = {d.name: i for d, i in held.items() if d.kind == "action"}
         for u in uses:
@@ -751,7 +760,7 @@ def contribute(language: Language, project) -> dict:
                 ours = named or ours
                 # T-0081: a declaration settles a tie only: several definitions that all override it, or none
                 concrete = [t for t in ours if t not in declarations]
-                shared = [d for d in ours if d in declarations and all(d in overrides[t] for t in concrete)]
+                shared = [t for t in ours if t in declarations and all(t in overrides[c] for c in concrete)]
                 ours = concrete if len(concrete) == 1 else shared if len(shared) == 1 else ours
                 verdict = "external" if not ours else \
                     "common" if not named and u.kind == "send" and u.name in language.common \

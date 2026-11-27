@@ -305,9 +305,9 @@ Settled by tickets (2026-11-27):
   direct base overrides (`overrides`, by name); a call whose candidates all
   override one declaration goes to it, by name (ADR 0003's amendment), the
   receiver's type unread: `pushLimit` 420 sites, `writeUInt32NoTag` 688,
-  `getBytesUntilLimit` 608. On protobuf, 3810 Java call sites linked more
-  (20214 -> 24024), none lost or moved, 0 dangling; `ambiguous` 54023 ->
-  50229.
+  `getBytesUntilLimit` 608. On protobuf, 3802 Java call sites linked more
+  (20214 -> 24016), none lost or moved, 0 dangling; `ambiguous` 54023 ->
+  50237.
 
 - **A Rust `Type::f()` path is not linked when `f` is a common name.** [T-0080]
   (libsignal, sample host, 2026-11-19, T-0032) `T::f()` is a send, like

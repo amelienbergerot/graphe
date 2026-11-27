@@ -272,7 +272,7 @@ def test_a_c_function_its_structs_and_a_forward_declaration_that_is_none():
 def test_a_csharp_class_its_members_and_both_kinds_of_call():
     """protobuf (T-0035): the upstream `tags.scm` captures only `x.M()`; a bare `F()` is ours too. A base given by
     the `pb::` alias of generated code, a generic or a qualified name is a reference by its last name, as what `new`
-    builds; an abstract or interface method without a body is no definition, as Java's; a constructor is `C.C`."""
+    builds; an abstract or interface method without a body is no definition, where Java's is one (T-0081); a constructor is `C.C`."""
     definitions, uses = _read(CSHARP, "src/C.cs", """        namespace N.M {
         sealed partial class C : pb::IMessage<C>, global::System.IEquatable<C>, B {
             C() { Init(); }
@@ -887,6 +887,56 @@ def test_a_call_whose_candidates_all_override_one_declaration_is_linked_to_it(tm
     assert ("sources_b_swift_label_draw", "sources_a_swift_abstract_drawable_draw", "overrides") in links
     assert ("sources_a_swift_circle_draw", "sources_a_swift_abstract_drawable_draw", "overrides") in links
     assert ("sources_a_swift_render", "sources_a_swift_abstract_drawable_draw", "calls") in links
+
+
+def test_a_method_overrides_only_through_its_own_classs_base_list(tmp_path: Path, capsys):
+    """T-0081, in review: libsignal's two `ListenerBridge`s, nested in two classes, each implement their own listener; a
+    Kotlin anonymous object's supertype is no base of the class that holds it. `callers` of an implementation lists
+    the calls through its declaration."""
+    project = Project(tmp_path, {
+        "src/Listeners.java": "interface ChatListener { void onEvent(); }\ninterface ProvisioningListener { void onEvent(); }\n",
+        "src/Chat.java": """\
+            class Chat {
+                static class ListenerBridge implements ChatListener { public void onEvent() {} }
+            }
+            class Provisioning {
+                static class ListenerBridge implements ProvisioningListener { public void onEvent() {} }
+            }
+            """,
+        "src/A.kt": """\
+            class A {
+                val l = object : ChatListener {
+                    override fun onEvent() {}
+                }
+
+                fun onEvent() {}
+
+                fun use(c: ChatListener) {
+                    c.onEvent()
+                }
+            }
+            """,
+    })
+    jvm = generic.contribute(JVM, project)
+    assert {(e["source"], e["target"]) for e in jvm["links"] if e["relation"] == "overrides"} == {
+        ("src_chat_java_chat_listenerbridge_onevent", "src_listeners_java_abstract_chatlistener_onevent"),
+        ("src_chat_java_provisioning_listenerbridge_onevent", "src_listeners_java_abstract_provisioninglistener_onevent")}
+
+    project = Project(tmp_path / "callers", {
+        "src/Shape.java": "abstract class Shape {\n    abstract double area();\n}\n",
+        "src/Circle.java": "class Circle extends Shape {\n    double area() { return 3; }\n}\n",
+        "src/Square.java": "class Square extends Shape {\n    double area() { return 4; }\n}\n",
+        "src/Main.java": "class Main {\n    void main(Shape s) {\n        s.area();\n    }\n}\n",
+    })
+    jvm = generic.contribute(JVM, project)
+    graph = nx.DiGraph(unattributed={})
+    graph.add_nodes_from((n["id"], n) for n in jvm["nodes"])
+    for e in jvm["links"]:
+        graph.add_edge(e["source"], e["target"], relations={e["relation"]}, confidence=e["confidence"],
+                       locations=[e["source_location"]], contexts=[])
+    cli._callers(graph, "src_circle_java_circle_area", 1)
+    assert "Main.main" in capsys.readouterr().out
+    assert cli._called(graph, "src_square_java_square_area")
 
 
 def test_a_php_bare_call_is_linked_to_a_function_only_and_a_send_to_a_method_only(tmp_path: Path):

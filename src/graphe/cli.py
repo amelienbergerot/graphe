@@ -868,15 +868,21 @@ def callers(graph: nx.DiGraph, x: str, depth: int) -> int:
     return 0
 
 
+def _reached(graph: nx.DiGraph, n: str) -> list[str]:
+    """n, and the declarations it overrides (T-0081): a call to `Shape.area` may run `Circle.area`."""
+    return [n] + [d for d in graph.successors(n) if "overrides" in graph[n][d]["relations"]]
+
+
 def _callers(graph: nx.DiGraph, n: str, depth: int) -> None:
     seen, front = {n}, [n]
     for level in range(1, depth + 1):
         following = []
         for y in front:
-            for s in graph.predecessors(y):
-                if s not in seen and CALLS & set(graph[s][y]["relations"]):
-                    seen.add(s)
-                    following.append(s)
+            for t in _reached(graph, y):
+                for s in graph.predecessors(t):
+                    if s not in seen and CALLS & set(graph[s][t]["relations"]):
+                        seen.add(s)
+                        following.append(s)
         if not following:
             break
         # T-0075: a caller linked by name alone, marked as explain marks it: once on the level if every one is
@@ -941,7 +947,7 @@ def _changes(rev: str) -> dict[str, list[tuple[int, list[str] | None, list[str]]
 def _called(graph: nx.DiGraph, n: str) -> bool:
     """Something calls n, or calls of its name went unattributed: what `_callers` would print."""
     d = graph.nodes[n]
-    return any(CALLS & set(graph[s][n]["relations"]) for s in graph.predecessors(n)) or \
+    return any(CALLS & set(graph[s][t]["relations"]) for t in _reached(graph, n) for s in graph.predecessors(t)) or \
         (d["kind"] in CALLABLE and d["name"].rsplit(".", 1)[-1] in graph.graph["unattributed"])
 
 

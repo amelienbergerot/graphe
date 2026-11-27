@@ -44,6 +44,7 @@ import networkx as nx
 from graphe import godot
 from graphe import root as graphe_root  # `root` is the host's path in this module's signatures
 
+# A declaration (`abstract`, T-0081) has no body, but a line, a comment and tickets it cites, as a body.
 BODIES = {"function", "method", "command", "action", "class", "abstract"}
 # An extent and a comment, without being a body that owns its lines.
 EXTENDED = BODIES | {"field"}

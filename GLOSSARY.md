@@ -17,8 +17,12 @@ What reads the files of one language and draws nodes and links from them.
 _Avoid_: parser, extractor, analyzer
 
 **Generic reader**:
-A reader that serves many languages the same way: their definitions, and their calls linked by the name alone, or by the class the call names (`T::f()`, `C.f()`).
+A reader that serves many languages the same way: their definitions, and their calls linked by the name alone, or by the class the call names (`T::f()`, `C.f()`), or to the declaration all their candidates override.
 _Avoid_: fallback reader, basic reader
+
+**Declaration**:
+A method without a body that other methods implement: Java's abstract or an interface's method, a Swift protocol's requirement (T-0081). A node of kind `abstract`; each implementation `overrides` it.
+_Avoid_: signature, prototype
 
 **Dedicated reader**:
 A reader written for one language, which follows its imports and its receivers to link a call to its definition with certainty.
