@@ -1,6 +1,6 @@
 # The readers
 
-A reader turns a host's files of one language into nodes, links and coverage sites, through `contribute(project)` (docs/contribution.md). Each is registered in `READERS` (`src/graphe/cli.py`) under the name of its `graphe.toml` section, the key of its configuration and of its coverage in `graphe check`.
+A reader turns a host's files of one language into nodes, links and coverage sites, through `contribute(project)` (docs/contribution.md). Each is registered in `READERS` (`src/graphe/readers.py`) under the name of its `graphe.toml` section, the key of its configuration and of its coverage in `graphe check`, and its suffixes in `SUFFIXES`, derived from its grammars for a generic language. A build runs the readers that have files in processes of their own, one each, when those beside the largest have 250 files or more (T-0088, ADR 0005): a reader's module imports neither networkx nor `graphe.cli`, and its contribution pickles (dictionaries, lists, strings, numbers).
 
 | Section | Reader | Languages | Suffixes |
 |---|---|---|---|
@@ -88,7 +88,7 @@ A file that does not parse (any error node in its tree) is skipped and named on 
 2. Write its query in `graphe/generic.py` from the grammar's `tags.scm`, in the capture convention above: definitions with a body, and the methods without one as `@abstract` with the base lists as `@base` (T-0081), which settle a tie only.
 3. Its `Language`: the name of its `graphe.toml` section, the grammar and query per suffix, a first list of common names; `tolerant` if valid code leaves error nodes, `erased` for what the grammar cannot read and blanks keep in place (C/C++, T-0034; C#'s `#if` lines, T-0035); `apart` if a bare call can never be a method (PHP, T-0044).
 4. A snippet test at the seam `read(language, file, source)` (`tests/test_generic.py`): its definitions, its uses with their owners, and whether the file is generated.
-5. Its entry in `READERS` (`functools.partial(generic.contribute, generic.<LANGUAGE>)`).
+5. Its entry in `READERS` (`functools.partial(generic.contribute, generic.<LANGUAGE>)`, `src/graphe/readers.py`); its suffixes follow from its grammars.
 6. Its small host in `tests/fixtures/` and its links' snapshot (docs/contribution.md, T-0073). Its sample host (docs/sample-hosts.md): build, no dangling link, `graphe check`; tune the common names from the most frequent sends linked by name; three queries compared with grep; its README row and its section here; what it misses in BACKLOG.md, naming the host.
 
 A quirk the query cannot express is a `shortcut:` in its section here. A language that needs code of its own is the proof that it needs a dedicated reader (ADR 0003).

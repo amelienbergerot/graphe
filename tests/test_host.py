@@ -192,6 +192,28 @@ def test_a_build_lists_the_host_s_files_once(tmp_path: Path):
     assert r.stdout.splitlines()[-1] == "walks 1 1"
 
 
+def test_the_readers_run_in_processes_of_their_own_and_an_error_keeps_its_message(tmp_path: Path):
+    """T-0088: with two readers that have enough files, each runs in a process of its own, a small host in the
+    build's; a reader that raises stops the build with its message either way."""
+    host = _host(tmp_path, {"outils.py": CALLEE, "a.go": "package a\n\nfunc F() {}\n"})
+    script = tmp_path.parent / "failing.py"
+    for threshold, apart in (("0", True), ("graphe.cli.PARALLEL_FILES", False)):
+        # A file, not `-c`: a spawned process runs its top level again, so the failing reader is there too.
+        script.write_text(
+            "import os, sys, graphe.cli\n"
+            "def failing(project):\n    raise RuntimeError(f'the reader failed in process {os.getpid()}')\n"
+            f"graphe.cli.READERS['python'] = failing\ngraphe.cli.PARALLEL_FILES = {threshold}\n"
+            "if __name__ == '__main__':\n    print(os.getpid())\n    sys.exit(graphe.cli.main(['build']))\n",
+            encoding="utf-8")
+        r = subprocess.run([sys.executable, str(script)], cwd=host, env={**os.environ, "GRAPHE_ROOT": str(host)},
+                           capture_output=True, text=True, encoding="utf-8")
+        assert r.returncode == 1 and "Traceback" not in r.stderr, r.stderr
+        [line] = r.stderr.strip().splitlines()
+        assert line.startswith("graphe: the reader failed in process ")
+        assert (line.rsplit(" ", 1)[1] != r.stdout.strip()) == apart
+        assert not (host / "graphe" / "graphe.json").exists()
+
+
 def _hooks(host: Path) -> dict[str, bytes]:
     folder = host / ".git" / "hooks"
     return {p.name: p.read_bytes() for p in folder.glob("post-*") if p.suffix != ".sample"}

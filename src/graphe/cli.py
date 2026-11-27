@@ -58,8 +58,6 @@ graph older than the host's code or than the tool rebuilds it first.
 
 from __future__ import annotations
 
-import copy
-import functools
 import importlib.util
 import itertools
 import json
@@ -73,14 +71,16 @@ import tempfile
 import time
 import webbrowser
 from collections import Counter, defaultdict
-from functools import cached_property
+from concurrent.futures import ProcessPoolExecutor
+from contextlib import nullcontext
 from pathlib import Path
 
 import networkx as nx
 
-from graphe import core, generic, godot, js, python
+from graphe import core, godot
 from graphe import root as graphe_root  # `root` is the host's path in this module's signatures
 from graphe.hook import HEAD_WORDS, hook
+from graphe.readers import READERS, SUFFIXES, Project, run_reader
 from graphe.root import CONFIGURATION, OUTPUT, ROOT
 
 JSON = OUTPUT / "graphe.json"
@@ -96,6 +96,10 @@ CALLABLE = ("function", "method", "abstract")
 # nothing else links, and would merge unrelated communities. The host adds some (`[communities] separate`).
 SEPARATE = {"ticket": "tickets", "value": "values", "document": "documents"}
 OFF_CODE_WEIGHT = 4
+# shortcut: a pool costs about 0.6 s (its processes import the readers); libsignal's Rust and Java, 200 files each,
+# lost 0.26 s, 300 each gained 0.4 s (T-0088). Counted in files, not in time: to weigh by reader if one runs slow on
+# few files (Godot's engine).
+PARALLEL_FILES = 250
 
 
 def _communities_config() -> tuple[dict[str, str], list[str]]:
@@ -136,39 +140,8 @@ def _commit() -> str | None:
         return None
 
 
-# Each reader under the name of its graphe.toml section: the key of its configuration and of its coverage.
-READERS = {"python": python.contribute, "godot": godot.contribute, "js": js.contribute,
-           "go": functools.partial(generic.contribute, generic.GO),
-           "rust": functools.partial(generic.contribute, generic.RUST),
-           "java": functools.partial(generic.contribute, generic.JVM),
-           "c": functools.partial(generic.contribute, generic.C),
-           "csharp": functools.partial(generic.contribute, generic.CSHARP),
-           "ruby": functools.partial(generic.contribute, generic.RUBY),
-           "swift": functools.partial(generic.contribute, generic.SWIFT),
-           "php": functools.partial(generic.contribute, generic.PHP)}
 NODE_FIELDS = ("id", "label", "kind", "source_file", "source_location", "name")
 LINK_FIELDS = ("source", "target", "relation", "confidence", "source_file", "source_location", "context")
-
-
-class Project:
-    """What `contribute(project)` receives: the root, the host's files, the configuration section of the one who
-    contributes and the graph already assembled, copied on reading (docs/contribution.md)."""
-
-    def __init__(self, configuration: dict, graph: nx.DiGraph, checking: bool, listed: set[str]) -> None:
-        self.root = ROOT
-        self.configuration = configuration
-        self.checking = checking
-        self._graph = graph
-        self._listed = listed  # the build's one walk of the host (T-0087)
-
-    def files(self, suffix: str) -> list[Path]:
-        return graphe_root.files(suffix, self.root, self._listed)
-
-    @cached_property
-    def graph(self) -> dict:
-        return {"nodes": {n: copy.deepcopy(d) for n, d in self._graph.nodes(data=True)},
-                "links": [{"source": s, "target": t, **copy.deepcopy({**d, "relations": sorted(d["relations"])})}
-                          for s, t, d in self._graph.edges(data=True)]}
 
 
 def _declared_extensions() -> list[dict]:
@@ -250,9 +223,20 @@ def assemble(checking: bool = False, listed: set[str] | None = None) \
     graph = nx.DiGraph()
     dangling: list[dict] = []
     listed = graphe_root.listing() if listed is None else listed
-    # The readers together: their nodes come in sorted all at once, as before the contract (T-0007).
-    readers = [(name, contribute(Project(configuration.get(name, {}), graph, checking, listed)))
-               for name, contribute in READERS.items()]
+    # T-0088: the readers that have files at once, one process each (py-tree-sitter keeps the GIL: ADR 0005), when
+    # those beside the largest have enough files; the others here. Taken in the order of READERS, the first error in
+    # that order stops the build.
+    patterns = graphe_root.excluded()
+    files = Counter(name for rel in listed for name in READERS
+                    if rel.endswith(SUFFIXES[name]) and not graphe_root.designates(rel, patterns))
+    parallel = files.total() - max(files.values(), default=0) >= PARALLEL_FILES
+    pool = ProcessPoolExecutor(len(files)) if parallel else None
+    with pool or nullcontext():
+        futures = {name: pool.submit(run_reader, name, configuration.get(name, {}), checking, listed)
+                   for name in files if pool}
+        # The readers together: their nodes come in sorted all at once, as before the contract (T-0007).
+        readers = [(name, futures[name].result() if name in futures
+                    else run_reader(name, configuration.get(name, {}), checking, listed)) for name in READERS]
     # T-0008: a `with_readers` extension comes in with them, before the core, and may take over their links.
     with_, after = [], []
     for declaration in _declared_extensions():
