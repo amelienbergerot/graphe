@@ -650,14 +650,14 @@ if(view.z>fit*2.5){cx.font='12px system-ui';const shown=N.filter(n=>{const[x,y]=
 shown.sort((a,b)=>(b===picked)-(a===picked)||b.deg-a.deg);for(const n of shown.slice(0,600)){const[x,y]=screen(n),w=cx.measureText(n.label).width;if(free(x+4,y-3,w))cx.fillText(n.label,x+4,y-3)}}
 else{const centers={};for(const n of N){const c=centers[n.c]||(centers[n.c]={x:0,y:0,k:0});c.x+=n.x;c.y+=n.y;c.k++}
 cx.font='600 12px system-ui';for(const c of Object.keys(centers).sort((a,b)=>centers[b].k-centers[a].k)){const v=centers[c];const w=cx.measureText(D.c[c]).width,x=(v.x/v.k)*view.z+view.x-w/2,y=(v.y/v.k)*view.z+view.y;if(free(x,y,w))cx.fillText(D.c[c],x,y)}}}
-function link(n){return `<a data-i="${n.i}">${esc(n.label)} <span class="rel">${esc(n.file)}:${n.line}</span></a>`}
+function link(n){return `<a data-i="${n.i}">${esc(n.label)} <span class="rel">${esc(n.file)}${n.line?':'+n.line:''}</span></a>`}
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 function group(list,end){const g={};for(const l of list){for(const r of l.rel.split(','))(g[r]=g[r]||[]).push(N[l[end]])}
 return Object.keys(g).sort().map(r=>`<h3>${esc(r)} (${g[r].length})</h3>`+g[r].sort((a,b)=>a.label.localeCompare(b.label)).map(link).join('')).join('')}
 function pick(n,center){picked=n;neighbours=new Set();if(n){for(const l of n.outs)neighbours.add(l.t);for(const l of n.ins)neighbours.add(l.s)}
 const f=document.getElementById('card');
 if(!n){f.innerHTML=`<p class="where">${N.length} nodes, ${L.length} links. Built on ${esc(D.t)} (commit ${esc(D.k)}).</p><p class="where">Wheel: zoom. Drag: move. Click: a node and its links.</p>`}
-else{f.innerHTML=`<h2>${esc(n.label)}</h2><div class="where">${esc(n.kind)} · ${esc(n.file)}:${n.line} · ${esc(D.c[n.c])}<br>${esc(n.id)}</div><h3 style="color:var(--text)">What it calls</h3>${group(n.outs.filter(l=>l.rel!=='contains'&&l.rel!=='method'),'t')||'<p class=where>nothing</p>'}<h3 style="color:var(--text)">What calls it</h3>${group(n.ins.filter(l=>l.rel!=='contains'&&l.rel!=='method'),'s')||'<p class=where>nothing</p>'}`}
+else{f.innerHTML=`<h2>${esc(n.label)}</h2><div class="where">${esc(n.kind)} · ${esc(n.file)}${n.line?':'+n.line:''} · ${esc(D.c[n.c])}<br>${esc(n.id)}</div><h3 style="color:var(--text)">What it calls</h3>${group(n.outs.filter(l=>l.rel!=='contains'&&l.rel!=='method'),'t')||'<p class=where>nothing</p>'}<h3 style="color:var(--text)">What calls it</h3>${group(n.ins.filter(l=>l.rel!=='contains'&&l.rel!=='method'),'s')||'<p class=where>nothing</p>'}`}
 if(n&&center){const r=cv.getBoundingClientRect();view.z=Math.max(view.z,fit*6);view.x=r.width/2-n.x*view.z;view.y=r.height/2-n.y*view.z}draw()}
 document.getElementById('card').addEventListener('click',e=>{const a=e.target.closest('a[data-i]');if(a)pick(N[+a.dataset.i],true)});
 const dl=document.getElementById('names');dl.innerHTML=N.map(n=>`<option value="${esc(n.label)} — ${esc(n.file)}">`).join('');

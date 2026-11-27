@@ -29,7 +29,7 @@ API = "https://api.github.com"
 REFRESH = 600  # seconds: the cache is fetched again past 10 minutes
 TIMEOUT = 10  # seconds per request: a git hook's build is never held up long
 # github.com/owner/repo in a remote's URL: https://, git@github.com:, ssh://git@github.com/.
-REMOTE = re.compile(r"github\.com[:/]([\w.-]+)/([\w.-]+?)(?:\.git)?/?$")
+REMOTE = re.compile(r"^(?:https?://|ssh://)?(?:[\w.-]+@)?github\.com[:/]([\w.-]+)/([\w.-]+?)(?:\.git)?/?$")
 
 
 def _say(text: str) -> None:
@@ -47,7 +47,10 @@ def setting(root: Path) -> bool | str:
 
 def remotes(root: Path) -> list[str]:
     """The distinct github.com repositories among the remotes' URLs, fetch and push, as the first remote spells them."""
-    r = subprocess.run(["git", "remote", "-v"], cwd=root, capture_output=True, text=True, timeout=10)
+    try:
+        r = subprocess.run(["git", "remote", "-v"], cwd=root, capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return []
     found: dict[str, str] = {}
     for line in r.stdout.splitlines():
         parts = line.split()
@@ -86,11 +89,11 @@ def choose(root: Path) -> None:
         answer = ""
     path = root / graphe_root.CONFIGURATION
     text = path.read_bytes().decode("utf-8")
-    m = re.search(r"(?ms)^\[tickets\][^\[]*?^[ \t]*github[ \t]*=[ \t]*true\b", text)
+    m = re.search(r"(?ms)^\[tickets\][^\[]*?^[ \t]*github[ \t]*=[ \t]*(true)\b", text)
     if not (answer.isdigit() and 1 <= int(answer) <= len(found) and m):
         print(f"  [tickets] github: none chosen, {graphe_root.CONFIGURATION} unchanged")
         return
-    path.write_bytes((text[:m.end() - 4] + f'"{found[int(answer) - 1]}"' + text[m.end():]).encode("utf-8"))
+    path.write_bytes((text[:m.start(1)] + f'"{found[int(answer) - 1]}"' + text[m.end(1):]).encode("utf-8"))
     print(f'  [tickets] github = "{found[int(answer) - 1]}" ({graphe_root.CONFIGURATION})')
 
 
@@ -124,7 +127,8 @@ def _read(path: Path, repo: str) -> dict | None:
     """The cache of `repo`; None when absent, broken or another repository's."""
     try:
         cache = json.loads(path.read_bytes())
-        return cache if cache["repository"] == repo and isinstance(cache["fetched"], (int, float)) else None
+        valid = cache["repository"] == repo and isinstance(cache["fetched"], (int, float))             and isinstance(cache["issues"], dict) and isinstance(cache["comments"], dict)
+        return cache if valid else None
     except (OSError, ValueError, KeyError, TypeError):
         return None
 
@@ -139,8 +143,8 @@ def _write(path: Path, cache: dict) -> None:
 
 def _fetch(repo: str, cache: dict | None, now: float) -> dict:
     """The cache with what changed since its fetch merged in (everything without one), fetched at `now`.
-    shortcut: an issue or a comment deleted on GitHub stays in the cache (`since` does not list it); to delete
-    graphe/issues.json when one matters."""
+    shortcut: an issue or a comment deleted on GitHub stays in the cache (`since` does not list it); to fetch
+    everything again now and then if a deleted one misleads."""
     # A minute back: GitHub's clock against this one.
     since = f"&since={time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(cache['fetched'] - 60))}" if cache else ""
     cache = cache or {"repository": repo, "issues": {}, "comments": {}}

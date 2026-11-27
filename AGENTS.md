@@ -19,7 +19,7 @@ Each time the graph does not answer and you search by hand (grep, reading), here
 
 ### Issue tracker
 
-GitHub Issues of `amelienbergerot/graphe`, in the Project graphe, titled `T-NNNN: ...`; Work lands through a pull request that closes its issue. See `docs/agents/issue-tracker.md`.
+GitHub Issues of `amelienbergerot/graphe`, in the Project graphe, titled `T-NNNN: ...`. Work lands through a pull request that closes its issue. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

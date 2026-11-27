@@ -111,8 +111,9 @@ def test_no_network_uses_the_cache_or_builds_without_the_issues_in_one_line(tmp_
     _github(monkeypatch, OSError("unreachable"))
     assert [t["title"] for t in issues.tickets(host)] == ["T-0001: One"]
     assert len(capsys.readouterr().err.strip().splitlines()) == 1
-    (host / "graphe" / "issues.json").write_text("{not json", encoding="utf-8")  # a broken cache: as none
-    assert issues.tickets(host) == []
+    for broken in ("{not json", '{"repository": "o/r", "fetched": 0}'):  # a broken cache: as none
+        (host / "graphe" / "issues.json").write_text(broken, encoding="utf-8")
+        assert issues.tickets(host) == []
 
 
 def test_an_issue_is_the_ticket_the_code_and_the_issues_cite(tmp_path: Path, monkeypatch):
