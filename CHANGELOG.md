@@ -4,7 +4,7 @@ One entry per release, newest first. graphe follows [SemVer](https://semver.org)
 
 A release that changes `contribute(project)`, `Project`, the shape of the nodes and links, or another field of `graphe/graphe.json` carries a **Contract** section: what breaks, and how to adapt an extension or a tool that reads the file. Such a release is at least a minor bump in `0.x` (never a patch), a major from `1.0`.
 
-## Unreleased
+## 0.2.0
 
 `graphe hook`, Claude Code's PreToolUse hook, which the plugin installs: a Grep, or a `grep`/`rg` through Bash or PowerShell, whose pattern is a name the graph knows gets one line of context naming `graphe explain` on it; silent otherwise, it never blocks the tool nor rebuilds the graph (T-0077).
 
