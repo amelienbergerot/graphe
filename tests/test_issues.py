@@ -20,7 +20,8 @@ def _repository(tmp_path: Path, toml: str, remotes: dict[str, str]) -> Path:
 
 def test_the_repository_is_the_one_github_repository_of_the_remotes(tmp_path: Path, capsys):
     host = _repository(tmp_path, "[tickets]\ngithub = true\n",
-                       {"origin": "https://github.com/a/b.git", "mirror": "git@github.com:A/b", "lab": "https://gitlab.com/c/d"})
+                       {"origin": "https://github.com/a/b.git", "mirror": "git@github.com:A/b", "lab": "https://gitlab.com/c/d",
+                        "ci": "https://x-access-token:abc@github.com/a/b", "other": "https://mygithub.com/e/f"})
     subprocess.run(["git", "remote", "set-url", "--push", "lab", "ssh://git@github.com/a/b/"], cwd=host, check=True)
     assert issues.remotes(host) == ["a/b"]
     assert issues.repository(host) == "a/b"

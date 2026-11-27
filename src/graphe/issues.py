@@ -29,7 +29,7 @@ API = "https://api.github.com"
 REFRESH = 600  # seconds: the cache is fetched again past 10 minutes
 TIMEOUT = 10  # seconds per request: a git hook's build is never held up long
 # github.com/owner/repo in a remote's URL: https://, git@github.com:, ssh://git@github.com/.
-REMOTE = re.compile(r"^(?:https?://|ssh://)?(?:[\w.-]+@)?github\.com[:/]([\w.-]+)/([\w.-]+?)(?:\.git)?/?$")
+REMOTE = re.compile(r"^(?:https?://|ssh://)?(?:[^@/\s]+@)?github\.com[:/]([\w.-]+)/([\w.-]+?)(?:\.git)?/?$")
 
 
 def _say(text: str) -> None:
@@ -106,6 +106,8 @@ def tickets(root: Path) -> list[dict]:
     path = root / graphe_root.OUTPUT.name / "issues.json"
     cache = _read(path, repo)
     now = time.time()  # before the requests: what changes during them is fetched again next time
+    # shortcut: a failed fetch is tried again at the next build, so a network that drops the packets costs each build
+    # TIMEOUT; to keep the failed attempt's time and wait REFRESH if a host's builds wait for it.
     if cache is None or now - cache["fetched"] > REFRESH:
         try:
             cache = _fetch(repo, cache, now)
@@ -148,6 +150,8 @@ def _fetch(repo: str, cache: dict | None, now: float) -> dict:
     # A minute back: GitHub's clock against this one.
     since = f"&since={time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(cache['fetched'] - 60))}" if cache else ""
     cache = cache or {"repository": repo, "issues": {}, "comments": {}}
+    # shortcut: the first fetch is all or nothing, so a repository past ~5000 issues and comments without a token (60
+    # requests an hour) never fills its cache; to keep the pages fetched and go on from them if a host has so many.
     token = _token()
     for item in _pages(f"{API}/repos/{repo}/issues?state=all&per_page=100{since}", token):
         if "pull_request" not in item:
