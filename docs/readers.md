@@ -65,8 +65,8 @@ Every call or send is a coverage site, with its verdict:
 | Verdict | Meaning | Linked |
 |---|---|---|
 | `ours?` | A single definition of that name in the language. | yes, `INFERRED` |
-| `ambiguous` | Several definitions of that name. | no: `explain` counts it ("+ N calls named `f` the graph could not attribute: grep them", T-0025) |
-| `common` | A send of a common name that the host defines. | no: counted by `explain` likewise |
+| `ambiguous` | Several definitions of that name. | no: `explain` counts it ("+ N calls named `f` the graph could not attribute:", then "between K definitions", with the candidates when five at most, T-0025, T-0074) |
+| `common` | A send of a common name that the host defines. | no: counted by `explain` likewise ("on a common name") |
 | `external` | No definition of that name in the host (the standard library, a dependency, a builtin). | no |
 
 A file that does not parse (any error node in its tree) is skipped and named on stderr; the build goes on. A `tolerant` language (C/C++, whose macros leave error nodes in valid code; C#, whose `#if` branches, both read, can; Swift and Go, whose newer syntax the grammar lacks; Rust, whose grammar rejects `dyn 'a + Trait`) reads it all the same. A host without the language's files gets no contribution at all, not even an empty coverage.

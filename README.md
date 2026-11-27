@@ -8,7 +8,7 @@ An agent that navigates code (or a person) finds its way with grep, then reads f
 
 It also links code to its documents. A Markdown ticket that names a function between backticks cites it, so `explain` says which tickets motivated some code. A text shown on screen (the `displayed_text` pattern of `graphe.toml`) leads back to the function that displays it. A key both ends share, such as a route the front requests and the back answers, links them (a *keyed link*, `[keys]` of `graphe.toml`), where no name in the code does.
 
-It says where it stops. A link guessed from the name alone is marked `[by name]` or `?`. When some calls cannot be attributed (a receiver of unknown type, a name several classes bear), the answer says so: "+ N calls named `f` the graph could not attribute: grep them".
+It says where it stops. A link guessed from the name alone is marked `[by name]` or `?`. When some calls cannot be attributed (a receiver of unknown type, a name several classes bear), the answer says so, and why: "+ N calls named `f` the graph could not attribute:", then a count per cause (several definitions, with the candidates; a common name; a receiver of unknown type; a definition outside the host).
 
 ```
 $ graphe explain assemble

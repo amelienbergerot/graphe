@@ -719,17 +719,47 @@ def test_a_document_names_a_function_written_with_its_arguments(tmp_path: Path):
     assert r.returncode == 0 and "  names (1) [by name]\n    T-0001\n" in r.stdout, r.stdout + r.stderr
 
 
-def test_explain_says_how_many_calls_of_its_name_it_could_not_attribute(tmp_path: Path):
-    """T-0025: Django's `Model.objects.filter()`: the receiver's type is unknown, two methods bear the name."""
-    host = _host(tmp_path, {"requete.py": "class Requete:\n    def filtrer(self):\n        return 1\n\n\n"
+def test_explain_says_why_it_could_not_attribute_the_calls_of_its_name(tmp_path: Path):
+    """T-0025, T-0074: Django's `Model.objects.filter()`: two methods bear the name; a bare call the reader cannot
+    attribute; a module of ours that lacks the name."""
+    host = _host(tmp_path, {"requete.py": "import outils\n\n\nclass Requete:\n    def filtrer(self):\n        return 1\n\n\n"
                                           "class Autre:\n    def filtrer(self):\n        return 2\n\n\n"
-                                          "def f(x, y):\n    x.filtrer()\n    return y.filtrer()\n"}, tracked=".")
-    line = "  + 2 calls named `filtrer` the graph could not attribute: grep them\n"
+                                          "def f(x, y):\n    x.filtrer()\n    outils.filtrer()\n    filtrer()\n"
+                                          "    return y.filtrer()\n",
+                            "outils.py": "def aide():\n    return 1\n"}, tracked=".")
+    lines = ("  + 4 calls named `filtrer` the graph could not attribute:\n"
+             "    2 between 2 definitions: Requete.filtrer, Autre.filtrer\n"
+             "    1 on a receiver of unknown type\n"
+             "    1 to a definition outside the host\n")
     for arguments in (("explain", "Requete.filtrer"), ("callers", "Requete.filtrer")):
         r = _run(host, *arguments)
-        assert r.returncode == 0 and line in r.stdout, (arguments, r.stdout, r.stderr)
+        assert r.returncode == 0 and lines in r.stdout, (arguments, r.stdout, r.stderr)
     r = _run(host, "explain", "f")
     assert "could not attribute" not in r.stdout, r.stdout  # nothing missed for a name nobody calls
+
+
+def test_above_five_definitions_of_the_name_only_their_count(tmp_path: Path):
+    """T-0074: protobuf's 407 `pushLimit` calls; a list of candidates longer than five tells no more than a grep."""
+    classes = "".join(f"class C{i}:\n    def m(self):\n        return {i}\n\n\n" for i in range(6))
+    host = _host(tmp_path, {"c.py": classes + "def f(x):\n    return x.m()\n"}, tracked=".")
+    r = _run(host, "explain", "C0.m")
+    assert r.returncode == 0 and "\n    1 between 6 definitions\n" in r.stdout, r.stdout + r.stderr
+
+
+def test_a_common_name_is_its_own_cause(tmp_path: Path):
+    """T-0074: Ruby's `each`, a common name: a grep would return every loop."""
+    host = _host(tmp_path, {"liste.rb": "class Liste\n  def each\n    1\n  end\nend\n\n"
+                                        "def parcourir(x)\n  x.each\nend\n"}, tracked=".")
+    r = _run(host, "explain", "Liste.each")
+    assert r.returncode == 0 and "\n    1 on a common name\n" in r.stdout, r.stdout + r.stderr
+
+
+def test_a_method_call_on_a_receiver_of_unknown_type_is_its_own_cause(tmp_path: Path):
+    """T-0074: `x.filtrer()` in JavaScript, where no method bears the name: what `x` is, the reader cannot tell."""
+    host = _host(tmp_path, {"x.js": "function filtrer() {\n  return 1\n}\n\nfunction g(x) {\n  return x.filtrer()\n}\n"},
+                 tracked=".")
+    r = _run(host, "explain", "filtrer")
+    assert r.returncode == 0 and "\n    1 on a receiver of unknown type\n" in r.stdout, r.stdout + r.stderr
 
 
 def test_the_svelte_markup_reader_holds_on_awaits_line_breaks_and_unknown_tags(tmp_path: Path):

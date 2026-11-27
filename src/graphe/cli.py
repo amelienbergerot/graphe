@@ -384,26 +384,46 @@ def _write(path: Path, text: str) -> None:
     os.replace(f.name, path)
 
 
-# T-0025: the verdicts of a call no link leads from: a name of ours, perhaps, but the reader could not tell which.
-UNATTRIBUTED = {"ambiguous", "unknown", "absent", "attribute", "member", "external?", "common"}  # `dynamic` has no name
+# T-0025: the verdicts of a call no link leads from: a name of ours, perhaps, but the reader could not tell which;
+# T-0074: by cause (GLOSSARY.md, Unattributed call). `dynamic` has no name. shortcut: Python's bare `f()` the reader
+# cannot attribute is `unknown`, counted as a receiver of unknown type, as GDScript's `unknown` on a known script
+# that lacks the name; to split if an agent is misled by it.
+CAUSES = {"ambiguous": "several", "common": "common", "unknown": "receiver", "member": "receiver",
+          "attribute": "receiver", "external?": "outside", "absent": "outside"}
 
 
-def _unattributed(graph: nx.DiGraph, sites: dict[str, list[dict]]) -> dict[str, int]:
-    """The calls not attributed, by the name of a function or a method of ours (`filter`): what grep would find and
-    the graph does not."""
+def _unattributed(graph: nx.DiGraph, sites: dict[str, list[dict]]) -> dict[str, dict[str, int]]:
+    """The calls not attributed, by the name of a function or a method of ours (`filter`), then by cause: what grep
+    would find and the graph does not."""
     ours = {graph.nodes[n]["name"].rsplit(".", 1)[-1] for n in graph if graph.nodes[n]["kind"] in ("function", "method")}
-    counted = Counter(s["name"] for site_list in sites.values() for s in site_list
-                      if s.get("verdict") in UNATTRIBUTED and s.get("name") in ours)
-    return dict(sorted(counted.items()))
+    counted = Counter((s["name"], CAUSES[s["verdict"]]) for site_list in sites.values() for s in site_list
+                      if s.get("verdict") in CAUSES and s.get("name") in ours)
+    by_name: dict[str, dict[str, int]] = defaultdict(dict)
+    for (name, cause), count in sorted(counted.items()):
+        by_name[name][cause] = count
+    return dict(by_name)
 
 
 def _missed(graph: nx.DiGraph, n: str) -> None:
-    """T-0025: the line that tells the agent when to grep."""
+    """T-0025, T-0074: the lines that tell the agent when to grep, by cause."""
     d = graph.nodes[n]
     name = d["name"].rsplit(".", 1)[-1]
-    count = graph.graph["unattributed"].get(name, 0) if d["kind"] in ("function", "method") else 0
-    if count:
-        print(f"  + {count} calls named `{name}` the graph could not attribute: grep them")
+    causes = graph.graph["unattributed"].get(name, {}) if d["kind"] in ("function", "method") else {}
+    if not causes:
+        return
+    print(f"  + {sum(causes.values())} calls named `{name}` the graph could not attribute:")
+    if causes.get("several"):
+        # shortcut: the candidates by bare name, across languages and kinds where a reader sees its own language and
+        # may keep to methods (JS's `x.f()`, `apart`); to take the reader's own candidates if one misleads an agent.
+        candidates = sorted((c for c in graph if graph.nodes[c]["kind"] in ("function", "method")
+                             and graph.nodes[c]["name"].rsplit(".", 1)[-1] == name),
+                            key=lambda c: (graph.nodes[c]["source_file"], _line(graph, c)))
+        listed = f": {', '.join(_designation(graph, c) for c in candidates)}" if len(candidates) <= 5 else ""
+        print(f"    {causes['several']} between {len(candidates)} definitions{listed}")
+    for cause, text in (("common", "on a common name"), ("receiver", "on a receiver of unknown type"),
+                        ("outside", "to a definition outside the host")):
+        if causes.get(cause):
+            print(f"    {causes[cause]} {text}")
 
 
 def build(quiet: bool = False) -> int:

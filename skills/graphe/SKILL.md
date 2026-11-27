@@ -16,7 +16,11 @@ allowed-tools: Bash(graphe *) PowerShell(graphe *)
    - `graphe path A B` - how A leads to B; `--undirected` when the direction is unknown.
    - `graphe search PATTERN` - by name, then by displayed texts and comments.
 2. Designate X by its name (`step`), `Class.method`, `file::name` (`engine.py::step`), its id, or in GDScript `Script.function` (the constant that preloads the script). A file by its path (`simulation/core/engine.py`). When a name is ambiguous, the answer lists the candidates, each by the text that designates it alone: type that text.
-3. The answers list the neighbours one line per file, `file: Class.method:line, ...`, and the tickets by their identifier. Designate the next one as `file::Class.method` (`engine.py::Engine.step`), or a file by its path. `[by name]` on a relation, or `?` after a neighbour, marks a link the reader guessed from the name alone. "+ N calls named `f` the graph could not attribute: grep them" means what it says: the graph's callers are not all of them (a receiver of unknown type, a name several classes bear), grep `f(` for the rest.
+3. The answers list the neighbours one line per file, `file: Class.method:line, ...`, and the tickets by their identifier. Designate the next one as `file::Class.method` (`engine.py::Engine.step`), or a file by its path. `[by name]` on a relation, or `?` after a neighbour, marks a link the reader guessed from the name alone. "+ N calls named `f` the graph could not attribute:" means the graph's callers are not all of them; the lines under it give each cause its count, and the next step:
+   - "between K definitions: A.f, B.f" - several definitions bear the name. The candidates are listed when five at most: query the one you mean (`graphe callers B.f`), then grep `.f(` to tell its calls from the others'. Above five, the count only: grep.
+   - "on a common name" - a name the language's library uses too (`each`, `get`): a grep returns every use; narrow it to a file or a receiver.
+   - "on a receiver of unknown type" - the reader could not tell what `f` is called on: grep `f(`.
+   - "to a definition outside the host" - the name is ours, but these calls reach a dependency's, or a definition the reader did not find: grep only if you suspect they are ours.
 4. Read only the lines the answer points to.
 
 The graph rebuilds itself when the code or the tool is newer than it: trust the answer. Done when the answer names the code you need, or when it falls short (next section).
