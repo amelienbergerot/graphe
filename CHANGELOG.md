@@ -2,7 +2,7 @@
 
 One entry per release, newest first. graphe follows [SemVer](https://semver.org) and stays `0.x` while the extension contract may still move.
 
-A release that changes `contribute(project)`, `Project` or the shape of the nodes and links carries a **Contract** section: what breaks, and how to adapt an extension. Such a release is at least a minor bump in `0.x` (never a patch), a major from `1.0`.
+A release that changes `contribute(project)`, `Project`, the shape of the nodes and links, or another field of `graphe/graphe.json` carries a **Contract** section: what breaks, and how to adapt an extension or a tool that reads the file. Such a release is at least a minor bump in `0.x` (never a patch), a major from `1.0`.
 
 ## Unreleased
 
