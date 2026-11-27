@@ -75,25 +75,56 @@ def _comment(line: str) -> str | None:
     return None
 
 
+STRING = re.compile(r'"""|\'\'\'|"(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\'')
+
+
+def _scan(line: str, quote: str) -> tuple[int, str]:
+    """T-0083: the line's `(` minus its `)`, outside its strings, and the triple quote still open at its end ("" for
+    none), `quote` being the one open at its start."""
+    depth, i = 0, 0
+    while i < len(line):
+        if quote:
+            j = line.find(quote, i)
+            if j < 0:
+                return depth, quote
+            i, quote = j + 3, ""
+            continue
+        m = STRING.search(line, i)
+        piece = line[i:m.start() if m else len(line)]
+        depth += piece.count("(") - piece.count(")")
+        if not m:
+            break
+        quote = m[0] if m[0] in ('"""', "'''") else ""
+        i = m.end()
+    return depth, quote
+
+
 def extent(lines: list[str], start: int) -> int:
     """The last line (1 = the first of the file) of the block that starts at
-    `start`: before the first non-blank line, outside a comment, that comes
-    back to the indentation of `start` or less. A closing `}` or `)` at that
-    indentation belongs to the block, and a `{` alone on its line right after
-    the signature."""
+    `start`: before the first non-blank line, outside a comment and a string,
+    that comes back to the indentation of `start` or less. A closing `}` or
+    `)` at that indentation belongs to the block, and a `{` alone on its line
+    right after the signature."""
     if start < 1 or start > len(lines):
         return start
     base = _indent(lines[start - 1])
     end = start
-    open_ = lines[start - 1].count("(") - lines[start - 1].count(")")
+    open_, quote = _scan(lines[start - 1], "")
     body = False  # a line of the body seen
     for i in range(start, len(lines)):
         line = lines[i]
-        if open_ > 0:  # a signature over several lines
-            open_ += line.count("(") - line.count(")")
+        s = line.strip()
+        if quote:  # T-0083: in a string over several lines, whatever its indentation
+            _, quote = _scan(line, quote)
             end = i + 1
             continue
-        s = line.strip()
+        # a signature over several lines; a line back at its indentation ends it, unless it closes a bracket
+        if open_ > 0 and not (s and _indent(line) <= base and s[0] not in "})]"):
+            depth, quote = _scan(line, "")
+            open_ += depth
+            end = i + 1
+            continue
+        open_ = 0
         if not s or _comment(line) is not None and _indent(line) > base:
             continue
         if _indent(line) <= base:
@@ -103,6 +134,7 @@ def extent(lines: list[str], start: int) -> int:
             if s[0] in "})]" and _indent(line) == base:
                 end = i + 1
             break
+        _, quote = _scan(line, "")  # a docstring that opens here
         end, body = i + 1, True
     return end
 

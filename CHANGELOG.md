@@ -6,6 +6,8 @@ A release that changes `contribute(project)`, `Project`, the shape of the nodes 
 
 ## Unreleased
 
+A body's extent (`end`) reads its strings as strings: a parenthesis inside one no longer stretches a constant to the end of its file, and an unindented line of a string over several lines no longer ends its block (T-0083).
+
 `graphe affected [REV] [--depth N]`: what the working tree changes since it left REV (HEAD by default), the nodes touched, the definitions removed, then the callers of each node; `callers` marks a caller linked by name alone, `[by name]` on the level when every one is, `?` after it otherwise (T-0075).
 
 `explain` and `callers` say why they could not attribute the calls of a name: a count per cause (several definitions, with the candidates when five at most; a common name; a receiver of unknown type; a definition outside the host) under the line "+ N calls named `f` the graph could not attribute:" (T-0074).

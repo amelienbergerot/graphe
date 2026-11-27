@@ -225,6 +225,17 @@ def test_extent_and_notes_of_a_body():
     assert gc.extent(["def f():", "    return 1", "{", "  'a': 1", "}"], 1) == 2  # not after a body
 
 
+def test_an_extent_reads_strings_as_strings():
+    """T-0083: the parentheses of a string do not open a signature; a string over several lines is the block's."""
+    from graphe import core as gc
+    assert gc.extent(['MOTIF = r"\\((a)"', "", "def f():", "    return 1"], 1) == 1
+    toml = ["CONFIG = r'''cle = '\\(x'", "", "[section]", "a = 1", "'''", "", "", "def f():", "    return 1"]
+    assert gc.extent(toml, 1) == 5
+    assert gc.extent(['def f():', '    """Doc,', "", "sans retrait.", '    """', "    return 1", "", "X = 2"], 1) == 6
+    assert gc.extent(["def f(a,", "b):", "    return 1"], 1) == 1  # a line back at the indentation ends a signature
+    assert gc.extent(["def f(", "    a,", "):", "    return a"], 1) == 4
+
+
 def _enrich(g, root: Path) -> None:
     """The core, on sources written in `root`: a git repository, from which it draws the documents (T-0010)."""
     from graphe import core

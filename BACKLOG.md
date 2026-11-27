@@ -10,14 +10,6 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
 
 ## Open
 
-- **A module variable holding a multi-line string runs to the end of its
-  file.** (graphe, 2026-11-27, T-0075) `graphe affected` on this repository
-  listed `tests/test_host.py::GRID_ZERO_TOML` as touched by blank lines added
-  at the end of the file: its extent is 405-864, the string's unindented lines
-  read as the body going on (`core.extent`). Found by reading graphe.json. An
-  extent that ends with the string's closing quotes (the first line back at
-  the variable's indentation after it) would have given 405-419.
-
 - **The graph does not say which string values a field takes in the code.**
   (graphe, 2026-11-27, T-0074) Looking for every verdict a reader gives a
   call site (`"ambiguous"`, `"member"`, `"absent"`...), to map each to a
@@ -282,6 +274,15 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
 ## Settled
 
 Settled by tickets (2026-11-27):
+
+- **A module variable holding a multi-line string runs to the end of its
+  file.** [T-0083] (graphe, 2026-11-27, T-0075) `graphe affected` listed
+  `tests/test_host.py::GRID_ZERO_TOML` as touched by lines added at the end of
+  the file: its extent ran to the end. The cause: `core.extent` counted the
+  parentheses of the regex on its first line as a signature never closed.
+  T-0083: the parentheses inside a string do not count, the lines of a string
+  over several lines are the block's; GRID_ZERO_TOML reads 405-419, and the
+  other extents it changed on this repository end where their statement does.
 
 - **What a diff reaches takes one `callers` per function.** [T-0075]
   (graphe, comparison with graphify, 2026-11-27) `graphe affected [REV]`
