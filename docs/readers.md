@@ -6,7 +6,7 @@ A reader turns a host's files of one language into nodes, links and coverage sit
 |---|---|---|---|
 | `python` | dedicated, `graphe/python.py` | Python | `.py` |
 | `godot` | dedicated, `graphe/godot.py` | GDScript | `.gd` |
-| `js` | dedicated, `graphe/js.py` | JavaScript, TypeScript, Svelte | `.js`, `.mjs`, `.ts`, `.svelte` |
+| `js` | dedicated, `graphe/js.py` | JavaScript, TypeScript, JSX, TSX, Svelte | `.js`, `.mjs`, `.jsx`, `.ts`, `.tsx`, `.svelte` |
 | `go` | generic, `graphe/generic.py` | Go | `.go` |
 | `rust` | generic, `graphe/generic.py` | Rust | `.rs` |
 | `java` | generic, `graphe/generic.py` | Java, Kotlin | `.java`, `.kt` |
@@ -251,4 +251,4 @@ Each is specified in its module's docstring.
 
 - **Python**, `graphe/python.py`: the `ast`, a call resolved by its receiver's type (annotations, constructions, returns), by the name alone otherwise; a cache of each file's definitions (T-0026).
 - **GDScript**, `graphe/godot.py`: by patterns, a `preload` constant designates its script, a variable typed by it or made by `X.new()` sends its calls there; `check` recounts the calls.
-- **JavaScript, TypeScript, Svelte**, `graphe/js.py`: tree-sitter, ES imports and re-exports followed, `new C()` and `f()` assigned typed, by the name otherwise; a Svelte component's script and markup (T-0014, T-0015, T-0022).
+- **JavaScript, TypeScript, Svelte**, `graphe/js.py`: tree-sitter, ES imports and re-exports followed, `new C()` and `f()` assigned typed, by the name otherwise; a Svelte component's script and markup (T-0014, T-0015, T-0022); `.jsx` by the JavaScript grammar, `.tsx` by the TSX one, a JSX `<Component/>` no call (T-0076).

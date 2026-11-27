@@ -21,7 +21,7 @@ constant that preloads its script (`Script.function`).
 
 The readers: graphe/python.py (the ast, calls resolved by types),
 graphe/godot.py (GDScript, by patterns) and graphe/js.py
-(`.js`, `.mjs`, `.ts`, the script and markup of `.svelte`, by tree-sitter: calls
+(`.js`, `.mjs`, `.jsx`, `.ts`, `.tsx`, the script and markup of `.svelte`, by tree-sitter: calls
 resolved by the imports, by `new C()` or `f()` assigned, else by the name); generic.py reads
 Go, Rust, Java/Kotlin, C/C++, C#, Ruby, Swift and PHP (with the actions of a
 `switch ($action)`) by tree-sitter, a call linked by its name only when the

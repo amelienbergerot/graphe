@@ -31,11 +31,11 @@ what calls it:
 
 | How | What |
 |---|---|
-| Through imports and types (sure links) | Python, JavaScript, TypeScript, Svelte (script and markup), GDScript (Godot) |
+| Through imports and types (sure links) | Python, JavaScript, TypeScript, JSX and TSX (`.jsx`, `.tsx`), Svelte (script and markup), GDScript (Godot) |
 | By name (the generic reader, `[by name]` links) | Go, Rust, Java, Kotlin, C, C++, C#, Ruby, Swift, PHP |
 | Documents | Markdown: tickets and documents, and what they cite |
 | Frameworks | None specifically: a front-to-back link (a route the front requests and the back answers) through `[keys]` of `graphe.toml` |
-| Not read | `.jsx`, `.tsx`, Vue |
+| Not read | Vue |
 
 Each language in detail, with its suffixes: [docs/readers.md](docs/readers.md).
 

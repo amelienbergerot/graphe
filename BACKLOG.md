@@ -261,14 +261,11 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   build environment, which ADR 0002 set aside for the TypeScript compiler,
   and an index goes stale between runs. A local extension (ADR 0001) first,
   if a host has an index; set aside on 2026-11-27 (T-0071).
-- **`.jsx`, `.tsx` and Vue are not read.** (graphe, the user's request,
-  2026-11-27) README's "Not read" row: a React or Vue host gets no graph of
-  its components, nor of the calls in their markup. The JS reader already
-  reads TypeScript and Svelte's script and markup by tree-sitter, and its
-  grammars take JSX already (`tree_sitter_javascript` parses it,
-  `tree_sitter_typescript.language_tsx()` sits beside the
-  `language_typescript()` of `js.py:32`); a
-  `.vue` file's `<script>` and template would take Svelte's path. A JSX
+- **Vue is not read.** (graphe, the user's request, 2026-11-27) README's
+  "Not read" row: a Vue host gets no graph of its components, nor of the
+  calls in their template. `.jsx` and `.tsx` are read since T-0076 (the
+  JavaScript grammar, the TSX one); what is left is Vue (T-0082): a `.vue`
+  file's `<script>` and template would take Svelte's path. A JSX
   `<Component/>` as a link is the framework entry's (T-0047).
 
 ## Settled

@@ -6,6 +6,8 @@ A release that changes `contribute(project)`, `Project`, the shape of the nodes 
 
 ## Unreleased
 
+The JS reader takes `.jsx` (the JavaScript grammar) and `.tsx` (the TSX grammar): their imports, calls and definitions are read as a `.js` or `.ts` file's, a bare handler (`onClick={save}`) is a `references` as in Svelte's markup, and a relative specifier may leave either suffix out (T-0076).
+
 A body's extent (`end`) reads its strings as strings: a parenthesis inside one no longer stretches a constant to the end of its file, and an unindented line of a string over several lines no longer ends its block (T-0083).
 
 `graphe affected [REV] [--depth N]`: what the working tree changes since it left REV (HEAD by default), the nodes touched, the definitions removed, then the callers of each node; `callers` marks a caller linked by name alone, `[by name]` on the level when every one is, `?` after it otherwise (T-0075).

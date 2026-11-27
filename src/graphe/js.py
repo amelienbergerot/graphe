@@ -1,6 +1,7 @@
-"""The host's JavaScript in the code graph (T-0014): `.js` and `.mjs`, read by tree-sitter (ADR 0002); `.ts` and a
-`.svelte` component (T-0015) by the TypeScript grammar: its `<script>`, and the expressions of its markup as
-statements of the module, their calls the component's (T-0022); the rest blanked out to keep the lines.
+"""The host's JavaScript in the code graph (T-0014): `.js`, `.mjs` and `.jsx`, read by tree-sitter (ADR 0002); `.tsx`
+by the TSX grammar (T-0076), a JSX `<Component/>` no call; `.ts` and a `.svelte` component (T-0015) by the TypeScript
+grammar: its `<script>`, and the expressions of its markup as statements of the module, their calls the component's
+(T-0022); the rest blanked out to keep the lines.
 
 - a node per file, per top-level function (`function f`, `const f = () =>`), per class and per method
   (`Class.method`), per method of an object literal a function returns or a module's `const` holds (T-0020), per
@@ -11,7 +12,8 @@ statements of the module, their calls the component's (T-0022); the rest blanked
   `this.m()` in a class or its parents, `Class.m()`, or `x.m()` when x was assigned `new C()` or `[await] f()`
   (T-0020); by the name alone (INFERRED) for `x.m()` when one of our class methods only has that name, or for a
   name defined once in the host. A parameter or a variable of the function or of the module hides an import of
-  the same name: its calls are `local`. A bare name of ours as a statement (`onclick={fermer}`) is a `references`.
+  the same name: its calls are `local`. A bare name of ours as a statement (`onclick={fermer}`) or a JSX expression
+  (`onClick={save}`) is a `references`.
 
 The ids carry the extension (`src_zones_mjs`, `src_tableau_svelte`): `zones.py` is the Python reader's `src_zones`.
 """
@@ -30,10 +32,12 @@ import tree_sitter_typescript
 
 JS = tree_sitter.Parser(tree_sitter.Language(tree_sitter_javascript.language()))
 TS = tree_sitter.Parser(tree_sitter.Language(tree_sitter_typescript.language_typescript()))
-PARSERS = {".js": JS, ".mjs": JS, ".ts": TS, ".svelte": TS}
+# T-0076: the JavaScript grammar parses JSX; TypeScript's does not (`<T>x` is a cast there), its TSX sibling does.
+TSX = tree_sitter.Parser(tree_sitter.Language(tree_sitter_typescript.language_tsx()))
+PARSERS = {".js": JS, ".mjs": JS, ".jsx": JS, ".ts": TS, ".tsx": TSX, ".svelte": TS}
 # The suffixes a relative specifier may leave out (`./lib/eau` is `./lib/eau.ts`); a component is imported with its
-# `.svelte`. shortcut: neither `.tsx` nor NodeNext's `./x.js` for `x.ts`; to add when a host has some.
-SUFFIXES = (".js", ".mjs", ".ts")
+# `.svelte`. shortcut: not NodeNext's `./x.js` for `x.ts`; to add when a host has some.
+SUFFIXES = (".js", ".mjs", ".jsx", ".ts", ".tsx")
 # shortcut: by a pattern, so a `</script>` in a string of the script ends it; to parse the markup if a host trips on it.
 SCRIPT = re.compile(rb"<script\b[^>]*>(.*?)</script>", re.S)
 # T-0022: what the markup's expressions are not read in: the script, the style, the comments.
@@ -450,9 +454,10 @@ class Reader:
                 if node.type == "call_expression" and callee is not None and callee.type == "identifier" \
                         and _text(callee) in TESTS and _text(callee) not in hidden:
                     self._test(m, owner, node)
-            elif node.type == "expression_statement" and len(node.named_children) == 1 \
+            elif node.type in ("expression_statement", "jsx_expression") and len(node.named_children) == 1 \
                     and node.named_children[0].type == "identifier" and _text(node.named_children[0]) not in hidden:
-                # T-0022: a bare name, a handler of the markup (`onclick={fermer}`): a reference, not a call
+                # T-0022: a bare name, a handler of the markup (`onclick={fermer}`, JSX's `onClick={save}`, T-0076):
+                # a reference, not a call
                 if isinstance(target := self._binding(m, _text(node.named_children[0])), str) and target != owner:
                     self._link(owner, target, "references", m.rel, node)
             stack.extend((c, owner, cls, hidden, types) for c in reversed(node.named_children))
