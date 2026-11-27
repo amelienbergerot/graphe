@@ -623,6 +623,10 @@ def load(as_is: bool = False) -> nx.DiGraph:
             print("(the graph is older than the code or the tool: rebuilding)", file=sys.stderr)
             build(quiet=True)
     data = json.loads(JSON.read_bytes())
+    # T-0074: a graph built before the counts per cause; an upgrade may not leave the tool's files newer than it
+    if any(isinstance(v, int) for v in data.get("unattributed", {}).values()):
+        build(quiet=True)
+        data = json.loads(JSON.read_bytes())
     graph = nx.DiGraph(communities=data["communities"], unattributed=data.get("unattributed", {}))
     for n in data["nodes"]:
         graph.add_node(n["id"], **n)

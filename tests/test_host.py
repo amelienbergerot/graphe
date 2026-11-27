@@ -736,6 +736,11 @@ def test_explain_says_why_it_could_not_attribute_the_calls_of_its_name(tmp_path:
         assert r.returncode == 0 and lines in r.stdout, (arguments, r.stdout, r.stderr)
     r = _run(host, "explain", "f")
     assert "could not attribute" not in r.stdout, r.stdout  # nothing missed for a name nobody calls
+    stored = host / "graphe" / "graphe.json"  # a graph built by 0.1.1, one count per name, newer than the tool
+    data = json.loads(stored.read_bytes())
+    stored.write_text(json.dumps({**data, "unattributed": {"filtrer": 4}}), encoding="utf-8")
+    r = _run(host, "explain", "Requete.filtrer")
+    assert r.returncode == 0 and lines in r.stdout, r.stdout + r.stderr
 
 
 def test_above_five_definitions_of_the_name_only_their_count(tmp_path: Path):

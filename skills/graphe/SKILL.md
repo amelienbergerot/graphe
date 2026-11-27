@@ -20,7 +20,7 @@ allowed-tools: Bash(graphe *) PowerShell(graphe *)
    - "between K definitions: A.f, B.f" - several definitions bear the name. The candidates are listed when five at most: query the one you mean (`graphe callers B.f`), then grep `.f(` to tell its calls from the others'. Above five, the count only: grep.
    - "on a common name" - a name the language's library uses too (`each`, `get`): a grep returns every use; narrow it to a file or a receiver.
    - "on a receiver of unknown type" - the reader could not tell what `f` is called on: grep `f(`.
-   - "to a definition outside the host" - the name is ours, but these calls reach a dependency's, or a definition the reader did not find: grep only if you suspect they are ours.
+   - "to a definition outside the host" - the reader looked where the definition should be (a module or a class of ours, a dependency) and found none: a dependency's, or one of ours set at run time or re-exported. Grep `f(` when you need every call.
 4. Read only the lines the answer points to.
 
 The graph rebuilds itself when the code or the tool is newer than it: trust the answer. Done when the answer names the code you need, or when it falls short (next section).

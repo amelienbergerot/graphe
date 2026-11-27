@@ -10,6 +10,14 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
 
 ## Open
 
+- **The graph does not say which string values a field takes in the code.**
+  (graphe, 2026-11-27, T-0074) Looking for every verdict a reader gives a
+  call site (`"ambiguous"`, `"member"`, `"absent"`...), to map each to a
+  cause: `graphe search ambiguous` gives the comments that name the word,
+  not the `verdict = "ambiguous"` lines; grep found them in the four readers.
+  The string constants a function assigns or returns, kept as its notes or
+  searchable like its displayed texts, would have avoided the search.
+
 - **On a large repository, a stale query still waits for the whole
   resolution.** (Django, sample host, 2026-11-25, T-0026) ~68 s per stale
   query on this machine: each Python file's definitions are cached, but the
