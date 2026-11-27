@@ -453,6 +453,22 @@ def test_the_graph_does_not_change_from_one_build_to_the_next():
     assert cli.communities(g1) == cli.communities(g2)
 
 
+def test_a_leaf_stays_in_its_neighbours_community():
+    """T-0090: the nodes of one neighbour are folded into it before Louvain; a chain hanging off a triangle, a pair
+    apart, each with its neighbour; a ticket still in its own community."""
+    import networkx as nx
+    g = nx.DiGraph()
+    for n in ("a", "b", "c", "d", "e", "x", "y", "p", "q", "r", "t"):
+        g.add_node(n, kind="ticket" if n == "t" else "function", source_file=f"{n}.py")
+    for s, t in ("ab", "bc", "ca", "cd", "de", "xy", "pq", "qr", "rp", "ap", "et"):
+        g.add_edge(s, t, locations=[f"{s}.py:1"])
+    community_of, names = cli.communities(g)
+    assert community_of["c"] == community_of["d"] == community_of["e"]
+    assert community_of["x"] == community_of["y"] != community_of["a"]
+    assert names[community_of["t"]] == "tickets"
+    assert cli.communities(g) == (community_of, names)
+
+
 def test_undirected_the_path_prefers_the_code(capsys):
     """T-0354: a value links everything that writes it; undirected, the
     path goes through it only for want of a path through the code."""

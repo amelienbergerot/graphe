@@ -307,13 +307,34 @@ def _sorted(graph: nx.DiGraph) -> nx.DiGraph:
 
 def communities(graph: nx.DiGraph) -> tuple[dict[str, int], dict[int, str]]:
     separate, prefixes = _communities_config()
-    undirected = nx.Graph()
-    undirected.add_nodes_from(n for n in graph.nodes if graph.nodes[n]["kind"] not in separate)
+    holds = {n: [n] for n in graph.nodes if graph.nodes[n]["kind"] not in separate}  # node -> the nodes folded in it
+    weights: dict[str, Counter] = {n: Counter() for n in holds}  # node -> neighbour -> weight, both ways
     for s, t, d in graph.edges(data=True):
-        if s != t and s in undirected and t in undirected:
-            weight = undirected[s][t]["weight"] if undirected.has_edge(s, t) else 0
-            undirected.add_edge(s, t, weight=weight + len(d["locations"]))
-    groups = nx.community.louvain_communities(undirected, weight="weight", seed=0)
+        if s != t and s in holds and t in holds:
+            weights[s][t] += len(d["locations"])
+            weights[t][s] += len(d["locations"])
+    # T-0090: a node of one neighbour folded into it, again up the chain, its link kept as a self-loop (as Louvain's
+    # own levels do): protobuf's 76651 nodes -> 33436, communities() 12.1 -> 7.6 s, the modularity 0.9131 -> 0.9130
+    # (libsignal's and Django's higher).
+    # shortcut: the modularity within 0.01 measured on libsignal, protobuf and Django only (on sparse random graphs of
+    # 300 nodes, -0.014 to +0.017 against plain Louvain); to measure again on a host whose communities look wrong.
+    loops: Counter = Counter()
+    leaves = [n for n in holds if len(weights[n]) == 1]
+    while leaves:
+        n = leaves.pop()
+        if n in weights and len(weights[n]) == 1:
+            ((m, weight),) = weights.pop(n).items()
+            del weights[m][n]
+            loops[m] += weight + loops.pop(n, 0)
+            holds[m] += holds.pop(n)
+            if len(weights[m]) == 1:
+                leaves.append(m)
+    folded = nx.Graph()
+    folded.add_nodes_from(holds)
+    folded.add_weighted_edges_from((n, m, w) for n in weights for m, w in weights[n].items() if n < m)
+    folded.add_weighted_edges_from((n, n, w) for n, w in loops.items())
+    groups = [{x for n in group for x in holds[n]}
+              for group in nx.community.louvain_communities(folded, weight="weight", seed=0)]
     groups = sorted(groups, key=lambda g: (-len(g), min(g)))
     community_of, names, seen = {}, {}, Counter()
     for i, group in enumerate(groups):
