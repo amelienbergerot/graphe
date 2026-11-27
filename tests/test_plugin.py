@@ -41,6 +41,21 @@ def test_installing_the_plugin_installs_the_hook():
     assert command["type"] == "command" and command["command"] == "graphe hook; exit 0" and "args" not in command
 
 
+def test_every_agent_manifest_names_graphe_and_the_skills_folder_is_the_default():
+    """T-0078: the Agent Plugins manifest (Codex, Copilot, Cursor) and Gemini CLI's extension, each found where its
+    agent looks; every one discovers skills/ by default, so none names it. The versions: test_release."""
+    portable = json.loads((REPO / "plugin.json").read_text(encoding="utf-8"))
+    gemini = json.loads((REPO / "gemini-extension.json").read_text(encoding="utf-8"))
+    codex = json.loads((REPO / ".agents" / "plugins" / "marketplace.json").read_text(encoding="utf-8"))
+    assert portable["$schema"] == "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json"
+    assert portable["name"] == gemini["name"] == "graphe"
+    # Copilot's reference (docs.github.com/en/copilot/reference/cli-plugin-reference) forbids component path fields
+    assert "skills" not in portable and "hooks" not in portable
+    [entry] = codex["plugins"]
+    assert entry["name"] == "graphe" and entry["source"] == {"source": "local", "path": "./"}
+    assert "version" not in entry
+
+
 def test_the_skill_allows_the_graphe_command_for_its_turn():
     skill = (REPO / "skills" / "graphe" / "SKILL.md").read_text(encoding="utf-8")
     frontmatter = skill.split("---")[1]

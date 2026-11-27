@@ -30,6 +30,20 @@ def test_a_plugin_version_other_than_the_package_fails(tmp_path):
     (tmp_path / "pyproject.toml").write_text('[project]\nversion = "0.1.0"\n', encoding="utf-8")
     (tmp_path / ".claude-plugin").mkdir()
     (tmp_path / ".claude-plugin" / "plugin.json").write_text('{"version": "0.0.9"}', encoding="utf-8")
+    (tmp_path / "plugin.json").write_text('{"version": "0.1.0"}', encoding="utf-8")
+    (tmp_path / "gemini-extension.json").write_text('{"version": "0.1.0"}', encoding="utf-8")
     result = check("v0.1.0", tmp_path)
     assert result.returncode != 0
     assert "0.0.9" in result.stderr
+
+
+def test_another_agent_manifest_version_other_than_the_package_fails(tmp_path):
+    """T-0078: Gemini CLI's manifest, as every other one, carries the package's version."""
+    (tmp_path / "pyproject.toml").write_text('[project]\nversion = "0.1.0"\n', encoding="utf-8")
+    (tmp_path / ".claude-plugin").mkdir()
+    (tmp_path / ".claude-plugin" / "plugin.json").write_text('{"version": "0.1.0"}', encoding="utf-8")
+    (tmp_path / "plugin.json").write_text('{"version": "0.1.0"}', encoding="utf-8")
+    (tmp_path / "gemini-extension.json").write_text('{"version": "0.0.8"}', encoding="utf-8")
+    result = check("v0.1.0", tmp_path)
+    assert result.returncode != 0
+    assert "gemini-extension.json" in result.stderr and "0.0.8" in result.stderr

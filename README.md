@@ -58,7 +58,16 @@ The plugin also installs a hook: before the agent's Grep, or a `grep`/`rg` it ru
 
 Without an allow rule, each `graphe` query asks for approval (and a headless `claude -p` falls back to grep): add `Bash(graphe *)` and `PowerShell(graphe *)` to `permissions.allow` in `~/.claude/settings.json`.
 
-Another agent: copy the [`skills/graphe/`](skills/graphe) folder where that agent reads its skills (the Agent Skills format).
+The same skill, one text, reaches four other agents through this repository. Each is **untested: reports welcome in the [issues](https://github.com/amelienbergerot/graphe/issues)**. The hook stays Claude Code's.
+
+- Codex: `codex plugin marketplace add amelienbergerot/graphe`, then install `graphe` from that marketplace (`.agents/plugins/marketplace.json`, the plugin's `plugin.json` at the root, the Agent Plugins format).
+- GitHub Copilot CLI: `copilot plugin install amelienbergerot/graphe` (the same `plugin.json`).
+- Cursor: clone this repository into `~/.cursor/plugins/local/graphe` and reload the window (the same `plugin.json`); or copy the [`skills/graphe/`](skills/graphe) folder into `~/.cursor/skills/`.
+- Gemini CLI: `gemini extensions install https://github.com/amelienbergerot/graphe` (`gemini-extension.json`). Google replaced Gemini CLI with Antigravity CLI on 2026-06-18.
+
+Cursor and Gemini CLI read a plugin's `hooks/hooks.json` too, under their own event names (`preToolUse`, `BeforeTool`), not Claude Code's `PreToolUse`; Codex reads it only for a plugin installed by hand in its desktop app. If one ever runs `graphe hook`, it ends with exit 0 and never blocks the tool.
+
+Any other agent: copy the [`skills/graphe/`](skills/graphe) folder where that agent reads its skills (the Agent Skills format; `~/.agents/skills/` for several of them).
 
 ## First graph
 
@@ -142,8 +151,8 @@ The gaps met while using the graph go in `BACKLOG.md`, naming the host (`AGENTS.
 
 A release (`.github/workflows/release.yml`), in one commit then a tag:
 
-1. Set the same version `X.Y.Z` in `pyproject.toml` and `.claude-plugin/plugin.json`.
+1. Set the same version `X.Y.Z` in `pyproject.toml`, `.claude-plugin/plugin.json`, `plugin.json` and `gemini-extension.json`.
 2. Add its entry `## X.Y.Z` to `CHANGELOG.md`, with a **Contract** section if it changes `contribute(project)`, `Project` or the shape of the nodes and links.
-3. Commit, then push the tag: `git tag vX.Y.Z` and `git push origin vX.Y.Z`. The workflow stops before the upload if the tag and the two versions differ (`python .github/check_release.py vX.Y.Z` checks it locally), then uploads `graphe-code` to PyPI and creates the GitHub release.
+3. Commit, then push the tag: `git tag vX.Y.Z` and `git push origin vX.Y.Z`. The workflow stops before the upload if the tag and the versions differ (`python .github/check_release.py vX.Y.Z` checks it locally), then uploads `graphe-code` to PyPI and creates the GitHub release.
 
 Raising a grammar's cap, when the newest-versions job flags one, is an ordinary commit, not a release step.

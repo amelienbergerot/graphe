@@ -242,7 +242,16 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   mode, `GRAPHIFY_HOOK_NUDGE_CAP` nudges, reset by a `SessionStart` hook on
   `compact`). A PreToolUse hook of ours would reach the questions the
   description does not name: done by T-0077 (`graphe hook`, Grep and
-  `grep`/`rg` only, no cap); the other agents remain (T-0078).
+  `grep`/`rg` only, no cap). The other agents: settled by T-0078 on paper, a
+  root `plugin.json` (Agent Plugins: Codex, Copilot CLI, Cursor), Codex's
+  `.agents/plugins/marketplace.json`, Gemini CLI's `gemini-extension.json`,
+  one skill text, each manifest at the package's version (check_release.py).
+  Waits on users' reports: whether each installs and triggers the skill
+  (README: untested), whether Codex accepts a marketplace entry at its own
+  root (`./`, no example in its docs), and Cursor's GitHub import, which wants
+  a `.cursor-plugin/marketplace.json` whose root source is undocumented (left
+  out: Cursor takes a local clone or `~/.cursor/skills/`). The hook stays
+  Claude Code's. The entry stays open until those reports come.
 - **A query needs a Bash permission, or it falls back to grep.** (graphe,
   comparison with graphify, 2026-11-27) Without `Bash(graphe *)` and
   `PowerShell(graphe *)` in `permissions.allow`, each query asks for approval

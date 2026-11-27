@@ -4,6 +4,10 @@ One entry per release, newest first. graphe follows [SemVer](https://semver.org)
 
 A release that changes `contribute(project)`, `Project`, the shape of the nodes and links, or another field of `graphe/graphe.json` carries a **Contract** section: what breaks, and how to adapt an extension or a tool that reads the file. Such a release is at least a minor bump in `0.x` (never a patch), a major from `1.0`.
 
+## Unreleased
+
+The skill reaches Codex, GitHub Copilot CLI and Cursor through a `plugin.json` at the root (the Agent Plugins format) and Codex's marketplace (`.agents/plugins/marketplace.json`), Gemini CLI through `gemini-extension.json`; each untested, the README says how to install it (T-0078).
+
 ## 0.3.0
 
 The hook skips a grep that filters a pipe (`ls | grep x`): it searches no code (T-0086).
