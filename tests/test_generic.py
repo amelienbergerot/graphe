@@ -812,8 +812,11 @@ def test_an_abstract_method_an_interfaces_and_a_protocols_requirement_are_declar
         }
         """)
     assert definitions == {("class", "P", 1), ("abstract", "P.draw", 3)}
-    _, uses = generic.read(SWIFT, "Sources/p.swift", b"protocol P: Q {}\nstruct A: P {}\nextension B: P, R {}\n")
-    assert {(u.name, u.line, u.heir) for u in uses} == {("Q", 1, "P"), ("P", 2, "A"), ("P", 3, "B"), ("R", 3, "B")}
+    # libsignal's `extension OpaquePointer?: SignalMutPointer`: still a reference, its methods no type's
+    _, uses = generic.read(SWIFT, "Sources/p.swift",
+                           b"protocol P: Q {}\nstruct A: P {}\nextension B: P, R {}\nextension O?: P {}\n")
+    assert {(u.name, u.line, u.heir) for u in uses} == {("Q", 1, "P"), ("P", 2, "A"), ("P", 3, "B"), ("R", 3, "B"),
+                                                        ("P", 4, None)}
 
 
 def test_a_call_whose_candidates_all_override_one_declaration_is_linked_to_it(tmp_path: Path):

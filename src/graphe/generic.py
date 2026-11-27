@@ -384,6 +384,7 @@ SWIFT_QUERY = f"""
 (class_declaration name: (type_identifier) (inheritance_specifier inherits_from: {_SW_TYPE}) @reference @base)
 (protocol_declaration (inheritance_specifier inherits_from: {_SW_TYPE}) @reference @base)
 (class_declaration name: {_SW_EXTENDED} (inheritance_specifier inherits_from: {_SW_TYPE}) @reference @base)
+(class_declaration name: (optional_type) (inheritance_specifier inherits_from: {_SW_TYPE}) @reference)
 """
 
 # The common names: `init` (611 sends `self.init`, `.init`, `super.init`), `append` (71, `Data`'s), `combine` (3 of
