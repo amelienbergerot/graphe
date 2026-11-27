@@ -750,9 +750,12 @@ def test_a_qualifier_naming_a_host_class_narrows_the_candidates_to_its_methods(t
                 Point::length();
                 Line::new();
                 Vec::new();
+                HashMap::from();
             }
             """,
         "src/b.rs": "impl Point { fn new() {} fn length() {} }\nimpl Line { fn length() {} }\n",
+        # a type the host only implements a trait for is not the host's: `HashMap::from` is std's (libsignal, 30 sites)
+        "src/d.rs": "impl From<X> for HashMap<K, V> { fn from() {} }\n",
         "src/c.rs": "mod legacy { struct Line {} impl Line { fn new() {} } }\n",
     })
     rust = generic.contribute(RUST, project)
@@ -760,7 +763,8 @@ def test_a_qualifier_naming_a_host_class_narrows_the_candidates_to_its_methods(t
     assert calls == {("src_a_rs_main", "src_b_rs_point_new", "EXTRACTED"),
                      ("src_a_rs_main", "src_b_rs_point_length", "EXTRACTED")}
     assert {s["text"]: s["verdict"] for s in rust["sites"]} == {
-        "Point::new": "ours", "Point::length": "ours", "Line::new": "ambiguous", "Vec::new": "common"}
+        "Point::new": "ours", "Point::length": "ours", "Line::new": "ambiguous", "Vec::new": "common",
+        "HashMap::from": "common"}
 
     project = Project(tmp_path / "jvm", {
         "src/Circle.java": """\

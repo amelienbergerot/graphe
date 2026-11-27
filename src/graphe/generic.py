@@ -10,7 +10,8 @@ type when it is declared outside it (Go); `@action` for an entry point's action 
 the innermost definition that contains it; a function in
 a `@class` is its method; a method's class is its `@receiver`, or else the innermost `@class` that contains it; a
 `@class` in a `@class` is `Outer.Inner` (T-0043), its methods `Outer.Inner.m`. `@qualifier` on a send is what it is
-sent on (Rust's `T::f()`, Java's and Kotlin's `C.f()`): its last name, if it is a path of names.
+sent on (Rust's `T::f()`, Java's and Kotlin's `C.f()`): its last name, if it is a path of names. `@extension` on a
+`@class` (Rust's `impl`): a class the file only extends, the host's only if another capture declares it.
 
 - a node per file, function, method (`Class.method`), class and action; the definitions of one kind and name in a file are one
   (Rust's `struct T` and its `impl T`, Java's overloads); the ids carry the extension (`a_t_go`);
@@ -58,6 +59,7 @@ class Definition(NamedTuple):
     kind: str  # function, method, class, action
     name: str  # `f`, `T.m`, `T`, `liste`
     line: int
+    extension: bool = False  # a class this file only extends (Rust's `impl T`, `impl Tr for Vec<X>`), declares nowhere
 
 
 class Use(NamedTuple):
@@ -128,7 +130,7 @@ RUST_QUERY = """
   (reference_type type: [
     (type_identifier) @name
     (generic_type type: (type_identifier) @name)
-    (scoped_type_identifier name: (type_identifier) @name)])]) @class
+    (scoped_type_identifier name: (type_identifier) @name)])]) @class @extension
 (call_expression function: (identifier) @name) @call
 (call_expression function: (field_expression field: (field_identifier) @name)) @send
 (call_expression function: (scoped_identifier path: (_)? @qualifier name: (identifier) @name)) @send
@@ -548,7 +550,7 @@ def read(language: Language, file: str, source: bytes) -> tuple[list[Definition]
         if name.is_missing:  # a name the grammar inserted to recover: C++'s `enum : int {..}` (T-0034)
             continue
         found.append((node.start_byte, node.end_byte, role, name, captures.get("receiver", [None])[0], node,
-                      captures.get("qualifier", [None])[0]))
+                      captures.get("qualifier", [None])[0], "extension" in captures))
     definitions, uses = [], []
     # A file's definitions of one kind and name are one: Rust's `struct T` and its `impl T`, Java's overloads.
     # shortcut: the line (and the extent) is the first one's; to give the node every line if `explain --source`
@@ -559,7 +561,8 @@ def read(language: Language, file: str, source: bytes) -> tuple[list[Definition]
     stack: list[tuple[int, Definition]] = []  # the open definitions: (their end, them)
     bare = None  # the last action without a body, and its node: it leads to the case that follows it
     # By position, an outer node before the inner one it starts with (`f(g())`), a definition before a use there.
-    for start, end, role, name_node, receiver, node, qualifier in sorted(
+    declared = set()  # the (kind, name) a capture other than an `@extension` defines
+    for start, end, role, name_node, receiver, node, qualifier, extension in sorted(
             found, key=lambda f: (f[0], -f[1], f[2] in USES)):
         while stack and stack[-1][0] <= start:
             stack.pop()
@@ -567,10 +570,10 @@ def read(language: Language, file: str, source: bytes) -> tuple[list[Definition]
         if role in USES:
             used = source[start:name_node.end_byte].decode("utf-8", "replace")
             # a path of names only, its generic arguments dropped (`Vec::<u8>`); `f().g`, `new C().g` have none
-            path = re.fullmatch(r"(?:[\w:.]*(?:::|\.))?(\w+)(?:::)?(?:<.*>)?",
+            last = re.fullmatch(r"(?:[\w:.]*(?:::|\.))?(\w+)(?:::)?(?:<.*>)?",
                                 re.sub(r"\s+", "", qualifier.text.decode("utf-8", "replace"))) if qualifier else None
             uses.append(Use(role, name, line, stack[-1][1] if stack else None, re.sub(r"\s+", "", used)[:60],
-                            path[1] if path else None))
+                            last[1] if last else None))
             continue
         if role == "action" and stack:
             continue  # a function's own `switch`, or one nested in an action: no entry point's, its calls stay there
@@ -587,6 +590,8 @@ def read(language: Language, file: str, source: bytes) -> tuple[list[Definition]
         if (kind, name) not in by_kind_name:
             by_kind_name[kind, name] = Definition(kind, name, line)
             definitions.append(by_kind_name[kind, name])
+        if not extension:
+            declared.add((kind, name))
         if bare and kind == "action" and bare[0].name != name:
             following = bare[1].next_named_sibling
             while following is not None and following.type == "comment":
@@ -598,7 +603,9 @@ def read(language: Language, file: str, source: bytes) -> tuple[list[Definition]
             empty = not re.search(rb"\w", source[name_node.end_byte:end])
             bare = (by_kind_name[kind, name], node) if empty else None
         stack.append((end, by_kind_name[kind, name]))
-    return definitions, uses
+    # marked once the whole file is read: its `struct T` may follow its `impl T`
+    final = {d: d._replace(extension=(d.kind, d.name) not in declared) for d in definitions}
+    return list(final.values()), [u._replace(owner=final.get(u.owner)) for u in uses]
 
 
 # T-0079: what a tool writes in the leading comments of a file it generates: protobuf's compiler (every language it
@@ -654,6 +661,7 @@ def contribute(language: Language, project) -> dict:
     callables: dict[str, list[str]] = defaultdict(list)  # bare name -> function and method ids
     classes: dict[str, list[str]] = defaultdict(list)
     methods: dict[tuple[str, str], list[str]] = defaultdict(list)  # (bare class name, bare name) -> method ids
+    declared = set()  # the bare names of the classes the host declares, not only extends (std's `HashMap`)
     for path in paths:
         rel = path.relative_to(project.root).as_posix()
         source = path.read_bytes()
@@ -673,6 +681,8 @@ def contribute(language: Language, project) -> dict:
             # by the bare name a use carries: `Inner` for `Outer.Inner`, `m` for `T.m`; no call reaches an action
             if d.kind != "action":
                 (classes if d.kind == "class" else callables)[d.name.rsplit(".", 1)[-1]].append(held[d])
+            if d.kind == "class" and not d.extension:
+                declared.add(d.name.rsplit(".", 1)[-1])
             if d.kind == "method":
                 methods[tuple(d.name.rsplit(".", 2)[-2:])].append(held[d])
             # a method's class holds it when it is defined in the same file (Go's type is often in another one)
@@ -690,7 +700,10 @@ def contribute(language: Language, project) -> dict:
             ours = (classes if u.kind == "reference" else callables).get(u.name, [])
             # T-0080: `T::f()`, `C.f()` sent on a class of the host: only its methods `f` are candidates, a common
             # name too; none, the name alone decides as before (a static method `C` inherits).
-            named = methods.get((u.qualifier, u.name), []) if u.qualifier in classes else []
+            # shortcut: no imports, so a library's type named like a declared one is taken for it (std's `Duration`,
+            # libsignal's own `struct Duration`: about 42 of 50 `Duration::from_millis`), a variable so named too; to
+            # read Rust's `use` and Java's `import` if a host's `callers` suffer.
+            named = methods.get((u.qualifier, u.name), []) if u.qualifier in declared else []
             if u.kind != "reference":
                 if language.apart:
                     ours = [t for t in ours if (t in functions) == (u.kind == "call")]

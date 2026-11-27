@@ -27,3 +27,7 @@ ADR 0003 gets one amendment, written with this ticket, for this rule and T-0081'
 - T-0073 (the Rust and Java/Kotlin snapshots).
 - T-0078 (both edit the README).
 - T-0079 (both edit the generic reader).
+
+## Comments
+
+- 2026-11-27: done. An optional `@qualifier` on a send (Rust's `scoped_identifier` path, Java's `object`, Kotlin's `navigation_expression` head) gives `Use.qualifier`, the path's last name (generic arguments dropped; `f().g()` has none). `contribute` narrows a send whose qualifier names a class the host declares to the methods `f` of the classes so named: one, linked `EXTRACTED` (site `ours`); several, `ambiguous`; none, the name alone as before. A Rust `impl` is `@extension`: a type the host only implements a trait for (`impl From<X> for HashMap`) is not its class, found in review (libsignal's `HashMap::from([..])`, 30 sites). Snapshots: Rust `Point::new`, `Point::length` (its `impl` in `measure.rs`), `origin -> Point::new` new, `Point::origin` turned sure, `Line::new` still ambiguous (two `Line`); JVM `Circle.create`, `Square.of`, `Board.create` new, both `Circle.unit` turned sure. libsignal: Rust `calls` 5524 -> 7854, Java 1259 -> 1451, Kotlin 1371 -> 1478, 991 turned sure; protobuf: Java 10066 -> 13069, Rust 344 -> 449, Kotlin 8 -> 12, 1574 turned sure; none lost, 0 dangling, the sites unchanged in number. Left open (BACKLOG.md): a Rust path's modules (`KeyPair::generate` between 6 modules, std's `Duration` taken for libsignal's, about 42 sites), `Self::f()`.

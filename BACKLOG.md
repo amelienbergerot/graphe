@@ -65,6 +65,17 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   `T` (15 files), `impl Tr for Vec<X>` a class `Vec` (10). Swift's
   extensions (T-0037) take the same shape: merging a class's nodes across
   files, or a `@class` that only extends, is the generic reader's own ticket.
+- **A Rust path's modules do not tell two types of one name apart.**
+  (libsignal, sample host, 2026-11-27, T-0080) A send qualified by a class
+  of the host is linked to that class's method (T-0080), but only the
+  path's last name is read: `kem::KeyPair::generate` (118 calls) stays
+  ambiguous between the 6 `struct KeyPair` of 6 modules, and std's
+  `Duration::from_millis` goes to libsignal's own `struct Duration` (about
+  42 of its 50 sites: those outside `rust/message-backup`, where its
+  `from_millis` is `pub(super)`; grep found 34 of them in files importing
+  `std::time::Duration`). `Self::f()` names no class, linked by `f`
+  alone. Reading a file's `use` and an `impl`'s type would settle all
+  three: the start of a dedicated Rust reader (ADR 0003).
 - **Generated Java code repeated in a host makes its names ambiguous.**
   (protobuf, sample host, 2026-11-19, T-0033) 11 of protobuf's 293 Java
   files are one generated file, `Proto3GencodeTestProto.java`, as 9 old
@@ -294,9 +305,9 @@ Settled by tickets (2026-11-27):
   for candidates, a common name too, linked for sure when one is left
   (ADR 0003's amendment): `DeviceId::new` 184 sites, `ProtocolAddress::new`
   132, `TestStoreBuilder::new` 64; Java's and Kotlin's `C.f()` too. On
-  libsignal, 2771 `calls` links more, 1011 turned sure; on protobuf, 3123
-  and 1574; none lost, 0 dangling. `KeyPair::generate` stays ambiguous: its
-  6 `struct KeyPair` are in modules, which are no classes.
+  libsignal, 2629 `calls` links more, 991 turned sure; on protobuf, 3112
+  and 1574; none lost, 0 dangling. What is left is open below (a Rust
+  path's modules).
 
 - **Vue is not read.** [T-0082] (graphe, the user's request, 2026-11-27) README's
   "Not read" row: a Vue host gets no graph of its components, nor of the
