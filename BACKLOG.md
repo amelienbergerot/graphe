@@ -34,7 +34,9 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   processes, 1.60 s over 8 (x3.9, the results equal to the serial run's); the linking
   stays serial. T-0088 runs one process per reader, Django having nothing
   to gain from this split; to take it when a host's build is dominated by
-  one generic language.
+  one generic language. Since T-0088 the readers run at once, so the
+  largest one is the readers' critical path (protobuf's C/C++, gitea's Go):
+  T-0092 splits its files.
 - **On a large repository, a stale query still waits for the whole
   resolution.** (Django, sample host, 2026-11-25, T-0026) ~68 s per stale
   query on this machine: each Python file's definitions are cached, but the
@@ -48,6 +50,9 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   key each file's cache on its git blob id, and re-resolve only the sites
   whose name's definitions changed (CodeQL's overlay analysis, Glean's
   ownership). Set aside on 2026-11-27 (T-0071) until such a host comes.
+  The full build's serial part after the readers (T-0088 runs them at
+  once): on protobuf, under load, the communities 11.6 s and the core's
+  enrichment 11.1 s of 53.5 s, which T-0090 and T-0091 cut.
 - **A Go generic method is no node.** (gitea, sample host, 2026-11-19,
   T-0031, T-0039) `tree-sitter-go` 0.25.0, the last on PyPI, knows neither
   `new(expr)` nor generic methods (`func (f *Flash) Error[T ...]`). Since

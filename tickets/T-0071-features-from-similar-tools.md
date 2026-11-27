@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: closed
 Type: spec
 Created: 2026-11-27
 
@@ -110,3 +110,7 @@ The contract (`contribute(project)`, the shape of the nodes and links) changes i
 - Sources: `docs/research/similar-tools.md` (12 tools and three code-graph MCP servers, 14 ideas ranked), graphify's comparison in BACKLOG.md, the decisions of a grilling session on 2026-11-27.
 - Glossary terms added in that session: Unattributed call, Generated file.
 - The backlog entries these tickets settle: "What a diff reaches takes one `callers` per function.", "`.jsx`, `.tsx` and Vue are not read.", "The skill reaches Claude Code alone, and only for the questions it names.", "A Rust `Type::f()` path is not linked when `f` is a common name.", "A Java call to an abstract method is linked to none of its implementations.", and in part the generated-code entries (Java, C#, the C amalgamation) and "Swift's FFI conformances make their methods' names ambiguous.".
+
+## Comments
+
+- 2026-11-27: closed. Its implementation tickets (`Part of: T-0071`: T-0072 to T-0086, T-0083 aside) are all closed, T-0082 resolved; the backlog entries it kept open stay so, each with its pointer (Out of Scope above). The skill's reach to the other agents (T-0078) still waits on users' reports, in its backlog entry.
