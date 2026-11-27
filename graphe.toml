@@ -1,1 +1,4 @@
 exclude = ["tests/fixtures"]  # the sample hosts of the snapshots (T-0072), not graphe's code
+
+[tickets]
+github = true  # the tickets are the issues of the repository (T-0095)

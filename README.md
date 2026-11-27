@@ -6,7 +6,7 @@ The code graph of a host project: what calls what, what cites what. `graphe --he
 
 An agent that navigates code (or a person) finds its way with grep, then reads files to sort out what grep matched. Grep matches text: `.step(` finds the `step` of every class, plus comments and strings. Graphe reads the code once, links each call to its definition, and answers a question about a function in a few hundred bytes: what it calls, what calls it, and the tickets that cite it. One query costs 2 to 12 times fewer tokens than grep plus reading ([Tested on](#tested-on)), and it is more exact.
 
-It also links code to its documents. A Markdown ticket that names a function between backticks cites it, so `explain` says which tickets motivated some code. A text shown on screen (the `displayed_text` pattern of `graphe.toml`) leads back to the function that displays it. A key both ends share, such as a route the front requests and the back answers, links them (a *keyed link*, `[keys]` of `graphe.toml`), where no name in the code does.
+It also links code to its documents. A Markdown ticket that names a function between backticks cites it, so `explain` says which tickets motivated some code; a host whose tickets are its GitHub issues says so in `graphe.toml` (`[tickets]`), and the issues are its tickets. A text shown on screen (the `displayed_text` pattern of `graphe.toml`) leads back to the function that displays it. A key both ends share, such as a route the front requests and the back answers, links them (a *keyed link*, `[keys]` of `graphe.toml`), where no name in the code does.
 
 It says where it stops. A link guessed from the name alone is marked `[by name]` or `?`. When some calls cannot be attributed (a receiver of unknown type, a name several classes bear), the answer says so, and why: "+ N calls named `f` the graph could not attribute:", then a count per cause (several definitions, with the candidates; a common name; a receiver of unknown type; a definition outside the host).
 
@@ -33,7 +33,7 @@ what calls it:
 |---|---|
 | Through imports and types (sure links) | Python, JavaScript, TypeScript, JSX and TSX (`.jsx`, `.tsx`), Svelte and Vue (script and template), GDScript (Godot) |
 | By name (the generic reader, `[by name]` links) | Go, Rust, Java, Kotlin, C, C++, C#, Ruby, Swift, PHP |
-| Documents | Markdown: tickets and documents, and what they cite |
+| Documents | Markdown: tickets and documents, and what they cite; GitHub issues as tickets, with `[tickets]` |
 | Frameworks | None specifically: a front-to-back link (a route the front requests and the back answers) through `[keys]` of `graphe.toml` |
 
 Each language in detail, with its suffixes: [docs/readers.md](docs/readers.md).
@@ -89,7 +89,12 @@ displayed_text = '\btr\("([^"]*)"'    # the call that shows a text on screen, th
 [keys]                                    # a link from the code that names a key to the code that answers it
 names = 'api\("([^"]+)"'                 # the front's api("zones")
 answers = '"/api/([^"]+)"'                # the back's "/api/zones"
+
+[tickets]                                 # the tickets are the GitHub issues whose title starts with T-NNNN
+github = true                             # of the one github.com repository the remotes name; or "owner/repo"
 ```
+
+With `[tickets]`, a build fetches the issues and their comments (not the pull requests) from GitHub's API, at most every 10 minutes and only what changed, into `graphe/issues.json`; a token is used if one is there (`GH_TOKEN`, `GITHUB_TOKEN`, `gh auth token`), a public repository needs none. Offline, the build uses that cache, or goes without the issues, and says so in one line ([ADR 0006](docs/adr/0006-tickets-from-github-issues.md)).
 
 Every key, and the local extensions: [docs/contribution.md](docs/contribution.md).
 

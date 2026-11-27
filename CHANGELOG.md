@@ -6,6 +6,8 @@ A release that changes `contribute(project)`, `Project`, the shape of the nodes 
 
 ## Unreleased
 
+A host whose tickets are its GitHub issues says so in `graphe.toml`: `[tickets] github = true` (the one github.com repository its remotes name, fetch and push) or `github = "owner/repo"`. An issue whose title starts with an identifier is then that ticket, before a Markdown file of the same identifier (which stays a document): the code that cites it, its body and its comments cite and name as a document's text does, and `explain` gives it with its URL. The issues and their comments, not the pull requests, come from GitHub's REST API by the standard library, at most every 10 minutes and only what changed since (`since`), into `graphe/issues.json`; a token if one is there (`GH_TOKEN`, `GITHUB_TOKEN`, `gh auth token`). GitHub unreachable, the build uses that cache, or goes without the issues, in one line; no github.com remote, or several, one line too, and `graphe install` asks which of several. Without the setting nothing changes: Grid Zero's and 4cast's `graphe.json` are identical. graphe's own tickets are its issues: the code's `cites` links identical ticket by ticket, T-0001 to T-0093, files against issues; `tickets/` is deleted (T-0095, ADR 0006).
+
 The core's enrichment takes about half the time: a comment and a line's indentation tested once per line, a line without a quote counted without the string scan, the names of module variables defined once tried only on the lines that name one after a `.`, and, with the default ticket identifier, the bodies of a file that cites no ticket not searched. The graph is unchanged; `enrich` 5.50 -> 3.07 s in protobuf's build (21.4 -> 19.0 s), 1.40 -> 0.88 s in libsignal's (6.34 -> 5.81 s), 5.6 -> 3.6 s in Django's (T-0091).
 
 The communities fold each node of one neighbour into that neighbour, up the chain, before Louvain runs, its links kept as the neighbour's own weight: a node of one neighbour always shares its community. The nodes and links are unchanged; the partition moves, its modularity 0.9131 -> 0.9130 on protobuf, higher on libsignal and Django. `communities()` 12.1 -> 7.6 s on protobuf, 4.4 -> 3.1 s on libsignal, no gain on Django (T-0090).
@@ -21,6 +23,8 @@ The generic reader links a send qualified by a class of the host, Rust's `T::f()
 The skill reaches Codex, GitHub Copilot CLI and Cursor through a `plugin.json` at the root (the Agent Plugins format) and Codex's marketplace (`.agents/plugins/marketplace.json`), Gemini CLI through `gemini-extension.json`; each untested, the README says how to install it (T-0078).
 
 ### Contract
+
+With `[tickets] github`, a `ticket` node may come from an issue: its `source_file` is the issue's URL (`https://github.com/owner/repo/issues/N`), its `source_location` empty (no line), and it has no `end`; a link from an issue's text is located at the issue's or the comment's URL, without `:line`. A tool that opens `source_file` as a path, or splits a location at its last `:`, skips those. Without the setting, nothing changes (T-0095).
 
 A new node kind, `abstract` (`Class.method`, its id `<file>_abstract_<name>`), and a new relation, `overrides`, from a method to the declaration it implements (`INFERRED`); `overrides` is no call relation (not in `CALLS`), but `callers` of a method adds the callers of the declarations it overrides. A tool that lists the callable nodes by kind (`function`, `method`) adds `abstract`; the ids of the nodes already there are unchanged (T-0081).
 

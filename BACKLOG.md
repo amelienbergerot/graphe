@@ -10,6 +10,15 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
 
 ## Open
 
+- **The Python reader does not link `module.f()` when the module comes by `from package import module`.**
+  (graphe, 2026-11-28, T-0095) Checking that `issues.tickets` had its
+  caller: `callers tickets` said nothing calls it, and so did `callers
+  enrich` (cli.py's `core.enrich(...)`) and `callers listing` but for one
+  call from root.py itself (cli.py's `graphe_root.listing()`); found by
+  reading core.py and cli.py. Resolving `from graphe import core` (and `as
+  graphe_root`) to the module's file, as `import a.b as c` already is for
+  constants (`_python_aliases`), would link those calls.
+
 - **The graph does not say which string values a field takes in the code.**
   (graphe, 2026-11-27, T-0074) Looking for every verdict a reader gives a
   call site (`"ambiguous"`, `"member"`, `"absent"`...), to map each to a
