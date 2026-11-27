@@ -54,7 +54,7 @@ The Claude Code skill, which teaches the command to the agent in every project, 
 claude plugin install graphe --marketplace amelienbergerot/graphe
 ```
 
-The plugin also installs a hook: before the agent's Grep, or a `grep`/`rg` it runs through Bash or PowerShell, `graphe hook` checks whether the pattern is a name the graph knows, and if so adds one line to the agent's context naming `graphe explain` on it. It never blocks the search, never rebuilds the graph, and says nothing in a repository without one. It needs `graphe` on the PATH, at a version that has `graphe hook` (0.2.0 or later); an older one, or none, leaves it silent. To turn it off, `claude plugin disable graphe` (the skill goes with it) or `"disableAllHooks": true` in your settings (every hook): Claude Code has no switch for one plugin hook.
+The plugin also installs a hook: before the agent's Grep, or a `grep`/`rg` it runs through Bash or PowerShell, `graphe hook` checks whether the pattern is a name the graph knows, and if so adds one line to the agent's context naming `graphe explain` on it (on each of its nodes, five at most, when the name designates several). It never blocks the search, never rebuilds the graph, and says nothing in a repository without one. It needs `graphe` on the PATH, at a version that has `graphe hook` (0.2.0 or later); an older one, or none, leaves it silent. To turn it off, `claude plugin disable graphe` (the skill goes with it) or `"disableAllHooks": true` in your settings (every hook): Claude Code has no switch for one plugin hook.
 
 Without an allow rule, each `graphe` query asks for approval (and a headless `claude -p` falls back to grep): add `Bash(graphe *)` and `PowerShell(graphe *)` to `permissions.allow` in `~/.claude/settings.json`.
 

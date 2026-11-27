@@ -26,7 +26,7 @@ dependencies = [
 ]
 
 [project.scripts]
-graphe = "graphe.cli:main"
+graphe = "graphe:main"
 
 [dependency-groups]
 dev = ["pytest==9.1.1", "ruff==0.17.6"]

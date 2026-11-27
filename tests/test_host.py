@@ -985,6 +985,41 @@ def test_the_hook_reads_the_graph_of_the_session_s_directory(tmp_path: Path):
     assert "graphe explain aider" in _hint(r)
 
 
+def test_the_hook_names_the_nodes_of_a_name_that_designates_several(tmp_path: Path):
+    """T-0085: each by the designation `explain` takes; five at most, the rest counted."""
+    host = _host(tmp_path, {"outils.py": CALLEE, "autre.py": CALLEE, "travail.py": CALLER,
+                            **{f"m{i}.py": "def f():\n    return 0\n" for i in range(6)}})
+    assert _run(host, "build").returncode == 0
+    hint = _hint(_hook(host, "Grep", {"pattern": "aider"}))
+    assert "`aider` designates 2 nodes" in hint and "autre.py::aider, outils.py::aider" in hint, hint
+    for designation in ("autre.py::aider", "outils.py::aider"):
+        assert _run(host, "explain", designation).returncode == 0
+    hint = _hint(_hook(host, "Grep", {"pattern": "f"}))
+    assert "`f` designates 6 nodes" in hint and "m4.py::f" in hint and "m5.py::f" not in hint, hint
+    assert hint.endswith("and 1 more."), hint
+
+
+def _imported(host: Path, stdin: dict) -> tuple[str, set[str]]:
+    """What `graphe hook` prints and imports, through the command's entry point (pyproject.toml)."""
+    r = subprocess.run([sys.executable, "-c", "import json, sys, graphe; rc = graphe.main(['hook']); "
+                                              "print(json.dumps(sorted(sys.modules)), file=sys.stderr); sys.exit(rc)"],
+                       cwd=host, env={**os.environ, "GRAPHE_ROOT": str(host)}, input=json.dumps(stdin),
+                       capture_output=True, text=True, encoding="utf-8")
+    assert r.returncode == 0, r.stderr
+    return r.stdout, set(json.loads(r.stderr.splitlines()[-1]))
+
+
+def test_the_hook_loads_neither_networkx_nor_a_reader(tmp_path: Path):
+    """T-0084: the hook runs before every Bash call; a command that is no grep makes no git call either."""
+    host = _host(tmp_path, {"outils.py": CALLEE, "travail.py": CALLER})
+    assert _run(host, "build").returncode == 0
+    heavy = {"networkx", "graphe.cli", "graphe.core", "graphe.python", "graphe.js", "graphe.generic"}
+    output, modules = _imported(host, {"cwd": str(host), "tool_name": "Bash", "tool_input": {"command": "git status"}})
+    assert output == "" and not modules & (heavy | {"graphe.root"}), modules & (heavy | {"graphe.root"})
+    output, modules = _imported(host, {"cwd": str(host), "tool_name": "Grep", "tool_input": {"pattern": "aider"}})
+    assert "graphe explain aider" in output and not modules & heavy, modules & heavy
+
+
 def test_the_hook_reads_a_stale_graph_as_it_is(tmp_path: Path):
     """T-0077: the hook never rebuilds; a name the graph does not know yet gets no hint."""
     host = _host(tmp_path, {"outils.py": CALLEE, "travail.py": CALLER})

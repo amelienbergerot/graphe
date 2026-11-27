@@ -27,7 +27,7 @@ def test_the_plugin_carries_the_package_version_and_the_marketplace_none():
 def test_the_distribution_is_graphe_code_and_its_command_graphe():
     project = tomllib.loads((REPO / "pyproject.toml").read_text(encoding="utf-8"))["project"]
     assert project["name"] == "graphe-code"
-    assert project["scripts"] == {"graphe": "graphe.cli:main"}
+    assert project["scripts"] == {"graphe": "graphe:main"}  # T-0084: the hook without graphe.cli's imports
 
 
 def test_installing_the_plugin_installs_the_hook():
