@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: closed
 Part of: T-0071
 Blocked by: T-0077
 Created: 2026-11-27
@@ -13,12 +13,16 @@ A file is a generated file (GLOSSARY.md) when git's attributes mark it (`linguis
 
 ## Acceptance criteria
 
-- [ ] A file marked `linguist-generated` in `.gitattributes` is listed.
-- [ ] A file with protobuf's or Go's header is listed; the same text below the first code is not.
-- [ ] `check` and REPORT.md give the `exclude` line to paste.
-- [ ] The graph's links are unchanged: the snapshots of T-0072 and T-0073 pass as they are.
-- [ ] Measured on protobuf: which of its generated files are named, and whether upb's amalgamated files are (not verified so far); the numbers in BACKLOG.md's entries.
+- [x] A file marked `linguist-generated` in `.gitattributes` is listed.
+- [x] A file with protobuf's or Go's header is listed; the same text below the first code is not.
+- [x] `check` and REPORT.md give the `exclude` line to paste.
+- [x] The graph's links are unchanged: the snapshots of T-0072 and T-0073 pass as they are.
+- [x] Measured on protobuf: which of its generated files are named, and whether upb's amalgamated files are (not verified so far); the numbers in BACKLOG.md's entries.
 
 ## Blocked by
 
 - T-0077 (both edit the CLI).
+
+## Comments
+
+- 2026-11-27: done. `generic.generated(language, file, source)` searches `GENERATED` (protobuf's compiler, Go's convention) in the file's leading comments, before the first code (PHP's `<?php` skipped); the reader returns the files so named (`generated`, docs/contribution.md), and `graphe` reads `linguist-generated` itself (`git check-attr --stdin`), for every reader's files. `check` and REPORT.md list them, with the count of their reader's ambiguous calls on the names they define, and the `exclude` line, the host's entries kept, that drops those counted (not those at 0). Tested in tests/test_generic.py and tests/test_host.py; the snapshots pass unchanged. On protobuf: 204 files named (11 `.java`, 46 `.cs`, 17 `.cc`, 27 `.h`, 98 `.php`, 5 `.rb`), none by `.gitattributes` (it marks none); the 10 generators of protoc, which carry the marker in their code, are not; upb's amalgamations are not (`/* Amalgamated source file */`). The line drops 186: `ambiguous` 57624 -> 20009 (Java), 19499 -> 2626 (C#), 79092 -> 66005 (C/C++), 1343 -> 842 (PHP), 0 dangling. Left out: Python's `_pb2.py` (the Python reader has no marker), a marker for upb's amalgamator.

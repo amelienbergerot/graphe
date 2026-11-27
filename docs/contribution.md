@@ -95,8 +95,10 @@ An **assembled link** has a single copy per pair of nodes: `source`, `target`, `
 It is a dictionary. Each key is optional.
 
 ```python
-{"nodes": [...], "links": [...], "sites": [...], "takeovers": [...]}
+{"nodes": [...], "links": [...], "sites": [...], "takeovers": [...], "generated": [...]}
 ```
+
+`generated` lists the paths (relative to the root, with `/`) of the generated files the contributor read (GLOSSARY.md), as their header says; git's `linguist-generated` is read by `graphe` itself, for every file. `graphe check` and REPORT.md list them, each with the count of the contributor's `ambiguous` sites whose `name` is the bare name of a function or method the file defines, and the `exclude` line that drops those so counted (T-0079). It changes no link.
 
 ### A node
 

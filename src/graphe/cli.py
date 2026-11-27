@@ -227,10 +227,11 @@ def _take_over(contributions: list[tuple[str, dict]]) -> None:
                     e["source"] = r["to"]
 
 
-def assemble(checking: bool = False) -> tuple[nx.DiGraph, dict, list[dict], dict[str, list[dict]]]:
+def assemble(checking: bool = False) -> tuple[nx.DiGraph, dict, list[dict], dict[str, list[dict]],
+                                              list[tuple[str, int]]]:
     """The readers (and the `with_readers` extensions), then the core, then the other local extensions
     in the order of graphe.toml: the directed graph,
-    the coverage, the dangling links and the sites of each contribution."""
+    the coverage, the dangling links, the sites of each contribution and the generated files (`_generated`)."""
     configuration = graphe_root.configuration()
     graph = nx.DiGraph()
     dangling: list[dict] = []
@@ -258,7 +259,36 @@ def assemble(checking: bool = False) -> tuple[nx.DiGraph, dict, list[dict], dict
     coverage = {who: dict(Counter(s["verdict"] for s in site_list if "verdict" in s).most_common())
                 for who, site_list in sites.items()}
     coverage["dangling"] = len(dangling)
-    return _sorted(graph), coverage, dangling, sites
+    return _sorted(graph), coverage, dangling, sites, _generated(contributions)
+
+
+def _generated(contributions: list[tuple[str, dict]]) -> list[tuple[str, int]]:
+    """T-0079: the generated files read, as git's `linguist-generated` or a reader's known header says, each with the
+    count of its reader's ambiguous calls on the names it defines, most first."""
+    held: dict[str, tuple[int, list[str]]] = {}  # file -> (its contribution, the bare names it defines)
+    for i, (_, c) in enumerate(contributions):
+        for n in c.get("nodes", []):
+            if "source_file" not in n:  # an extension's enrichment of a node already there: its id alone
+                continue
+            entry = held.setdefault(n["source_file"], (i, []))
+            if n.get("kind") in ("function", "method"):
+                entry[1].append(n["name"].rsplit(".", 1)[-1])
+    r = subprocess.run(["git", "check-attr", "-z", "--stdin", "linguist-generated"], cwd=ROOT, input="\0".join(held),
+                       capture_output=True, text=True, encoding="utf-8", timeout=60)
+    found = r.stdout.split("\0")  # path, attribute, value, ..., then the empty string after the last NUL
+    marked = {p for p, v in zip(found[::3], found[2::3], strict=False) if v in ("set", "true")}
+    marked |= {f for _, c in contributions for f in c.get("generated", [])}
+    ambiguous = [Counter(s["name"] for s in c.get("sites", []) if s.get("verdict") == "ambiguous")
+                 for _, c in contributions]
+    counts = {f: sum(ambiguous[held[f][0]][name] for name in set(held[f][1])) for f in marked if f in held}
+    return sorted(counts.items(), key=lambda p: (-p[1], p[0]))
+
+
+def _exclude_line(generated: list[tuple[str, int]]) -> str | None:
+    """The `exclude` line that drops the generated files whose names are ambiguous, the host's own entries kept (one
+    `exclude` key in graphe.toml)."""
+    dropped = [f for f, n in generated if n]
+    return f"exclude = {json.dumps(graphe_root.configuration().get('exclude', []) + dropped)}" if dropped else None
 
 
 def _location_key(location: str) -> tuple[str, int]:
@@ -435,7 +465,7 @@ def _missed(graph: nx.DiGraph, n: str) -> None:
 def build(quiet: bool = False) -> int:
     start = time.monotonic()
     OUTPUT.mkdir(exist_ok=True)
-    graph, coverage, dangling, sites = assemble()
+    graph, coverage, dangling, sites, generated = assemble()
     community_of, names = communities(graph)
     data = {
         "built": time.strftime("%Y-%m-%d %H:%M:%S"), "built_s": time.time(), "commit": _commit(),
@@ -446,7 +476,7 @@ def build(quiet: bool = False) -> int:
                    "locations": d["locations"], "contexts": d["contexts"]} for s, t, d in graph.edges(data=True)],
     }
     _write(JSON, json.dumps(data, ensure_ascii=False))
-    _write(OUTPUT / "REPORT.md", report(graph, data, community_of, names))
+    _write(OUTPUT / "REPORT.md", report(graph, data, community_of, names, generated))
     if not quiet:
         print(f"{graph.number_of_nodes()} nodes, {graph.number_of_edges()} links, {len(names)} communities, "
               f"{len(dangling)} dangling link(s) - {time.monotonic() - start:.1f} s -> {OUTPUT.relative_to(ROOT)}/")
@@ -462,7 +492,8 @@ def _location(graph: nx.DiGraph, n: str) -> str:
     return f"{d['source_file']}:{d['source_location'].lstrip('L')}"
 
 
-def report(graph: nx.DiGraph, data: dict, community_of: dict, names: dict) -> str:
+def report(graph: nx.DiGraph, data: dict, community_of: dict, names: dict,
+           generated: list[tuple[str, int]] = ()) -> str:
     c = data["coverage"]
     kinds = Counter(d["kind"] for _, d in graph.nodes(data=True))
     lines = [
@@ -522,6 +553,13 @@ def report(graph: nx.DiGraph, data: dict, community_of: dict, names: dict) -> st
               "- dynamic calls: `getattr`, a callback stored in a variable, a receiver that nothing "
               "types (the `ambiguous` ones);",
               "- files that no reader takes, and those that `exclude` removes (graphe.toml).", ""]
+    if generated:
+        lines += ["## Generated files", "", "Files a tool wrote (git's `linguist-generated`, or a known header); "
+                  "repeated, they make the names they define ambiguous.", ""]
+        lines += [f"- `{f}`: {n} ambiguous calls on its names" for f, n in generated]
+        if exclude := _exclude_line(generated):
+            lines += ["", f"To drop those whose names are ambiguous, in graphe.toml: `{exclude}`"]
+        lines.append("")
     return "\n".join(lines)
 
 
@@ -997,7 +1035,7 @@ def search(graph: nx.DiGraph, pattern: str) -> int:
 def check() -> int:
     """The coverage of each contribution, read in its sites: the classification of the calls, the most frequent
     names of each verdict, then the alerts; a failure if there is an alert or a dangling link."""
-    _, _, dangling, sites = assemble(checking=True)
+    _, _, dangling, sites, generated = assemble(checking=True)
     alerts = 0
     for who, site_list in sites.items():
         verdicts = Counter(s["verdict"] for s in site_list if "verdict" in s)
@@ -1014,6 +1052,12 @@ def check() -> int:
     print(f"== Graph: {len(dangling)} dangling link(s)")
     for e in dangling[:20]:
         print("  ", e["source"], "->", e["target"], e["relation"], e["source_file"], e["source_location"])
+    if generated:  # information, no alert (T-0079)
+        print(f"\n== Generated files: {len(generated)}")
+        for f, n in generated:
+            print(f"  {f}: {n} ambiguous calls on its names")
+        if exclude := _exclude_line(generated):
+            print(f"  to drop those whose names are ambiguous, in graphe.toml: {exclude}")
     return 1 if alerts or dangling else 0
 
 

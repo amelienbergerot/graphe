@@ -8,6 +8,12 @@ A release that changes `contribute(project)`, `Project`, the shape of the nodes 
 
 The skill reaches Codex, GitHub Copilot CLI and Cursor through a `plugin.json` at the root (the Agent Plugins format) and Codex's marketplace (`.agents/plugins/marketplace.json`), Gemini CLI through `gemini-extension.json`; each untested, the README says how to install it (T-0078).
 
+`graphe check` and REPORT.md list the generated files read, as git's `linguist-generated` or a known header says (protobuf's compiler, Go's `// Code generated ... DO NOT EDIT.`, before the first code), each with the count of ambiguous calls on the names it defines, and the `exclude` line to paste that drops those whose names are ambiguous, the host's own entries kept. The links are unchanged (T-0079).
+
+### Contract
+
+A contribution may return `generated`, the paths of the generated files it read; nothing breaks, an extension that returns none is read as before.
+
 ## 0.3.0
 
 The hook skips a grep that filters a pipe (`ls | grep x`): it searches no code (T-0086).

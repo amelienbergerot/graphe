@@ -16,6 +16,8 @@ Amended by T-0044 (2026-11-19): a third piece of data, still no code of its own.
 
 Amended by T-0045 (2026-11-20): PHP is in the registry, in place of the PHP reader by patterns (ADR 0002's amendment), and brings a new capture, `@action`: a `case 'x':` outside any function or method, a node whose body's uses are its own, one without a body leading to the next (`dispatches`, sure). It is code, not data: written once in `read()` and `contribute()` for any language whose query captures `@action`, not for PHP alone, and it keeps the one rule the PHP reader had beyond functions and calls, so that Grid Zero's 8 actions and the 6 `sends` of its extension (T-0009) survive. A language whose entry points need more than a captured node (routes resolved by a framework, decorators) is still the proof that it needs a dedicated reader.
 
+Amended by T-0079 (2026-11-27): the markers of a generated file are data too, one pattern for every language (`GENERATED`: protobuf's compiler, Go's convention), searched in a file's leading comments only. A generated file is named by `check` and the report, with a ready `exclude` line; it is read and linked as any other, so a host that keeps it keeps its links: on protobuf, the line drops 186 of the 204 files so named, and the ambiguous calls fall from 57624 to 20009 in Java, 19499 to 2626 in C#.
+
 ## Options set aside
 
 - The upstream `tags.scm` as shipped, completed where they fall short: eight capture conventions, and a grammar's upgrade changes the graph silently.
