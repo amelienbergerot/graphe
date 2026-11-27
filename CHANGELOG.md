@@ -6,6 +6,8 @@ A release that changes `contribute(project)`, `Project`, the shape of the nodes 
 
 ## Unreleased
 
+A build lists the host's files once, every reader and suffix served from that listing, and the generic reader looks for a generator's marker on the tree it has just parsed, so each file is parsed once. The graph is unchanged; the build 44.6 -> 35.8 s on Django, 34.5 -> 30.3 s on protobuf, 10.9 -> 9.1 s on libsignal (T-0087).
+
 The generic reader makes a node of a method without a body, Java's abstract or an interface's (not a `native` one), and of a Swift protocol's `func` requirement; a method overrides the one of its class or of a class its base list names directly (Swift's `extension C: P` too). A call whose candidates all override one declaration is linked to it, by name: protobuf's `input.pushLimit(n)` goes to `CodedInputStream.pushLimit`, libsignal's `nativeHandle.const()` to `SignalMutPointer.const`. A single concrete definition is linked as before. On protobuf, 3802 Java call sites linked more, on libsignal 1161 Swift and 4 Java ones; none lost or moved (T-0081).
 
 The generic reader links a send qualified by a class of the host, Rust's `T::f()`, Java's and Kotlin's `C.f()`, to that class's method `f`, by name, a common name too (`DeviceId::new`), when the classes so named define one; several leave it unattributed, none leave it to the name alone, as before. A type the host only implements a trait for (Rust's `impl From<X> for HashMap`) is not its class. On libsignal, 2629 links more, on protobuf 3112 (T-0080).

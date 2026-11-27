@@ -215,8 +215,9 @@ def _key_patterns(root: Path) -> tuple[re.Pattern, re.Pattern, re.Pattern | None
             _pattern(keys.get("parameters"), "keys.parameters", None))
 
 
-def enrich(graph: nx.DiGraph, root: Path) -> None:
-    """`root` is a git repository: the documents are its Markdown files that git tracks (graphe_root.files)."""
+def enrich(graph: nx.DiGraph, root: Path, listed: set[str] | None = None) -> None:
+    """`root` is a git repository: the documents are its Markdown files that git tracks (graphe_root.files), from
+    `listed` when the build has listed them."""
     displays = displayed_text_pattern(root)
     by_file: dict[str, list[str]] = defaultdict(list)
     for n, d in graph.nodes(data=True):
@@ -330,7 +331,7 @@ def enrich(graph: nx.DiGraph, root: Path) -> None:
     keys = _key_patterns(root)
     if keys:
         _link_keys(graph, keys, file_lines, bodies, file_id)
-    _link_documents(graph, root, bodies, file_lines)
+    _link_documents(graph, root, bodies, file_lines, listed)
 
 
 def _link_keys(graph: nx.DiGraph, keys: tuple[re.Pattern, re.Pattern, re.Pattern | None],
@@ -441,14 +442,15 @@ def _cited(pattern: re.Pattern, text: str) -> set[str]:
     return {m.group(0) for m in pattern.finditer(text) if m.group(0)}
 
 
-def _link_documents(graph: nx.DiGraph, root: Path, bodies: dict, texts: dict[str, list[str]]) -> None:
+def _link_documents(graph: nx.DiGraph, root: Path, bodies: dict, texts: dict[str, list[str]],
+                    listed: set[str] | None) -> None:
     """T-0010: each Markdown file of the host (`[documents] patterns` restricts them) is a document. One whose
     name starts with an identifier is a ticket; it is cited by the code and by the documents that contain it.
     A document names the functions it writes between backticks."""
     pattern, restricted = _documents(root)
     tickets: dict[str, str] = {}  # identifier -> id
     documents = []
-    for path in graphe_root.files(".md", root):
+    for path in graphe_root.files(".md", root, listed):
         rel = path.relative_to(root).as_posix()
         if restricted is not None and not graphe_root.designates(rel, restricted):
             continue

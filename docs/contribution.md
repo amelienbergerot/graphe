@@ -83,7 +83,7 @@ The extension's file is a host file like any other: the Python reader reads it t
 | Attribute | What it is |
 |---|---|
 | `project.root` | The host's root (`Path`). |
-| `project.files(suffix)` | The host's files that end with `suffix` (`".py"`), sorted. These are the ones git tracks, plus untracked files that are not ignored, minus `exclude`. |
+| `project.files(suffix)` | The host's files that end with `suffix` (`".py"`), sorted. These are the ones git tracks, plus untracked files that are not ignored, minus `exclude`, as git lists them when the build starts (T-0087). |
 | `project.configuration` | The section of the one who contributes. For a reader, it is the table that bears its name (`[godot]`). For an extension, it is its `[[extensions]]` table. |
 | `project.graph` | The graph already assembled, in the form `{"nodes": {id: node}, "links": [assembled link]}`. It is a copy: changing it changes nothing in the graph. The readers receive it empty. |
 | `project.checking` | True under `graphe check`. A reader may then add its costly checks, like the recount of GDScript calls. |

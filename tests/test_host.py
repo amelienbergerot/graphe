@@ -156,6 +156,20 @@ def test_a_build_on_the_cache_gives_the_same_graph(tmp_path: Path):
     assert _graph(host) == first
 
 
+def test_a_build_lists_the_host_s_files_once(tmp_path: Path):
+    """T-0087: one `git ls-files` per build, whatever the number of readers, suffixes and documents."""
+    host = _host(tmp_path, {"outils.py": CALLEE, "travail.py": CALLER, "a.go": "package a\n\nfunc F() {}\n",
+                            "README.md": "# outils\n", "graphe.toml": '[[extensions]]\npath = "ext.py"\n',
+                            "ext.py": "def contribute(project):\n    project.files('.py')\n    return {}\n"})
+    count = ("import subprocess, graphe.cli; run = subprocess.run; listed = []\n"
+             "def counted(argv, *a, **k):\n    listed.append(argv[:2] == ['git', 'ls-files'])\n    return run(argv, *a, **k)\n"
+             "subprocess.run = counted; graphe.cli.assemble(); print(sum(listed))")
+    r = subprocess.run([sys.executable, "-c", count], cwd=host, env={**os.environ, "GRAPHE_ROOT": str(host)},
+                       capture_output=True, text=True, encoding="utf-8")
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.split() == ["1"]
+
+
 def _hooks(host: Path) -> dict[str, bytes]:
     folder = host / ".git" / "hooks"
     return {p.name: p.read_bytes() for p in folder.glob("post-*") if p.suffix != ".sample"}

@@ -143,14 +143,15 @@ class Project:
     """What `contribute(project)` receives: the root, the host's files, the configuration section of the one who
     contributes and the graph already assembled, copied on reading (docs/contribution.md)."""
 
-    def __init__(self, configuration: dict, graph: nx.DiGraph, checking: bool) -> None:
+    def __init__(self, configuration: dict, graph: nx.DiGraph, checking: bool, listed: set[str]) -> None:
         self.root = ROOT
         self.configuration = configuration
         self.checking = checking
         self._graph = graph
+        self._listed = listed  # the build's one walk of the host (T-0087)
 
     def files(self, suffix: str) -> list[Path]:
-        return graphe_root.files(suffix, self.root)
+        return graphe_root.files(suffix, self.root, self._listed)
 
     @cached_property
     def graph(self) -> dict:
@@ -237,20 +238,22 @@ def assemble(checking: bool = False) -> tuple[nx.DiGraph, dict, list[dict], dict
     configuration = graphe_root.configuration()
     graph = nx.DiGraph()
     dangling: list[dict] = []
+    listed = graphe_root.listing()
     # The readers together: their nodes come in sorted all at once, as before the contract (T-0007).
-    readers = [(name, contribute(Project(configuration.get(name, {}), graph, checking)))
+    readers = [(name, contribute(Project(configuration.get(name, {}), graph, checking, listed)))
                for name, contribute in READERS.items()]
     # T-0008: a `with_readers` extension comes in with them, before the core, and may take over their links.
     with_, after = [], []
     for declaration in _declared_extensions():
         (with_ if declaration.get("with_readers") else after).append(declaration)
-    readers += [(d.get("path", ""), _extension(d)(Project(d, graph, checking))) for d in with_]
+    readers += [(d.get("path", ""), _extension(d)(Project(d, graph, checking, listed))) for d in with_]
     _take_over(readers)
     _insert(graph, readers, dangling)
-    core.enrich(graph, ROOT)
+    core.enrich(graph, ROOT, listed)
     contributions = list(readers)
     for declaration in after:
-        contribution = (declaration.get("path", ""), _extension(declaration)(Project(declaration, graph, checking)))
+        contribution = (declaration.get("path", ""),
+                        _extension(declaration)(Project(declaration, graph, checking, listed)))
         if "takeovers" in contribution[1]:
             raise RuntimeError(f"{contribution[0]}: takeovers without with_readers = true ({CONFIGURATION})")
         _insert(graph, [contribution], dangling)

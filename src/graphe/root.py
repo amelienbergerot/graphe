@@ -56,15 +56,20 @@ def designates(rel: str, patterns: list[str]) -> bool:
     return any(p.full_match(m) or p.full_match(f"{m}/**") for m in patterns)
 
 
-def files(suffix: str, root: Path = ROOT) -> list[Path]:
-    """The host's files that end with `suffix` (`.py`), sorted."""
+def listing(root: Path = ROOT) -> set[str]:
+    """What git lists of the host, relative: one walk, which a build makes once and serves every suffix (T-0087)."""
     r = subprocess.run(["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"], cwd=root,
                        capture_output=True, text=True, encoding="utf-8", timeout=60)
     if r.returncode:
         raise RuntimeError(f"{root} is not a git repository: graphe reads the files git tracks")
+    return set(r.stdout.split("\0"))
+
+
+def files(suffix: str, root: Path = ROOT, listed: set[str] | None = None) -> list[Path]:
+    """The host's files that end with `suffix` (`.py`), sorted; taken from `listed`, `listing(root)`, when given."""
     patterns = [OUTPUT.name, *configuration(root).get("exclude", [])]
     # Sorted Paths, like the old rglob: the reading order does not change.
-    return sorted(root / rel for rel in set(r.stdout.split("\0"))
+    return sorted(root / rel for rel in (listing(root) if listed is None else listed)
                   if rel.endswith(suffix) and not designates(rel, patterns) and (root / rel).is_file())
 
 
