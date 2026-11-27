@@ -1,0 +1,14 @@
+lib_dock_rb contains lib_dock_rb_report sure
+lib_dock_rb contains lib_dock_rb_ship_all sure
+lib_dock_rb_ship_all calls lib_dock_rb_report by name
+lib_dock_rb_ship_all calls lib_shop_rb_shop_ship_build by name
+lib_shop_rb contains lib_shop_rb_shop sure
+lib_shop_rb contains lib_shop_rb_shop_crate sure
+lib_shop_rb contains lib_shop_rb_shop_ship sure
+lib_shop_rb_shop_crate contains lib_shop_rb_shop_crate_initialize sure
+lib_shop_rb_shop_crate contains lib_shop_rb_shop_crate_to_s sure
+lib_shop_rb_shop_crate contains lib_shop_rb_shop_crate_weigh sure
+lib_shop_rb_shop_ship contains lib_shop_rb_shop_ship_build sure
+lib_shop_rb_shop_ship contains lib_shop_rb_shop_ship_weigh sure
+lib_shop_rb_shop_ship references lib_shop_rb_shop_crate by name
+lib_shop_rb_shop_ship_build references lib_shop_rb_shop_ship by name

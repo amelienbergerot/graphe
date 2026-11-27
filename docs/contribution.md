@@ -151,6 +151,6 @@ If a contribution has the `sites` key, even empty, `graphe.json` carries its cov
 
 ## Changing a reader or the core: the snapshots
 
-Each folder of `tests/fixtures/` is a small sample host (one per reader, one for the core), and `tests/fixtures/<host>.links` the snapshot of all its links: one line per link and relation, `source relation target sure|by name`, sorted (T-0072). `tests/test_snapshots.py` builds each host and compares; a link lost, added or turned from sure to by name fails it, naming the host and the line.
+Each folder of `tests/fixtures/` is a small sample host (one per reader, and per language or family of the generic reader, T-0073; one for the core), and `tests/fixtures/<host>.links` the snapshot of all its links: one line per link and relation, `source relation target sure|by name`, sorted (T-0072). `tests/test_snapshots.py` builds each host and compares; a link lost, added or turned from sure to by name fails it, naming the host and the line.
 
 A change meant to alter links: run `python tests/snapshots.py`, which rewrites every snapshot, read the diff, and give its reason in the commit. A new reader brings its sample host and its snapshot. The sample hosts are left out of graphe's own graph (`exclude` of its `graphe.toml`).

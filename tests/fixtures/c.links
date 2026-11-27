@@ -1,0 +1,14 @@
+src_geometry_cpp contains src_geometry_cpp_circle sure
+src_geometry_cpp contains src_geometry_cpp_scale sure
+src_geometry_cpp contains src_geometry_cpp_shape sure
+src_geometry_cpp contains src_geometry_cpp_square sure
+src_geometry_cpp contains src_geometry_cpp_total sure
+src_geometry_cpp_circle contains src_geometry_cpp_circle_area sure
+src_geometry_cpp_circle contains src_geometry_cpp_circle_size sure
+src_geometry_cpp_circle references src_geometry_cpp_shape by name
+src_geometry_cpp_square contains src_geometry_cpp_square_area sure
+src_geometry_cpp_square references src_geometry_cpp_shape by name
+src_geometry_cpp_total calls src_geometry_cpp_scale by name
+src_geometry_cpp_total calls src_util_c_clamp by name
+src_geometry_cpp_total references src_geometry_cpp_circle by name
+src_util_c contains src_util_c_clamp sure

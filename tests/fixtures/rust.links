@@ -1,0 +1,14 @@
+src_main_rs contains src_main_rs_main sure
+src_main_rs_main calls src_shapes_rs_point_origin by name
+src_main_rs_main calls src_shapes_rs_shift by name
+src_shapes_rs contains src_shapes_rs_line sure
+src_shapes_rs contains src_shapes_rs_point sure
+src_shapes_rs contains src_shapes_rs_shift sure
+src_shapes_rs_line contains src_shapes_rs_line_length sure
+src_shapes_rs_line contains src_shapes_rs_line_new sure
+src_shapes_rs_line_new references src_shapes_rs_line by name
+src_shapes_rs_point contains src_shapes_rs_point_len sure
+src_shapes_rs_point contains src_shapes_rs_point_length sure
+src_shapes_rs_point contains src_shapes_rs_point_new sure
+src_shapes_rs_point contains src_shapes_rs_point_origin sure
+src_shapes_rs_point_new references src_shapes_rs_point by name

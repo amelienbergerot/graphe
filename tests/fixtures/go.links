@@ -1,0 +1,14 @@
+cmd_main_go contains cmd_main_go_main sure
+cmd_main_go contains cmd_main_go_report sure
+cmd_main_go_main calls cmd_main_go_report by name
+cmd_main_go_main calls store_store_go_crate_fill by name
+cmd_main_go_main calls store_store_go_newcrate by name
+store_store_go contains store_store_go_crate sure
+store_store_go contains store_store_go_newcrate sure
+store_store_go contains store_store_go_ship sure
+store_store_go_crate contains store_store_go_crate_close sure
+store_store_go_crate contains store_store_go_crate_fill sure
+store_store_go_crate contains store_store_go_crate_weigh sure
+store_store_go_newcrate references store_store_go_crate by name
+store_store_go_ship contains store_store_go_ship_weigh sure
+store_store_go_ship references store_store_go_crate by name
