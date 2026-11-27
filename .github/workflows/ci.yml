@@ -1,5 +1,5 @@
 # T-0063 (T-0052's matrix): the tests at the locked versions on the three OS with 3.13 and the newest Python;
-# one Linux job at the newest versions the ranges allow; the built wheel installed as a uv tool and run.
+# one Linux job at the newest versions the ranges allow; the built wheel installed as a uv tool and run; ruff.
 # setup-uv publishes no moving major tag: its exact version.
 name: CI
 on: [push, pull_request]
@@ -20,6 +20,14 @@ jobs:
       - run: uv run --locked pytest -q -rs
       # The sample host is graphe itself.
       - run: uv run --locked graphe build
+  # The lint is the same on every OS: one job.
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.4.0
+      - run: uv sync --locked
+      - run: uv run --locked ruff check
   newest:
     runs-on: ubuntu-latest
     steps:
