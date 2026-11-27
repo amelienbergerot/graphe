@@ -65,9 +65,14 @@ def listing(root: Path = ROOT) -> set[str]:
     return set(r.stdout.split("\0"))
 
 
+def excluded(root: Path = ROOT) -> list[str]:
+    """The patterns of what graphe never reads: its output, and `exclude`."""
+    return [OUTPUT.name, *configuration(root).get("exclude", [])]
+
+
 def files(suffix: str, root: Path = ROOT, listed: set[str] | None = None) -> list[Path]:
     """The host's files that end with `suffix` (`.py`), sorted; taken from `listed`, `listing(root)`, when given."""
-    patterns = [OUTPUT.name, *configuration(root).get("exclude", [])]
+    patterns = excluded(root)
     # Sorted Paths, like the old rglob: the reading order does not change.
     return sorted(root / rel for rel in (listing(root) if listed is None else listed)
                   if rel.endswith(suffix) and not designates(rel, patterns) and (root / rel).is_file())

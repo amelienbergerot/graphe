@@ -141,6 +141,25 @@ def test_a_graph_older_than_the_tool_is_rebuilt(tmp_path: Path):
     assert r.returncode == 0 and REBUILDING in r.stderr, r.stderr
 
 
+def test_the_files_that_make_the_graph_stale(tmp_path: Path):
+    """T-0089: a file of the host and graphe.toml make the graph stale; a file `exclude` drops, and the output's
+    own (graphe/, not ignored here), do not."""
+    host = _host(tmp_path, {"outils.py": CALLEE, "travail.py": CALLER, "brouillon/essai.py": CALLER,
+                            "graphe.toml": 'exclude = ["brouillon"]\n'})
+    assert _run(host, "build").returncode == 0
+    json_ = host / "graphe" / "graphe.json"
+    fresh = max(p.stat().st_mtime for p in TOOL.glob("*.py")) + 3600
+    files = ["outils.py", "travail.py", "brouillon/essai.py", "graphe.toml", "graphe/REPORT.md"]
+    for rel, stale in [("brouillon/essai.py", False), ("graphe/REPORT.md", False), ("travail.py", True),
+                       ("graphe.toml", True)]:
+        for other in files:
+            os.utime(host / other, (fresh - 1, fresh - 1))
+        os.utime(json_, (fresh, fresh))
+        os.utime(host / rel, (fresh + 1, fresh + 1))
+        r = _run(host, "explain", "aider")
+        assert r.returncode == 0 and (REBUILDING in r.stderr) == stale, (rel, r.stderr)
+
+
 def _graph(host: Path) -> dict:
     data = json.loads((host / "graphe" / "graphe.json").read_bytes())
     return {k: v for k, v in data.items() if k not in ("built", "built_s")}

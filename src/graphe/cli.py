@@ -66,6 +66,7 @@ import json
 import math
 import os
 import re
+import stat
 import subprocess
 import sys
 import tempfile
@@ -105,15 +106,25 @@ def _communities_config() -> tuple[dict[str, str], list[str]]:
 
 # ---------- build
 
-def _sources(listed: set[str]) -> list[Path]:
-    """T-0009: all the host's files, not only the readers' (an extension reads what it wants)."""
-    return graphe_root.files("", ROOT, listed) + [p for p in [ROOT / CONFIGURATION]  # files() tests is_file already
-                                    + [ROOT / e.get("path", "") for e in _declared_extensions()] if p.is_file()]
-
-
-def _tool() -> list[Path]:
-    """The tool's files (T-0006): a fixed reader makes every host's graph stale."""
-    return sorted(Path(__file__).parent.glob("*.py"))
+def _newest(listed: set[str]) -> float:
+    """The time of the newest file the graph depends on: all the host's (T-0009, not only the readers': an extension
+    reads what it wants) but the excluded ones, graphe.toml, the local extensions and the tool's files (T-0006: a
+    fixed reader makes every host's graph stale). One stat per file tells it is one and its time (T-0089)."""
+    # shortcut: one stat per file, 0.31 s on Django; os.scandir per folder reads the times from the folder on Windows
+    # (0.17 s, measured); to take it if the check weighs in a query's time.
+    patterns = graphe_root.excluded()
+    paths = [os.path.join(ROOT, rel) for rel in listed if rel and not graphe_root.designates(rel, patterns)]
+    paths += [ROOT / CONFIGURATION, *(ROOT / e.get("path", "") for e in _declared_extensions()),
+              *Path(__file__).parent.glob("*.py")]
+    newest = 0.0
+    for path in paths:
+        try:
+            s = os.stat(path)
+        except OSError:  # tracked but deleted
+            continue
+        if stat.S_ISREG(s.st_mode):  # not a folder (a submodule, an extension's empty path)
+            newest = max(newest, s.st_mtime)
+    return newest
 
 
 def _commit() -> str | None:
@@ -668,8 +679,7 @@ def load(as_is: bool = False) -> nx.DiGraph:
     if not (as_is and JSON.exists()):
         # The sources first: outside a git repository, their one-line error comes before any rebuilding line (T-0069).
         listed = graphe_root.listing()  # the rebuild's too: one walk (T-0087)
-        newest = max((p.stat().st_mtime for p in _sources(listed) + _tool()), default=0)
-        if not JSON.exists() or newest > JSON.stat().st_mtime:
+        if not JSON.exists() or _newest(listed) > JSON.stat().st_mtime:
             print("(the graph is older than the code or the tool: rebuilding)", file=sys.stderr)
             build(quiet=True, listed=listed)
     data = json.loads(JSON.read_bytes())
