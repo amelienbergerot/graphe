@@ -737,6 +737,51 @@ def test_two_nested_builders_of_one_file_are_two_nodes_and_a_call_both_define_is
     assert cli._designation(graph, "src_msgs_java_foo_builder_build") == "Foo.Builder.build"
 
 
+def test_a_qualifier_naming_a_host_class_narrows_the_candidates_to_its_methods(tmp_path: Path):
+    """libsignal (T-0080): `DeviceId::new` names its class; linked for sure though `new` is common and defined twice.
+    A class named twice (`Line`), or none of the host's (`Vec`), leaves the call as before."""
+    project = Project(tmp_path, {
+        "src/a.rs": """\
+            struct Point {}
+            struct Line {}
+            impl Line { fn new() {} }
+            fn main() {
+                Point::new();
+                Point::length();
+                Line::new();
+                Vec::new();
+            }
+            """,
+        "src/b.rs": "impl Point { fn new() {} fn length() {} }\nimpl Line { fn length() {} }\n",
+        "src/c.rs": "mod legacy { struct Line {} impl Line { fn new() {} } }\n",
+    })
+    rust = generic.contribute(RUST, project)
+    calls = {(e["source"], e["target"], e["confidence"]) for e in rust["links"] if e["relation"] == "calls"}
+    assert calls == {("src_a_rs_main", "src_b_rs_point_new", "EXTRACTED"),
+                     ("src_a_rs_main", "src_b_rs_point_length", "EXTRACTED")}
+    assert {s["text"]: s["verdict"] for s in rust["sites"]} == {
+        "Point::new": "ours", "Point::length": "ours", "Line::new": "ambiguous", "Vec::new": "common"}
+
+    project = Project(tmp_path / "jvm", {
+        "src/Circle.java": """\
+            class Circle {
+                static Circle create() { return null; }
+                static Circle of() { return null; }
+                void use() { Circle.create(); Circle.of(); Square.create(); Board.make(); }
+            }
+            """,
+        "src/Square.java": "class Square { static Square create() { return null; } }\n",
+        "src/Board.kt": "class Board {\n    companion object {\n        fun make() {}\n    }\n}\n\nfun fill() {\n    Circle.create()\n}\n",
+    })
+    jvm = generic.contribute(JVM, project)
+    calls = {(e["source"], e["target"], e["confidence"]) for e in jvm["links"] if e["relation"] == "calls"}
+    assert calls == {("src_circle_java_circle_use", "src_circle_java_circle_create", "EXTRACTED"),
+                     ("src_circle_java_circle_use", "src_circle_java_circle_of", "EXTRACTED"),
+                     ("src_circle_java_circle_use", "src_square_java_square_create", "EXTRACTED"),
+                     ("src_circle_java_circle_use", "src_board_kt_board_make", "EXTRACTED"),
+                     ("src_board_kt_fill", "src_circle_java_circle_create", "EXTRACTED")}
+
+
 def test_a_php_bare_call_is_linked_to_a_function_only_and_a_send_to_a_method_only(tmp_path: Path):
     """protobuf (T-0044): 219 bare calls to PHP's built-ins (`count()` 185, `substr()`, `pack()`) were linked to, or
     ambiguous with, protobuf's methods of that name; in PHP a bare `f()` is a function, `$x->f()` a method."""

@@ -9,14 +9,17 @@ type when it is declared outside it (Go); `@action` for an entry point's action 
 `case 'x':`), its body's uses its own, one without a body leading to the next (`dispatches`, sure). A use belongs to
 the innermost definition that contains it; a function in
 a `@class` is its method; a method's class is its `@receiver`, or else the innermost `@class` that contains it; a
-`@class` in a `@class` is `Outer.Inner` (T-0043), its methods `Outer.Inner.m`.
+`@class` in a `@class` is `Outer.Inner` (T-0043), its methods `Outer.Inner.m`. `@qualifier` on a send is what it is
+sent on (Rust's `T::f()`, Java's and Kotlin's `C.f()`): its last name, if it is a path of names.
 
 - a node per file, function, method (`Class.method`), class and action; the definitions of one kind and name in a file are one
   (Rust's `struct T` and its `impl T`, Java's overloads); the ids carry the extension (`a_t_go`);
 - every link a call, a send or a reference makes is by the name alone (INFERRED), and only when the name has a single definition in the
   language (or family: C/C++, Java/Kotlin): a call or a send to a function or a method (an `apart` language, PHP: a
-  call to a function, a send to a method), a reference to a class. A send never links a common name.
-  Each call or send is a site: `ours?`, `ambiguous`, `common` or `external` (no definition of that name);
+  call to a function, a send to a method), a reference to a class. A send never links a common name, unless its
+  qualifier names a class of the host: then its candidates are that class's methods of the name only, linked for
+  sure (EXTRACTED) when one is left (T-0080).
+  Each call or send is a site: `ours`, `ours?`, `ambiguous`, `common` or `external` (no definition of that name);
 - a file that does not parse is skipped and named on stderr, unless the language is `tolerant` (C's macros, C#'s
   `#if`, Swift's and Go's newer syntax, Rust's `dyn 'a + Trait`).
 """
@@ -63,6 +66,7 @@ class Use(NamedTuple):
     line: int
     owner: Definition | None  # None: the file
     text: str  # what is used, up to its name (`x.y.m`)
+    qualifier: str | None = None  # the last name it is sent on (`T` for `a::T::f`, `Inner` for `Outer.Inner.f()`)
 
 
 DEFINITIONS = ("function", "method", "class", "action")
@@ -127,7 +131,7 @@ RUST_QUERY = """
     (scoped_type_identifier name: (type_identifier) @name)])]) @class
 (call_expression function: (identifier) @name) @call
 (call_expression function: (field_expression field: (field_identifier) @name)) @send
-(call_expression function: (scoped_identifier name: (identifier) @name)) @send
+(call_expression function: (scoped_identifier path: (_)? @qualifier name: (identifier) @name)) @send
 (struct_expression name: [
   (type_identifier) @name
   (scoped_type_identifier name: (type_identifier) @name)]) @reference
@@ -161,7 +165,7 @@ JAVA_QUERY = """
 (method_declaration name: (identifier) @name body: (block)) @method
 (constructor_declaration name: (identifier) @name) @method
 (method_invocation !object name: (identifier) @name) @call
-(method_invocation object: (_) name: (identifier) @name) @send
+(method_invocation object: (_) @qualifier name: (identifier) @name) @send
 (object_creation_expression type: [
   (type_identifier) @name
   (scoped_type_identifier (type_identifier) @name .)
@@ -414,7 +418,7 @@ KOTLIN_QUERY = f"""
 (function_declaration (nullable_type {_KT_RECEIVER}) . name: (identifier) @name (function_body)) @function
 (call_expression (identifier) @name (#not-match? @name "^[A-Z]")) @call
 (call_expression (identifier) @name (#match? @name "^[A-Z]")) @reference
-(call_expression (navigation_expression (identifier) @name .) (#not-match? @name "^[A-Z]")) @send
+(call_expression (navigation_expression . (_) @qualifier (identifier) @name .) (#not-match? @name "^[A-Z]")) @send
 (call_expression (navigation_expression (identifier) @name .) (#match? @name "^[A-Z]")) @reference
 (delegation_specifier {_KT_TYPE}) @reference
 (delegation_specifier (constructor_invocation {_KT_TYPE})) @reference
@@ -543,7 +547,8 @@ def read(language: Language, file: str, source: bytes) -> tuple[list[Definition]
         node, name = captures[role][0], captures["name"][0]
         if name.is_missing:  # a name the grammar inserted to recover: C++'s `enum : int {..}` (T-0034)
             continue
-        found.append((node.start_byte, node.end_byte, role, name, captures.get("receiver", [None])[0], node))
+        found.append((node.start_byte, node.end_byte, role, name, captures.get("receiver", [None])[0], node,
+                      captures.get("qualifier", [None])[0]))
     definitions, uses = [], []
     # A file's definitions of one kind and name are one: Rust's `struct T` and its `impl T`, Java's overloads.
     # shortcut: the line (and the extent) is the first one's; to give the node every line if `explain --source`
@@ -554,13 +559,18 @@ def read(language: Language, file: str, source: bytes) -> tuple[list[Definition]
     stack: list[tuple[int, Definition]] = []  # the open definitions: (their end, them)
     bare = None  # the last action without a body, and its node: it leads to the case that follows it
     # By position, an outer node before the inner one it starts with (`f(g())`), a definition before a use there.
-    for start, end, role, name_node, receiver, node in sorted(found, key=lambda f: (f[0], -f[1], f[2] in USES)):
+    for start, end, role, name_node, receiver, node, qualifier in sorted(
+            found, key=lambda f: (f[0], -f[1], f[2] in USES)):
         while stack and stack[-1][0] <= start:
             stack.pop()
         name, line = name_node.text.decode("utf-8", "replace"), name_node.start_point[0] + 1
         if role in USES:
             used = source[start:name_node.end_byte].decode("utf-8", "replace")
-            uses.append(Use(role, name, line, stack[-1][1] if stack else None, re.sub(r"\s+", "", used)[:60]))
+            # a path of names only, its generic arguments dropped (`Vec::<u8>`); `f().g`, `new C().g` have none
+            path = re.fullmatch(r"(?:[\w:.]*(?:::|\.))?(\w+)(?:::)?(?:<.*>)?",
+                                re.sub(r"\s+", "", qualifier.text.decode("utf-8", "replace"))) if qualifier else None
+            uses.append(Use(role, name, line, stack[-1][1] if stack else None, re.sub(r"\s+", "", used)[:60],
+                            path[1] if path else None))
             continue
         if role == "action" and stack:
             continue  # a function's own `switch`, or one nested in an action: no entry point's, its calls stay there
@@ -643,6 +653,7 @@ def contribute(language: Language, project) -> dict:
     marked = []  # the generated files (T-0079)
     callables: dict[str, list[str]] = defaultdict(list)  # bare name -> function and method ids
     classes: dict[str, list[str]] = defaultdict(list)
+    methods: dict[tuple[str, str], list[str]] = defaultdict(list)  # (bare class name, bare name) -> method ids
     for path in paths:
         rel = path.relative_to(project.root).as_posix()
         source = path.read_bytes()
@@ -662,6 +673,8 @@ def contribute(language: Language, project) -> dict:
             # by the bare name a use carries: `Inner` for `Outer.Inner`, `m` for `T.m`; no call reaches an action
             if d.kind != "action":
                 (classes if d.kind == "class" else callables)[d.name.rsplit(".", 1)[-1]].append(held[d])
+            if d.kind == "method":
+                methods[tuple(d.name.rsplit(".", 2)[-2:])].append(held[d])
             # a method's class holds it when it is defined in the same file (Go's type is often in another one)
             cls = d.name.rsplit(".", 1)[0] if d.kind == "method" else None
             link(in_file.get(cls, fid), held[d], "contains", rel, d.line)
@@ -675,14 +688,21 @@ def contribute(language: Language, project) -> dict:
                 link(owner, actions[u.name], "dispatches", rel, u.line)
                 continue
             ours = (classes if u.kind == "reference" else callables).get(u.name, [])
+            # T-0080: `T::f()`, `C.f()` sent on a class of the host: only its methods `f` are candidates, a common
+            # name too; none, the name alone decides as before (a static method `C` inherits).
+            named = methods.get((u.qualifier, u.name), []) if u.qualifier in classes else []
             if u.kind != "reference":
                 if language.apart:
                     ours = [t for t in ours if (t in functions) == (u.kind == "call")]
-                verdict = "external" if not ours else "common" if u.kind == "send" and u.name in language.common \
-                    else "ours?" if len(ours) == 1 else "ambiguous"
+                if named:
+                    ours, verdict = named, "ours" if len(named) == 1 else "ambiguous"
+                else:
+                    verdict = "external" if not ours else "common" if u.kind == "send" and u.name in language.common \
+                        else "ours?" if len(ours) == 1 else "ambiguous"
                 sites.append({"verdict": verdict, "file": rel, "line": u.line, "name": u.name, "text": u.text})
-                if verdict != "ours?":
+                if verdict not in ("ours", "ours?"):
                     continue
             if len(ours) == 1 and ours[0] != owner:
-                link(owner, ours[0], "calls" if u.kind != "reference" else "references", rel, u.line, sure=False)
+                link(owner, ours[0], "calls" if u.kind != "reference" else "references", rel, u.line,
+                     sure=bool(named))
     return {"nodes": nodes, "links": links, "sites": sites, "generated": marked}

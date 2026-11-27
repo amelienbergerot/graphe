@@ -65,15 +65,6 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   `T` (15 files), `impl Tr for Vec<X>` a class `Vec` (10). Swift's
   extensions (T-0037) take the same shape: merging a class's nodes across
   files, or a `@class` that only extends, is the generic reader's own ticket.
-- **A Rust `Type::f()` path is not linked when `f` is a common name.**
-  (libsignal, sample host, 2026-11-19, T-0032) `T::f()` is a send, like
-  `x.f()`: `DeviceId::new` (183 calls), `ProtocolAddress::new` (132),
-  `TestStoreBuilder::new` (64) are `common`, never linked, though the path
-  names the type; 14660 sends are `common`, 8944 calls `ambiguous`
-  (`KeyPair::generate` 118, defined in 6 `struct KeyPair`), against 6702 linked by
-  name. Linking `T::f` to the method `T.f` when `T` is a class of the host
-  would link most of them, and Java's `C.f()` too: outside "by the name
-  alone" (ADR 0003), to decide.
 - **Generated Java code repeated in a host makes its names ambiguous.**
   (protobuf, sample host, 2026-11-19, T-0033) 11 of protobuf's 293 Java
   files are one generated file, `Proto3GencodeTestProto.java`, as 9 old
@@ -289,6 +280,23 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
 ## Settled
 
 Settled by tickets (2026-11-27):
+
+- **A Rust `Type::f()` path is not linked when `f` is a common name.** [T-0080]
+  (libsignal, sample host, 2026-11-19, T-0032) `T::f()` is a send, like
+  `x.f()`: `DeviceId::new` (183 calls), `ProtocolAddress::new` (132),
+  `TestStoreBuilder::new` (64) are `common`, never linked, though the path
+  names the type; 14660 sends are `common`, 8944 calls `ambiguous`
+  (`KeyPair::generate` 118, defined in 6 `struct KeyPair`), against 6702 linked by
+  name. Linking `T::f` to the method `T.f` when `T` is a class of the host
+  would link most of them, and Java's `C.f()` too: outside "by the name
+  alone" (ADR 0003), to decide.
+  T-0080: a send qualified by a class of the host has that class's methods
+  for candidates, a common name too, linked for sure when one is left
+  (ADR 0003's amendment): `DeviceId::new` 184 sites, `ProtocolAddress::new`
+  132, `TestStoreBuilder::new` 64; Java's and Kotlin's `C.f()` too. On
+  libsignal, 2771 `calls` links more, 1011 turned sure; on protobuf, 3123
+  and 1574; none lost, 0 dangling. `KeyPair::generate` stays ambiguous: its
+  6 `struct KeyPair` are in modules, which are no classes.
 
 - **Vue is not read.** [T-0082] (graphe, the user's request, 2026-11-27) README's
   "Not read" row: a Vue host gets no graph of its components, nor of the

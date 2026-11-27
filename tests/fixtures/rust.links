@@ -1,7 +1,9 @@
 src_legacy_rs contains src_legacy_rs_line sure
 src_legacy_rs_line contains src_legacy_rs_line_new sure
 src_main_rs contains src_main_rs_main sure
-src_main_rs_main calls src_shapes_rs_point_origin by name
+src_main_rs_main calls src_measure_rs_point_length sure
+src_main_rs_main calls src_shapes_rs_point_new sure
+src_main_rs_main calls src_shapes_rs_point_origin sure
 src_main_rs_main calls src_shapes_rs_shift by name
 src_measure_rs contains src_measure_rs_point sure
 src_measure_rs_point contains src_measure_rs_point_length sure
@@ -13,3 +15,4 @@ src_shapes_rs_line contains src_shapes_rs_line_new sure
 src_shapes_rs_point contains src_shapes_rs_point_len sure
 src_shapes_rs_point contains src_shapes_rs_point_new sure
 src_shapes_rs_point contains src_shapes_rs_point_origin sure
+src_shapes_rs_point_origin calls src_shapes_rs_point_new sure

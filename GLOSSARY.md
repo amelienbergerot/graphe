@@ -17,7 +17,7 @@ What reads the files of one language and draws nodes and links from them.
 _Avoid_: parser, extractor, analyzer
 
 **Generic reader**:
-A reader that serves many languages the same way: their definitions, and their calls linked by the name alone.
+A reader that serves many languages the same way: their definitions, and their calls linked by the name alone, or by the class the call names (`T::f()`, `C.f()`).
 _Avoid_: fallback reader, basic reader
 
 **Dedicated reader**:

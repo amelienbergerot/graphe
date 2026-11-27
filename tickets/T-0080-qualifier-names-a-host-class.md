@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: closed
 Part of: T-0071
 Blocked by: T-0073, T-0078, T-0079
 Created: 2026-11-27
@@ -15,12 +15,12 @@ ADR 0003 gets one amendment, written with this ticket, for this rule and T-0081'
 
 ## Acceptance criteria
 
-- [ ] On the Rust sample host, `T::new()` is linked to `T.new` when `T` is a class of the host, `new` a common name included.
-- [ ] On the Java/Kotlin sample host, `C.f()` likewise.
-- [ ] A qualifier naming a class with two methods `f`, or no class of the host, leaves the call unattributed.
-- [ ] The snapshots' diff shows only the new links, reviewed in the commit.
-- [ ] Measured on libsignal and protobuf (`docs/sample-hosts.md`): calls linked before and after, 0 dangling; the README's figures and BACKLOG.md's entry updated.
-- [ ] ADR 0003's amendment is written.
+- [x] On the Rust sample host, `T::new()` is linked to `T.new` when `T` is a class of the host, `new` a common name included.
+- [x] On the Java/Kotlin sample host, `C.f()` likewise.
+- [x] A qualifier naming a class with two methods `f`, or no class of the host, leaves the call unattributed.
+- [x] The snapshots' diff shows only the new links, reviewed in the commit.
+- [x] Measured on libsignal and protobuf (`docs/sample-hosts.md`): calls linked before and after, 0 dangling; the README's figures and BACKLOG.md's entry updated.
+- [x] ADR 0003's amendment is written.
 
 ## Blocked by
 

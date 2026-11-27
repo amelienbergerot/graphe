@@ -6,6 +6,8 @@ A release that changes `contribute(project)`, `Project`, the shape of the nodes 
 
 ## Unreleased
 
+The generic reader links a send qualified by a class of the host, Rust's `T::f()`, Java's and Kotlin's `C.f()`, to that class's method `f`, for sure, a common name too (`DeviceId::new`), when the classes so named define one; several leave it unattributed, none leave it to the name alone, as before. Its site is `ours`. On libsignal, 2771 links more, on protobuf 3123 (T-0080).
+
 `graphe check` and REPORT.md list the generated files read, as git's `linguist-generated` says, or, for the generic reader's languages, a known header (protobuf's compiler, Go's `// Code generated ... DO NOT EDIT.`, before the first code), each with the count of ambiguous calls on the names it defines, and the `exclude` line to paste that drops those whose names are ambiguous, the host's own entries kept. The links are unchanged (T-0079).
 
 The skill reaches Codex, GitHub Copilot CLI and Cursor through a `plugin.json` at the root (the Agent Plugins format) and Codex's marketplace (`.agents/plugins/marketplace.json`), Gemini CLI through `gemini-extension.json`; each untested, the README says how to install it (T-0078).
