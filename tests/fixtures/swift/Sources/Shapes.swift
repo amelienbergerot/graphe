@@ -29,3 +29,13 @@ struct Square: Drawable {
         return side * side
     }
 }
+
+struct Label {
+    var text: String
+}
+
+extension Label: Drawable {
+    func draw() -> String {
+        return text
+    }
+}

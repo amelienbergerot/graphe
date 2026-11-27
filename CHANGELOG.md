@@ -6,6 +6,8 @@ A release that changes `contribute(project)`, `Project`, the shape of the nodes 
 
 ## Unreleased
 
+The generic reader makes a node of a method without a body, Java's abstract or an interface's (not a `native` one), and of a Swift protocol's `func` requirement; a method overrides the one of its class or of a class its base list names directly (Swift's `extension C: P` too). A call whose candidates all override one declaration is linked to it, by name: protobuf's `input.pushLimit(n)` goes to `CodedInputStream.pushLimit`, libsignal's `nativeHandle.const()` to `SignalMutPointer.const`. A single concrete definition is linked as before. On protobuf, 3810 Java call sites linked more, on libsignal 1161 Swift and 4 Java ones; none lost or moved (T-0081).
+
 The generic reader links a send qualified by a class of the host, Rust's `T::f()`, Java's and Kotlin's `C.f()`, to that class's method `f`, by name, a common name too (`DeviceId::new`), when the classes so named define one; several leave it unattributed, none leave it to the name alone, as before. A type the host only implements a trait for (Rust's `impl From<X> for HashMap`) is not its class. On libsignal, 2629 links more, on protobuf 3112 (T-0080).
 
 `graphe check` and REPORT.md list the generated files read, as git's `linguist-generated` says, or, for the generic reader's languages, a known header (protobuf's compiler, Go's `// Code generated ... DO NOT EDIT.`, before the first code), each with the count of ambiguous calls on the names it defines, and the `exclude` line to paste that drops those whose names are ambiguous, the host's own entries kept. The links are unchanged (T-0079).
@@ -13,6 +15,8 @@ The generic reader links a send qualified by a class of the host, Rust's `T::f()
 The skill reaches Codex, GitHub Copilot CLI and Cursor through a `plugin.json` at the root (the Agent Plugins format) and Codex's marketplace (`.agents/plugins/marketplace.json`), Gemini CLI through `gemini-extension.json`; each untested, the README says how to install it (T-0078).
 
 ### Contract
+
+A new node kind, `abstract` (`Class.method`, its id `<file>_abstract_<name>`), and a new relation, `overrides`, from a method to the declaration it implements (`INFERRED`); `overrides` is no call relation, `callers` does not follow it. A tool that lists the callable nodes by kind (`function`, `method`) adds `abstract`; the ids of the nodes already there are unchanged (T-0081).
 
 A contribution may return `generated`, the paths of the generated files it read; nothing breaks, an extension that returns none is read as before.
 

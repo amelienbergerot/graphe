@@ -106,7 +106,7 @@ It is a dictionary. Each key is optional.
 |---|---|---|
 | `id` | always | A unique identifier in the graph (`outils_aider`). |
 | `label` | new node | What `explain` displays at the head of its answer (`aider()`). |
-| `kind` | new node | `file`, `function`, `method`, `class`, `field`, `command`, `action`, `signal`, … or a kind specific to the extension. |
+| `kind` | new node | `file`, `function`, `method`, `abstract` (a method without a body, T-0081), `class`, `field`, `command`, `action`, `signal`, … or a kind specific to the extension. |
 | `source_file` | new node | The path relative to the root, with `/`. |
 | `source_location` | new node | The line, in the form `"L12"`. |
 | `name` | new node | The name by which the node is designated (`aider`, `Class.method`), and shown among the neighbours of another. |
@@ -121,7 +121,7 @@ All fields are required.
 | Field | What it is |
 |---|---|
 | `source`, `target` | The ids of both ends. |
-| `relation` | `calls`, `contains`, `imports`, `reads`, `writes`, `cites`, `sends`, `dispatches`, … or a relation specific to the extension. `callers` follows only the call relations (`CALLS`, in `graphe/cli.py`). |
+| `relation` | `calls`, `contains`, `imports`, `reads`, `writes`, `cites`, `sends`, `dispatches`, `overrides` (a method to the declaration it implements, T-0081), … or a relation specific to the extension. `callers` follows only the call relations (`CALLS`, in `graphe/cli.py`). |
 | `confidence` | `"EXTRACTED"` (a sure link) or `"INFERRED"` (a link made by the name alone). Between two nodes, an `EXTRACTED` link wins. |
 | `source_file`, `source_location` | The location of the link (`"L12"`). |
 | `context` | A word about the link (the alias of an import, the name of an order), or `""`. |

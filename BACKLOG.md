@@ -91,13 +91,6 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   57624 -> 20009 of the Java sites (the sites 118387 -> 62041). Kept, they
   stay ambiguous: what is left
   is the host's choice.
-- **A Java call to an abstract method is linked to none of its
-  implementations.** (protobuf, sample host, 2026-11-19, T-0033) An abstract
-  method has no node, so `input.pushLimit(n)` (407 calls) is `ambiguous`
-  between `ArrayDecoder.pushLimit` and `StreamDecoder.pushLimit`, the nested
-  implementations of `CodedInputStream.pushLimit`. Linking the call to the
-  abstract method needs its node and the receiver's type: a dedicated Java
-  reader (ADR 0003).
 - **Java's anonymous classes lose their methods to the enclosing class.**
   (protobuf, sample host, 2026-11-19, T-0033) The 325 methods of an
   anonymous class (`new Runnable() { public void run() {..} }`) are the
@@ -175,7 +168,16 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   160 each): `nativeHandle.const()` (475 sends) and `convertReturn` (545)
   are not attributed, 2598 of the 8213 Swift sites `ambiguous`. Linking
   them needs the receiver's type, or the protocol's requirement as a node:
-  a dedicated Swift reader (ADR 0003).
+  a dedicated Swift reader (ADR 0003). T-0081 (2026-11-27) makes a protocol's
+  `func` requirement a node its conformances override: `const` (475 sites)
+  goes to `SignalMutPointer.const`, `emptyFfiReturn` (164) and `convertArg`
+  (76) to `NiceReturnConverter`'s and `NiceArgConverter`'s, 1161 Swift call
+  sites more, `ambiguous` 2598 -> 1477. Left: `toOpaque` (8), required by
+  both `SignalMutPointer` and `SignalConstPointer`, needs the receiver's
+  type; `convertReturn` (545), because the test helper `UneraseType`
+  (`ChatServiceTestBase.swift`) defines one without conforming to
+  `NiceReturnConverter` (its generic parameter does): leaving out a test
+  file would settle it, the host's choice.
 - **A Swift nested function is no definition.** (libsignal, sample host,
   2026-11-19, T-0037) A `func` inside a function (`check` in
   `ChatServiceTests.swift`) is not captured, its calls its enclosing
@@ -291,6 +293,21 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
 ## Settled
 
 Settled by tickets (2026-11-27):
+
+- **A Java call to an abstract method is linked to none of its
+  implementations.** [T-0081] (protobuf, sample host, 2026-11-19, T-0033) An abstract
+  method has no node, so `input.pushLimit(n)` (407 calls) is `ambiguous`
+  between `ArrayDecoder.pushLimit` and `StreamDecoder.pushLimit`, the nested
+  implementations of `CodedInputStream.pushLimit`. Linking the call to the
+  abstract method needs its node and the receiver's type: a dedicated Java
+  reader (ADR 0003).
+  T-0081: an abstract method is a node, which a method of its class or of a
+  direct base overrides (`overrides`, by name); a call whose candidates all
+  override one declaration goes to it, by name (ADR 0003's amendment), the
+  receiver's type unread: `pushLimit` 420 sites, `writeUInt32NoTag` 688,
+  `getBytesUntilLimit` 608. On protobuf, 3810 Java call sites linked more
+  (20214 -> 24024), none lost or moved, 0 dangling; `ambiguous` 54023 ->
+  50229.
 
 - **A Rust `Type::f()` path is not linked when `f` is a common name.** [T-0080]
   (libsignal, sample host, 2026-11-19, T-0032) `T::f()` is a send, like

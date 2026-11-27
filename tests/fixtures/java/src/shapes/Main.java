@@ -8,5 +8,7 @@ public class Main {
         double a = s.area() + c.area();
         double p = s.perimeter() + new Fence(5).perimeter();
         String n = q.getName() + s.describe();
+        Listener l = new Logger();
+        l.onEvent(s);
     }
 }

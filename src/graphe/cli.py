@@ -89,6 +89,8 @@ HOOKS = ("post-commit", "post-merge", "post-checkout", "post-rewrite")
 BLOCKS = (("# >>> graphe code graph", "# <<< graphe code graph"), ("# >>> graphe du code", "# <<< graphe du code"))
 # What leads from the caller to the callee.
 CALLS = {"calls", "uses", "references", "indirect_call", "sends", "dispatches", "reads", "writes", "value"}
+# What a call can reach: an abstract method, an interface's or a protocol's requirement too (T-0081).
+CALLABLE = ("function", "method", "abstract")
 # T-0354: nodes that are not code, each their own community - a ticket, a value or a document links files that
 # nothing else links, and would merge unrelated communities. The host adds some (`[communities] separate`).
 SEPARATE = {"ticket": "tickets", "value": "values", "document": "documents"}
@@ -271,7 +273,7 @@ def _generated(contributions: list[tuple[str, dict]]) -> list[tuple[str, int]]:
             if "source_file" not in n:  # an extension's enrichment of a node already there: its id alone
                 continue
             entry = held.setdefault(n["source_file"], (i, []))
-            if n.get("kind") in ("function", "method"):
+            if n.get("kind") in CALLABLE:
                 entry[1].append(n["name"].rsplit(".", 1)[-1])
     r = subprocess.run(["git", "check-attr", "-z", "--stdin", "linguist-generated"], cwd=ROOT, input="\0".join(held),
                        capture_output=True, text=True, encoding="utf-8", timeout=60)
@@ -431,7 +433,7 @@ CAUSES = {"ambiguous": "several", "common": "common", "unknown": "receiver", "me
 def _unattributed(graph: nx.DiGraph, sites: dict[str, list[dict]]) -> dict[str, dict[str, int]]:
     """The calls not attributed, by the name of a function or a method of ours (`filter`), then by cause: what grep
     would find and the graph does not."""
-    ours = {graph.nodes[n]["name"].rsplit(".", 1)[-1] for n in graph if graph.nodes[n]["kind"] in ("function", "method")}
+    ours = {graph.nodes[n]["name"].rsplit(".", 1)[-1] for n in graph if graph.nodes[n]["kind"] in CALLABLE}
     counted = Counter((s["name"], CAUSES[s["verdict"]]) for site_list in sites.values() for s in site_list
                       if s.get("verdict") in CAUSES and s.get("name") in ours)
     by_name: dict[str, dict[str, int]] = defaultdict(dict)
@@ -444,14 +446,14 @@ def _missed(graph: nx.DiGraph, n: str) -> None:
     """T-0025, T-0074: the lines that tell the agent when to grep, by cause."""
     d = graph.nodes[n]
     name = d["name"].rsplit(".", 1)[-1]
-    causes = graph.graph["unattributed"].get(name, {}) if d["kind"] in ("function", "method") else {}
+    causes = graph.graph["unattributed"].get(name, {}) if d["kind"] in CALLABLE else {}
     if not causes:
         return
     print(f"  + {sum(causes.values())} calls named `{name}` the graph could not attribute:")
     if causes.get("several"):
         # shortcut: the candidates by bare name, across languages and kinds where a reader sees its own language and
         # may keep to methods (JS's `x.f()`, `apart`); to take the reader's own candidates if one misleads an agent.
-        candidates = sorted((c for c in graph if graph.nodes[c]["kind"] in ("function", "method")
+        candidates = sorted((c for c in graph if graph.nodes[c]["kind"] in CALLABLE
                              and graph.nodes[c]["name"].rsplit(".", 1)[-1] == name),
                             key=lambda c: (graph.nodes[c]["source_file"], _line(graph, c)))
         listed = f": {', '.join(_designation(graph, c) for c in candidates)}" if len(candidates) <= 5 else ""
@@ -940,7 +942,7 @@ def _called(graph: nx.DiGraph, n: str) -> bool:
     """Something calls n, or calls of its name went unattributed: what `_callers` would print."""
     d = graph.nodes[n]
     return any(CALLS & set(graph[s][n]["relations"]) for s in graph.predecessors(n)) or \
-        (d["kind"] in ("function", "method") and d["name"].rsplit(".", 1)[-1] in graph.graph["unattributed"])
+        (d["kind"] in CALLABLE and d["name"].rsplit(".", 1)[-1] in graph.graph["unattributed"])
 
 
 def _innermost(bodies: list[tuple[int, int, str]], whole: str | None, line: int) -> str | None:

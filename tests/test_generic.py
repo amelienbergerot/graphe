@@ -169,7 +169,7 @@ def test_a_java_class_its_methods_and_what_it_builds():
         }
         """)
     assert definitions == {("class", "C", 1), ("method", "C.C", 2), ("method", "C.m", 6), ("class", "I", 12),
-                           ("method", "I.n", 14)}
+                           ("abstract", "I.abstractOne", 13), ("method", "I.n", 14)}
     assert uses == {("reference", "B", 1, "C"), ("reference", "I", 1, "C"), ("call", "init", 3, "C.C"),
                     ("send", "add", 7, "C.m"), ("reference", "D", 7, "C.m"), ("send", "n", 8, "C.m")}
 
@@ -454,7 +454,8 @@ def test_a_swift_type_its_methods_and_its_calls():
         func top() { [1].map { $0.u() } }
         """)
     assert definitions == {("class", "C", 2), ("method", "C.init", 3), ("method", "C.m", 4), ("method", "C.s", 5),
-                           ("method", "C.p", 6), ("class", "S", 8), ("method", "S.t", 8), ("class", "P", 9), ("function", "top", 10)}
+                           ("method", "C.p", 6), ("class", "S", 8), ("method", "S.t", 8), ("class", "P", 9),
+                           ("abstract", "P.v", 9), ("function", "top", 10)}
     assert uses == {("reference", "B", 2, "C"), ("reference", "P", 2, "C"), ("call", "b", 3, "C.init"),
                     ("send", "c", 3, "C.init"), ("send", "f", 3, "C.init"), ("send", "z", 3, "C.init"),
                     ("reference", "Bar", 3, "C.init"), ("send", "make", 4, "C.m"), ("send", "s", 5, "C.s"),
@@ -785,6 +786,107 @@ def test_a_qualifier_naming_a_host_class_narrows_the_candidates_to_its_methods(t
                      ("src_circle_java_circle_use", "src_square_java_square_create", "INFERRED"),
                      ("src_circle_java_circle_use", "src_board_kt_board_make", "INFERRED"),
                      ("src_board_kt_fill", "src_circle_java_circle_create", "INFERRED")}
+
+
+def test_an_abstract_method_an_interfaces_and_a_protocols_requirement_are_declarations():
+    """T-0081: a method without a body is an `abstract` node (a native one is none: its body is in C or Rust); a base
+    list is read for the class that inherits, an extension's (`extension B: P`) for its type."""
+    definitions, _ = _read(JAVA, "src/S.java", """\
+        abstract class S extends B implements I {
+            abstract int a();
+            native int n();
+            int c() { return 1; }
+        }
+        interface I extends J { int b(); default int d() { return 1; } }
+        """)
+    assert definitions == {("class", "S", 1), ("abstract", "S.a", 2), ("method", "S.c", 4), ("class", "I", 6),
+                           ("abstract", "I.b", 6), ("method", "I.d", 6)}
+    _, uses = generic.read(JAVA, "src/S.java", b"class S extends B implements I {}\ninterface I extends J {}\n")
+    assert {(u.name, u.heir) for u in uses} == {("B", "S"), ("I", "S"), ("J", "I")}
+
+    definitions, _ = _read(SWIFT, "Sources/p.swift", """\
+        protocol P: Q {
+            init(untyped: Int)
+            func draw() -> String
+            var p: Int { get }
+        }
+        """)
+    assert definitions == {("class", "P", 1), ("abstract", "P.draw", 3)}
+    _, uses = generic.read(SWIFT, "Sources/p.swift", b"protocol P: Q {}\nstruct A: P {}\nextension B: P, R {}\n")
+    assert {(u.name, u.line, u.heir) for u in uses} == {("Q", 1, "P"), ("P", 2, "A"), ("P", 3, "B"), ("R", 3, "B")}
+
+
+def test_a_call_whose_candidates_all_override_one_declaration_is_linked_to_it(tmp_path: Path):
+    """protobuf's `input.pushLimit(n)` (T-0081): its two implementations override `CodedInputStream.pushLimit`, so the
+    call goes to the declaration, by name. A candidate that overrides nothing (`Fence.perimeter`) leaves the call
+    unattributed; a single concrete definition is linked as before, a declaration beside it or not."""
+    project = Project(tmp_path, {
+        "src/Shape.java": """\
+            abstract class Shape {
+                abstract double area();
+                abstract double perimeter();
+                double twice() { return 2 * area(); }
+            }
+            """,
+        "src/Circle.java": "class Circle extends Shape { double area() { return 3; } double perimeter() { return 6; } }\n",
+        "src/Fence.java": "class Fence { double perimeter() { return 1; } }\n",
+        "src/Listener.java": "interface Listener { void onEvent(); }\n",
+        "src/Describer.java": "interface Describer { String describe(); String only(); }\n",
+        "src/Main.java": """\
+            class Main {
+                String describe() { return ""; }
+                void main(Shape s, Listener l, Describer d) {
+                    s.area(); s.perimeter(); l.onEvent(); d.describe(); d.only();
+                }
+            }
+            """,
+        "src/Square.kt": """\
+            class Square : Shape() {
+                override fun area(): Double = 4.0
+                override fun perimeter(): Double = 8.0
+            }
+
+            class Logger : Listener {
+                override fun onEvent() {}
+            }
+            """,
+    })
+    jvm = generic.contribute(JVM, project)
+    assert {(n["name"], n["label"]) for n in jvm["nodes"] if n["kind"] == "abstract"} == {
+        ("Shape.area", "Shape.area()"), ("Shape.perimeter", "Shape.perimeter()"), ("Listener.onEvent", "Listener.onEvent()"),
+        ("Describer.describe", "Describer.describe()"), ("Describer.only", "Describer.only()")}
+    links = {(e["source"], e["target"], e["relation"], e["confidence"]) for e in jvm["links"] if e["relation"] != "contains"}
+    assert {(s, t) for s, t, r, _ in links if r == "overrides"} == {
+        ("src_circle_java_circle_area", "src_shape_java_abstract_shape_area"),
+        ("src_circle_java_circle_perimeter", "src_shape_java_abstract_shape_perimeter"),
+        ("src_square_kt_square_area", "src_shape_java_abstract_shape_area"),
+        ("src_square_kt_square_perimeter", "src_shape_java_abstract_shape_perimeter"),
+        ("src_square_kt_logger_onevent", "src_listener_java_abstract_listener_onevent")}
+    assert {(s, t) for s, t, r, _ in links if r == "calls"} == {
+        ("src_shape_java_shape_twice", "src_shape_java_abstract_shape_area"), ("src_main_java_main_main", "src_shape_java_abstract_shape_area"),
+        ("src_main_java_main_main", "src_square_kt_logger_onevent"), ("src_main_java_main_main", "src_main_java_main_describe"),
+        ("src_main_java_main_main", "src_describer_java_abstract_describer_only")}
+    assert {c for *_, r, c in links if r in ("calls", "overrides")} == {"INFERRED"}
+    verdicts = {s["text"]: s["verdict"] for s in jvm["sites"]}
+    assert verdicts["s.area"] == "ours?" and verdicts["s.perimeter"] == "ambiguous"
+
+    project = Project(tmp_path / "swift", {
+        "Sources/a.swift": """\
+            protocol Drawable {
+                func draw() -> String
+            }
+            struct Circle: Drawable {
+                func draw() -> String { return "circle" }
+            }
+            func render(_ d: Drawable) -> String { return d.draw() }
+            """,
+        "Sources/b.swift": "struct Label {}\nextension Label: Drawable {\n    func draw() -> String { return \"\" }\n}\n",
+    })
+    swift = generic.contribute(SWIFT, project)
+    links = {(e["source"], e["target"], e["relation"]) for e in swift["links"]}
+    assert ("sources_b_swift_label_draw", "sources_a_swift_abstract_drawable_draw", "overrides") in links
+    assert ("sources_a_swift_circle_draw", "sources_a_swift_abstract_drawable_draw", "overrides") in links
+    assert ("sources_a_swift_render", "sources_a_swift_abstract_drawable_draw", "calls") in links
 
 
 def test_a_php_bare_call_is_linked_to_a_function_only_and_a_send_to_a_method_only(tmp_path: Path):

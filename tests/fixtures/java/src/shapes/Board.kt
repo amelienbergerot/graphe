@@ -16,3 +16,9 @@ fun fill(): Double {
     val b = Board.create()
     return b.place(Circle.unit())
 }
+
+class Logger : Listener {
+    override fun onEvent(s: Shape) {
+        println(s.describe())
+    }
+}

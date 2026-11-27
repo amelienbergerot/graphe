@@ -11,15 +11,20 @@ the innermost definition that contains it; a function in
 a `@class` is its method; a method's class is its `@receiver`, or else the innermost `@class` that contains it; a
 `@class` in a `@class` is `Outer.Inner` (T-0043), its methods `Outer.Inner.m`. `@qualifier` on a send is what it is
 sent on (Rust's `T::f()`, Java's and Kotlin's `C.f()`): its last name, if it is a path of names. `@extension` on a
-`@class` (Rust's `impl`): a class the file only extends, the host's only if another capture declares it.
+`@class` (Rust's `impl`): a class the file only extends, the host's only if another capture declares it. `@abstract`
+(T-0081): a method without a body, Java's abstract or an interface's, a Swift protocol's requirement. `@base` on a
+`@reference`: a base list's, its heir the `@receiver` (Swift's `extension B: P`), or else the class that holds it.
 
-- a node per file, function, method (`Class.method`), class and action; the definitions of one kind and name in a file are one
+- a node per file, function, method (`Class.method`), abstract (`Class.method`), class and action; the definitions of
+  one kind and name in a file are one
   (Rust's `struct T` and its `impl T`, Java's overloads); the ids carry the extension (`a_t_go`);
 - every link a call, a send or a reference makes is by the name alone (INFERRED), and only when the name has a single definition in the
   language (or family: C/C++, Java/Kotlin): a call or a send to a function or a method (an `apart` language, PHP: a
   call to a function, a send to a method), a reference to a class. A send never links a common name, unless its
   qualifier names a class of the host: then its candidates are that class's methods of the name only, linked by
-  name when one is left (T-0080).
+  name when one is left (T-0080). A method `overrides` the abstract of its name in its class or a direct base
+  (INFERRED); a declaration settles a tie only: several definitions that all override it, or none, link the call to
+  it (T-0081).
   Each call or send is a site: `ours?`, `ambiguous`, `common` or `external` (no definition of that name);
 - a file that does not parse is skipped and named on stderr, unless the language is `tolerant` (C's macros, C#'s
   `#if`, Swift's and Go's newer syntax, Rust's `dyn 'a + Trait`).
@@ -56,7 +61,7 @@ class Language(NamedTuple):
 
 
 class Definition(NamedTuple):
-    kind: str  # function, method, class, action
+    kind: str  # function, method, class, action, abstract (a method without a body, T-0081)
     name: str  # `f`, `T.m`, `T`, `liste`
     line: int
     extension: bool = False  # a class this file only extends (Rust's `impl T`, `impl Tr for Vec<X>`), declares nowhere
@@ -69,9 +74,10 @@ class Use(NamedTuple):
     owner: Definition | None  # None: the file
     text: str  # what is used, up to its name (`x.y.m`)
     qualifier: str | None = None  # the last name it is sent on (`T` for `a::T::f`, `Inner` for `Outer.Inner.f()`)
+    heir: str | None = None  # a base list's: the class that inherits the name (`C` for `class C extends B`, T-0081)
 
 
-DEFINITIONS = ("function", "method", "class", "action")
+DEFINITIONS = ("function", "method", "class", "action", "abstract")
 USES = ("call", "send", "reference")
 
 GO_QUERY = """
@@ -158,13 +164,15 @@ RUST = Language("rust", {".rs": (tree_sitter.Language(tree_sitter_rust.language(
     # host's garbage shows.
     tolerant=True)
 
-# An abstract method (no body) is not captured, as Rust's trait signatures; a constructor is the method `C.C`.
+# A method without a body, abstract or an interface's, is `@abstract` (T-0081), a native one none (its body is in C or
+# Rust, libsignal's JNI); a constructor is the method `C.C`.
 JAVA_QUERY = """
 [(class_declaration name: (identifier) @name)
  (interface_declaration name: (identifier) @name)
  (enum_declaration name: (identifier) @name)
  (record_declaration name: (identifier) @name)] @class
 (method_declaration name: (identifier) @name body: (block)) @method
+((method_declaration name: (identifier) @name !body) @abstract (#not-match? @abstract "\\\\bnative\\\\b"))
 (constructor_declaration name: (identifier) @name) @method
 (method_invocation !object name: (identifier) @name) @call
 (method_invocation object: (_) @qualifier name: (identifier) @name) @send
@@ -175,15 +183,15 @@ JAVA_QUERY = """
 (superclass [
   (type_identifier) @name
   (scoped_type_identifier (type_identifier) @name .)
-  (generic_type [(type_identifier) @name (scoped_type_identifier (type_identifier) @name .)])]) @reference
+  (generic_type [(type_identifier) @name (scoped_type_identifier (type_identifier) @name .)])]) @reference @base
 (super_interfaces (type_list [
   (type_identifier) @name
   (scoped_type_identifier (type_identifier) @name .)
-  (generic_type [(type_identifier) @name (scoped_type_identifier (type_identifier) @name .)])])) @reference
+  (generic_type [(type_identifier) @name (scoped_type_identifier (type_identifier) @name .)])])) @reference @base
 (extends_interfaces (type_list [
   (type_identifier) @name
   (scoped_type_identifier (type_identifier) @name .)
-  (generic_type [(type_identifier) @name (scoped_type_identifier (type_identifier) @name .)])])) @reference
+  (generic_type [(type_identifier) @name (scoped_type_identifier (type_identifier) @name .)])])) @reference @base
 """
 
 # The common names: the JDK's (and JRuby's `newString`) that one method of protobuf would collect from every
@@ -341,7 +349,10 @@ PHP = Language("php", {".php": (tree_sitter.Language(tree_sitter_php.language_ph
 # class's; reading `x.p` is no call, so it has no caller). A type is named by its last name, generic or not.
 # shortcut: a nested function, an operator (`static func ==`) and a subscript are no definitions, and a stored
 # property's initial value or observers (`didSet`) call from the class; to capture them if a host's `explain` needs
-# them. shortcut: a call to a capitalised name (`C(..)`, `Foo.Bar(..)`) is a reference to that type, a lower-case one
+# them. A protocol's `func` requirement is `@abstract` (T-0081), and a base list, a type's, a protocol's or an
+# extension's, is `@base`. shortcut: an `init` and a property requirement are none, `init` a common name and a property
+# often stored; to capture them if a host's calls through a protocol's property stay ambiguous.
+# shortcut: a call to a capitalised name (`C(..)`, `Foo.Bar(..)`) is a reference to that type, a lower-case one
 # a call, Swift's naming convention; to tell them apart by their definitions if a host breaks it. shortcut: the grammar
 # reads `defer { }` as a call `defer`, and the standard `withUnsafePointer(to:)` and `withUnsafeMutablePointer(to:)`
 # are linked to a host's method of that name (libsignal's, 24 bare calls all the standard's): no calls, so a host's
@@ -369,7 +380,10 @@ SWIFT_QUERY = f"""
  (#match? @name "^[A-Z]")) @reference
 (call_expression (prefix_expression target: (simple_identifier) @name)) @send
 (constructor_expression constructed_type: {_SW_TYPE}) @reference
-(inheritance_specifier inherits_from: {_SW_TYPE}) @reference
+(protocol_declaration body: (protocol_body (protocol_function_declaration name: (simple_identifier) @name) @abstract))
+(class_declaration name: (type_identifier) (inheritance_specifier inherits_from: {_SW_TYPE}) @reference @base)
+(protocol_declaration (inheritance_specifier inherits_from: {_SW_TYPE}) @reference @base)
+(class_declaration name: {_SW_EXTENDED} (inheritance_specifier inherits_from: {_SW_TYPE}) @reference @base)
 """
 
 # The common names: `init` (611 sends `self.init`, `.init`, `super.init`), `append` (71, `Data`'s), `combine` (3 of
@@ -393,7 +407,10 @@ SWIFT = Language("swift", {".swift": (tree_sitter.Language(tree_sitter_swift.lan
 # Kotlin (T-0038): the grammar ships no `tags.scm`, the query is ours. A class, an interface, an enum and an `object`
 # are classes; a companion object is none, its functions its class's. A function is captured as a direct child of a
 # file or of a type's body, so an anonymous object's (`object : Runnable { override fun run() }`) and a local one are
-# none, their calls their enclosing function's; an abstract one (no body) is none, as Java's. An extension function
+# none, their calls their enclosing function's. shortcut: an abstract one (no body) is none, where Java's is
+# `@abstract` (T-0081): a Kotlin implementation of a Java interface overrides it (its supertypes are `@base`), a Kotlin
+# interface's function has no declaration; to capture it if a host's Kotlin calls through an interface stay ambiguous.
+# An extension function
 # `fun Foo.Bar.f()` is the method `Bar.f` by `@receiver` (as Go's): libsignal's 73, its `toFfiArgType` of each type
 # apart. A secondary constructor is the method `C.constructor`. A type is named by its last name, generic or not.
 # shortcut: a property's getter or setter (32 on libsignal) and an `init { }` block are no definitions, their calls
@@ -422,9 +439,9 @@ KOTLIN_QUERY = f"""
 (call_expression (identifier) @name (#match? @name "^[A-Z]")) @reference
 (call_expression (navigation_expression . (_) @qualifier (identifier) @name .) (#not-match? @name "^[A-Z]")) @send
 (call_expression (navigation_expression (identifier) @name .) (#match? @name "^[A-Z]")) @reference
-(delegation_specifier {_KT_TYPE}) @reference
-(delegation_specifier (constructor_invocation {_KT_TYPE})) @reference
-(delegation_specifier (explicit_delegation {_KT_TYPE})) @reference
+(delegation_specifier {_KT_TYPE}) @reference @base
+(delegation_specifier (constructor_invocation {_KT_TYPE})) @reference @base
+(delegation_specifier (explicit_delegation {_KT_TYPE})) @reference @base
 """
 
 # The common names: `get` (78 sends, `CompletableFuture.get`, linked to `TestingIntBox.get`), `toString` (32), `map`
@@ -550,7 +567,7 @@ def read(language: Language, file: str, source: bytes) -> tuple[list[Definition]
         if name.is_missing:  # a name the grammar inserted to recover: C++'s `enum : int {..}` (T-0034)
             continue
         found.append((node.start_byte, node.end_byte, role, name, captures.get("receiver", [None])[0], node,
-                      captures.get("qualifier", [None])[0], "extension" in captures))
+                      captures.get("qualifier", [None])[0], "extension" in captures, "base" in captures))
     definitions, uses = [], []
     # A file's definitions of one kind and name are one: Rust's `struct T` and its `impl T`, Java's overloads.
     # shortcut: the line (and the extent) is the first one's; to give the node every line if `explain --source`
@@ -562,7 +579,7 @@ def read(language: Language, file: str, source: bytes) -> tuple[list[Definition]
     bare = None  # the last action without a body, and its node: it leads to the case that follows it
     # By position, an outer node before the inner one it starts with (`f(g())`), a definition before a use there.
     declared = set()  # the (kind, name) a capture other than an `@extension` defines
-    for start, end, role, name_node, receiver, node, qualifier, extension in sorted(
+    for start, end, role, name_node, receiver, node, qualifier, extension, base in sorted(
             found, key=lambda f: (f[0], -f[1], f[2] in USES)):
         while stack and stack[-1][0] <= start:
             stack.pop()
@@ -572,8 +589,11 @@ def read(language: Language, file: str, source: bytes) -> tuple[list[Definition]
             # a path of names only, its generic arguments dropped (`Vec::<u8>`); `f().g`, `new C().g` have none
             last = re.fullmatch(r"(?:[\w:.]*(?:::|\.))?(\w+)(?:::)?(?:<.*>)?",
                                 re.sub(r"\s+", "", qualifier.text.decode("utf-8", "replace"))) if qualifier else None
-            uses.append(Use(role, name, line, stack[-1][1] if stack else None, re.sub(r"\s+", "", used)[:60],
-                            last[1] if last else None))
+            owner = stack[-1][1] if stack else None
+            # an extension's base list is its type's (`extension B: P`, the `@receiver`), else its class's
+            heir = (receiver.text.decode("utf-8", "replace") if receiver is not None else
+                    owner.name if owner and owner.kind == "class" else None) if base else None
+            uses.append(Use(role, name, line, owner, re.sub(r"\s+", "", used)[:60], last[1] if last else None, heir))
             continue
         if role == "action" and stack:
             continue  # a function's own `switch`, or one nested in an action: no entry point's, its calls stay there
@@ -583,7 +603,7 @@ def read(language: Language, file: str, source: bytes) -> tuple[list[Definition]
         # the class's own `Outer.Inner.m`; to capture the receiver's whole path if a host's `explain` needs them together.
         cls = receiver.text.decode("utf-8", "replace") if receiver is not None else \
             next((d.name for _, d in reversed(stack) if d.kind == "class"), None)
-        if role == "class":
+        if role in ("class", "abstract"):
             name = f"{cls}.{name}" if cls else name
         elif role != "action":  # an action is named as it is, in no class
             kind, name = ("method", f"{cls}.{name}") if cls else ("function", name)
@@ -673,7 +693,7 @@ def contribute(language: Language, project) -> dict:
         if generated(language, rel, source):
             marked.append(rel)
         fid = node(_id(rel), rel.rsplit("/", 1)[-1], "file", rel, 1, rel)
-        held = {d: node(f"{fid}_action_{_id(d.name)}" if d.kind == "action" else f"{fid}_{_id(d.name)}",
+        held = {d: node(f"{fid}_{d.kind}_{_id(d.name)}" if d.kind in ("action", "abstract") else f"{fid}_{_id(d.name)}",
                         d.name if d.kind in ("class", "action") else f"{d.name}()", d.kind, rel, d.line, d.name)
                 for d in definitions}
         in_file = {d.name: held[d] for d in definitions if d.kind == "class"}
@@ -683,13 +703,33 @@ def contribute(language: Language, project) -> dict:
                 (classes if d.kind == "class" else callables)[d.name.rsplit(".", 1)[-1]].append(held[d])
             if d.kind == "class" and not d.extension:
                 declared.add(d.name.rsplit(".", 1)[-1])
-            if d.kind == "method":
+            if d.kind in ("method", "abstract"):
                 methods[tuple(d.name.rsplit(".", 2)[-2:])].append(held[d])
             # a method's class holds it when it is defined in the same file (Go's type is often in another one)
-            cls = d.name.rsplit(".", 1)[0] if d.kind == "method" else None
+            cls = d.name.rsplit(".", 1)[0] if d.kind in ("method", "abstract") else None
             link(in_file.get(cls, fid), held[d], "contains", rel, d.line)
         files.append((rel, fid, held, uses))
     functions = {n["id"] for n in nodes if n["kind"] == "function"}
+    declarations = {n["id"] for n in nodes if n["kind"] == "abstract"}
+    # T-0081: a method overrides the declaration of its name in its class or in a class its base list names, when
+    # there is one, by the bare names (a class's bases gathered from all its files: Swift's extensions).
+    # shortcut: the direct bases only, so `C extends A implements I` where `A` leaves `I.m` abstract does not
+    # override `I.m`; to walk the bases when a host's calls through an inherited interface stay ambiguous.
+    bases: dict[str, set[str]] = defaultdict(set)
+    for *_, uses in files:
+        for u in uses:
+            if u.heir:
+                bases[u.heir.rsplit(".", 1)[-1]].add(u.name)
+    overrides: dict[str, set[str]] = defaultdict(set)  # a method's id -> the declarations it overrides
+    for rel, _, held, _ in files:
+        for d, i in held.items():
+            if d.kind == "method":
+                cls, name = d.name.rsplit(".", 2)[-2:]
+                for base in {cls} | bases[cls]:
+                    found = [t for t in methods.get((base, name), []) if t in declarations]
+                    if len(found) == 1 and found[0] not in overrides[i]:
+                        overrides[i].add(found[0])
+                        link(i, found[0], "overrides", rel, d.line, sure=False)
     for rel, fid, held, uses in files:
         actions = {d.name: i for d, i in held.items() if d.kind == "action"}
         for u in uses:
@@ -709,6 +749,10 @@ def contribute(language: Language, project) -> dict:
                 if language.apart:
                     ours = [t for t in ours if (t in functions) == (u.kind == "call")]
                 ours = named or ours
+                # T-0081: a declaration settles a tie only: several definitions that all override it, or none
+                concrete = [t for t in ours if t not in declarations]
+                shared = [d for d in ours if d in declarations and all(d in overrides[t] for t in concrete)]
+                ours = concrete if len(concrete) == 1 else shared if len(shared) == 1 else ours
                 verdict = "external" if not ours else \
                     "common" if not named and u.kind == "send" and u.name in language.common \
                     else "ours?" if len(ours) == 1 else "ambiguous"

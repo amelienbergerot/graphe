@@ -44,7 +44,7 @@ import networkx as nx
 from graphe import godot
 from graphe import root as graphe_root  # `root` is the host's path in this module's signatures
 
-BODIES = {"function", "method", "command", "action", "class"}
+BODIES = {"function", "method", "command", "action", "class", "abstract"}
 # An extent and a comment, without being a body that owns its lines.
 EXTENDED = BODIES | {"field"}
 PY_ALIAS = re.compile(r"^\s*(?:from\s+([\w.]+)\s+import\s+(\w+)(?:\s+as\s+(\w+))?|import\s+([\w.]+)\s+as\s+(\w+))\s*$")
