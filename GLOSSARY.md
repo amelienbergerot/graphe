@@ -28,6 +28,14 @@ _Avoid_: full reader, native reader
 A method name so frequent outside the host (`Join`, `get`, `push`) that the generic reader never links a call on a receiver to it by name; such a call counts as not attributed.
 _Avoid_: stop word, blacklist
 
+**Unattributed call**:
+A call whose definition the graph cannot name, for a cause it states: several definitions bear the name, the name is a common name, the receiver's type is unknown, or the definition is outside the host project.
+_Avoid_: unresolved call, missing call, unknown call
+
+**Generated file**:
+A file of the host project that a tool produced rather than a person wrote, as git's attributes or the file's own header say.
+_Avoid_: vendored file, build output
+
 **Local extension**:
 An enrichment specific to one host project, stored in that host's repository and declared by its configuration.
 _Avoid_: plugin, add-on

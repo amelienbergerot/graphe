@@ -17,6 +17,12 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   (the resolution redone where a change reaches) would cut it: a large
   change, its own ticket if a host of Django's size comes. protobuf's C/C++
   has no cache of its own (the generic reader about 8 s of its build).
+  graphify (compared 2026-11-27) re-extracts only the changed files
+  (`--update`) and has a watch mode; whether its resolution across files is
+  incremental too was not checked. `docs/research/similar-tools.md` (idea 8):
+  key each file's cache on its git blob id, and re-resolve only the sites
+  whose name's definitions changed (CodeQL's overlay analysis, Glean's
+  ownership). Set aside on 2026-11-27 (T-0071) until such a host comes.
 - **A Go generic method is no node.** (gitea, sample host, 2026-11-19,
   T-0031, T-0039) `tree-sitter-go` 0.25.0, the last on PyPI, knows neither
   `new(expr)` nor generic methods (`func (f *Flash) Error[T ...]`). Since
@@ -134,7 +140,8 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   `b()`, `c arg`, `x.c` only, so at least 17 bare calls to protobuf's
   methods (`inspect`, `reset_allocations`) are missing from `callers`. The
   grammar's `locals.scm` tells a variable apart, a pass the generic reader
-  does not make. A class reopened in several files is one class per file
+  does not make (`docs/research/similar-tools.md`, idea 12; set aside on
+  2026-11-27, T-0071, until a Ruby host needs it). A class reopened in several files is one class per file
   likewise (12 names: `Descriptor`, `RepeatedField`), a reference to it
   ambiguous.
 - **Swift's FFI conformances make their methods' names ambiguous.**
@@ -199,6 +206,9 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   `session`, answered at `api/index.php`'s top). Left: the frameworks, whose
   key is no string on one line (a decorator, a JSX tag, an injection), with
   the install effort; a route's HTTP method, no part of the key.
+  `docs/research/similar-tools.md` (idea 10): `[keys]` presets per framework
+  (Flask, Express, Gin, Django's `path()`), as CodeGraph's route table. Set
+  aside on 2026-11-27 (T-0071) until a host needs one.
 - **A call across languages by a translated name is not linked.** (libsignal,
   protobuf, sample hosts, 2026-11-25) JNI (`Java_pkg_Class_method` in C),
   FFI (a C function called from Swift), protobuf's generated code: the
@@ -211,6 +221,53 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   `php/tests/generated_previous/Previous/readonly.php` (`class readonly`, a
   keyword since PHP 8.1) does not parse: skipped. A router's `case "x":` in
   double quotes is no action. The `shortcut:`s of docs/readers.md's PHP.
+- **The skill reaches Claude Code alone, and only for the questions it names.**
+  (graphe, the user's request, 2026-11-27) Widen when the skill is used, and
+  ship it to the other agents (Codex, Cursor, Copilot, Gemini CLI): today a
+  Claude Code plugin, the others a README line to copy `skills/graphe/`
+  (T-0053). Preset's plugin carries Codex and Cursor manifests beside Claude
+  Code's (T-0049): the same, one manifest per agent, the skill's text kept
+  neutral (T-0048).
+  graphify (compared 2026-11-27) does both: `graphify install` detects the
+  assistant (20+), and on Claude Code its hooks fire before Grep, Read, Glob
+  and Bash's `cat`/`head`/`sed -n` to nudge toward the graph (a `--strict`
+  mode, `GRAPHIFY_HOOK_NUDGE_CAP` nudges, reset by a `SessionStart` hook on
+  `compact`). A PreToolUse hook of ours would reach the questions the
+  description does not name.
+- **A query needs a Bash permission, or it falls back to grep.** (graphe,
+  comparison with graphify, 2026-11-27) Without `Bash(graphe *)` and
+  `PowerShell(graphe *)` in `permissions.allow`, each query asks for approval
+  and a headless `claude -p` greps instead (README). graphify serves its
+  graph over MCP (`query_graph`, `shortest_path`, `get_neighbors`,
+  `get_node`): an MCP server of ours (explain, callers, path, search) would
+  reach the agents that speak MCP. It would still need a rule
+  (`mcp__graphe__*`, as CodeGraph's README suggests), one for every OS rather
+  than a Bash/PowerShell pair (`docs/research/similar-tools.md`, idea 4). Set
+  aside on 2026-11-27 (T-0071) until an agent without a shell needs it.
+- **A receiver's type, which a compiler-based indexer knows, is not used.**
+  (graphe, comparison with similar tools, 2026-11-27) Most open entries on
+  receivers (Java's abstract methods, C#, Go's packages, Kotlin's
+  extensions) would be settled by a SCIP index (scip-java, scip-go,
+  rust-analyzer, scip-dotnet), mapped onto graphe's nodes by file and range
+  (`docs/research/similar-tools.md`, idea 9). The indexers need the host's
+  build environment, which ADR 0002 set aside for the TypeScript compiler,
+  and an index goes stale between runs. A local extension (ADR 0001) first,
+  if a host has an index; set aside on 2026-11-27 (T-0071).
+- **What a diff reaches takes one `callers` per function.** (graphe,
+  comparison with graphify, 2026-11-27) `callers X --depth N` starts from one
+  node; the reach of a change or a PR means listing its functions by hand,
+  then a query each. graphify has `affected` and `get_pr_impact`. A command
+  that maps a diff (`git diff` against a ref) to its changed nodes, then
+  their callers, would answer it in one query.
+- **`.jsx`, `.tsx` and Vue are not read.** (graphe, the user's request,
+  2026-11-27) README's "Not read" row: a React or Vue host gets no graph of
+  its components, nor of the calls in their markup. The JS reader already
+  reads TypeScript and Svelte's script and markup by tree-sitter, and its
+  grammars take JSX already (`tree_sitter_javascript` parses it,
+  `tree_sitter_typescript.language_tsx()` sits beside the
+  `language_typescript()` of `js.py:32`); a
+  `.vue` file's `<script>` and template would take Svelte's path. A JSX
+  `<Component/>` as a link is the framework entry's (T-0047).
 
 ## Settled
 
