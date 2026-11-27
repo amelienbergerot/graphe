@@ -623,6 +623,8 @@ def test_a_relation_with_a_sure_and_a_guessed_link_marks_the_guessed_one(tmp_pat
     r = _run(host, "explain", "f")
     assert r.returncode == 0, r.stderr
     assert "  calls (2) [1 by name: ?]\n    outils.py: A.m:2?, g:6\n" in r.stdout, r.stdout
+    r = _run(host, "callers", "A.m")  # T-0075: callers marks it too, once on the level when every caller is guessed
+    assert "level 1 (1) [by name]:\n  outils.py: f:10\n" in r.stdout, r.stdout
 
 
 def test_a_name_reexported_from_a_package_is_external(tmp_path: Path):
@@ -797,3 +799,105 @@ def test_a_required_name_is_not_hidden_and_a_function_is_not_its_returned_object
     assert "y.js: y:3" in r.stdout, r.stdout + r.stderr
     r = _run(host, "explain", "ouvrir.click")
     assert "what calls it:\n  contains (1)" in r.stdout and "calls (" not in r.stdout.split("what calls it:")[1], r.stdout
+
+
+def _commit(host: Path) -> str:
+    """Commits the whole tree (no identity needed on CI); its sha."""
+    subprocess.run(["git", "add", "-A"], cwd=host, check=True)
+    subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "x"], cwd=host, check=True)
+    return subprocess.run(["git", "rev-parse", "HEAD"], cwd=host, capture_output=True, text=True).stdout.strip()
+
+
+def _write(host: Path, rel: str, text: str) -> None:
+    (host / rel).write_bytes(text.encode("utf-8"))  # bytes: no CRLF on Windows, the diff stays the lines changed
+
+
+def test_affected_lists_a_changed_function_and_its_callers(tmp_path: Path):
+    """T-0075."""
+    host = _host(tmp_path, {}, tracked=".")
+    _write(host, "outils.py", CALLEE)
+    _write(host, "travail.py", CALLER)
+    _commit(host)
+    _write(host, "outils.py", "def aider():\n    return 2\n")
+    _write(host, "neuf.py", "def neuf():\n    return 0\n\n\nneuf()\n")  # untracked: new as a whole
+    r = _run(host, "affected")
+    assert r.returncode == 0, r.stderr
+    assert "touched (3):\n  neuf.py: (file), neuf:1\n  outils.py: aider:1\n" in r.stdout, r.stdout
+    assert "aider (outils.py:1):\nlevel 1 (1):\n  travail.py: travailler:4\n" in r.stdout, r.stdout
+
+
+def test_affected_against_a_revision_with_the_callers_callers(tmp_path: Path):
+    """T-0075: a branch's changes against its base; --depth 2."""
+    host = _host(tmp_path, {}, tracked=".")
+    _write(host, "outils.py", CALLEE)
+    _write(host, "travail.py", CALLER + "\n\ndef journee():\n    return travailler()\n")
+    base = _commit(host)
+    _write(host, "outils.py", "def aider():\n    return 2\n")
+    _commit(host)
+    assert "nothing touched against HEAD" in _run(host, "affected").stdout  # the tree is HEAD's
+    r = _run(host, "affected", base)
+    assert r.returncode == 0 and "travail.py: travailler:4" in r.stdout and "journee" not in r.stdout, r.stdout
+    r = _run(host, "affected", base, "--depth", "2")
+    assert "level 2 (1):\n  travail.py: journee:8\n" in r.stdout, r.stdout
+
+
+def test_affected_lists_a_top_level_change_by_its_file_and_a_removed_function_apart(tmp_path: Path):
+    """T-0075."""
+    host = _host(tmp_path, {}, tracked=".")
+    _write(host, "outils.py", CALLEE + "\n\ndef ancien():\n    return 0\n")
+    _write(host, "travail.py", CALLER)
+    _commit(host)
+    _write(host, "outils.py", "import os\n" + CALLEE)  # a line added at the top, `ancien` removed after `aider`
+    r = _run(host, "affected")
+    assert r.returncode == 0, r.stderr
+    assert "touched (1):\n  outils.py\n" in r.stdout, r.stdout
+    assert "removed (no longer in the graph):\n  outils.py: ancien\n" in r.stdout, r.stdout
+
+
+def test_affected_with_no_change_says_nothing_is_touched(tmp_path: Path):
+    host = _host(tmp_path, {}, tracked=".")
+    _write(host, "outils.py", CALLEE)
+    _commit(host)
+    r = _run(host, "affected")
+    assert r.returncode == 0 and r.stdout == "nothing touched against HEAD (in what the graph reads)\n", r.stdout
+    r = _run(host, "affected", "nonexistent-rev")
+    assert r.returncode == 1 and r.stderr.startswith("graphe: git merge-base: "), r.stderr
+
+
+def test_affected_against_a_branch_that_moved_on_lists_only_the_changes_since_the_base(tmp_path: Path):
+    """T-0075, after the review: what `amont` did after the branch left it is not the branch's change."""
+    host = _host(tmp_path, {}, tracked=".")
+    _write(host, "outils.py", CALLEE)
+    _write(host, "travail.py", CALLER)
+    _commit(host)
+    subprocess.run(["git", "branch", "amont"], cwd=host, check=True)
+    _write(host, "outils.py", "def aider():\n    return 2\n")
+    _commit(host)
+    subprocess.run(["git", "checkout", "-q", "amont"], cwd=host, check=True)
+    _write(host, "travail.py", CALLER + "\n\ndef nouveau():\n    return 0\n")
+    _commit(host)
+    subprocess.run(["git", "checkout", "-q", "-"], cwd=host, check=True)
+    r = _run(host, "affected", "amont")
+    assert r.returncode == 0 and "touched (1):\n  outils.py: aider:1\n" in r.stdout, r.stdout
+    assert "nouveau" not in r.stdout and "removed" not in r.stdout, r.stdout
+
+
+def test_affected_lists_the_definitions_of_a_deleted_file_and_a_method_removed_from_its_class(tmp_path: Path):
+    """T-0075, after the review: a deleted file, a method at the end of its class, a path with a space, Ruby's
+    `def self.f`; a function moved to another file is not removed."""
+    host = _host(tmp_path, {}, tracked=".")
+    _write(host, "a b.py", "class K:\n    def m(self):\n        return 1\n\n    def n(self):\n        return 2\n")
+    _write(host, "vieux.py", "def ancien():\n    return 0\n")
+    _write(host, "outils.py", CALLEE + "\n\ndef bouge():\n    return 3\n")
+    _write(host, "travail.py", CALLER)
+    _write(host, "r.rb", "class R\n  def self.cree\n    1\n  end\n\n  def garde\n    2\n  end\nend\n")
+    _commit(host)
+    (host / "vieux.py").unlink()
+    _write(host, "a b.py", "class K:\n    def m(self):\n        return 1\n")
+    _write(host, "outils.py", CALLEE)
+    _write(host, "travail.py", CALLER + "\n\ndef bouge():\n    return 3\n")
+    _write(host, "r.rb", "class R\n  def garde\n    2\n  end\nend\n")
+    r = _run(host, "affected")
+    assert r.returncode == 0, r.stderr
+    assert "\n  a b.py: K:1\n" in r.stdout and "\n  travail.py: bouge:8\n" in r.stdout, r.stdout
+    assert "removed (no longer in the graph):\n  a b.py: n\n  r.rb: cree\n  vieux.py: ancien\n" in r.stdout, r.stdout

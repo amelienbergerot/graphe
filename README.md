@@ -67,6 +67,7 @@ From inside a git repository (graphe reads the files git tracks):
 cd my-project
 graphe install           # the git hooks that rebuild the graph after a commit, merge or checkout; graphe/ git-ignored
 graphe explain main      # any function of the project: the first query builds the graph
+graphe affected master   # what the working tree changes since it left master: the nodes touched, then their callers
 ```
 
 No configuration is needed. A `graphe.toml` at the repository's root is optional; every key in it is too:

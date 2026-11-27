@@ -10,6 +10,14 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
 
 ## Open
 
+- **A module variable holding a multi-line string runs to the end of its
+  file.** (graphe, 2026-11-27, T-0075) `graphe affected` on this repository
+  listed `tests/test_host.py::GRID_ZERO_TOML` as touched by blank lines added
+  at the end of the file: its extent is 405-864, the string's unindented lines
+  read as the body going on (`core.extent`). Found by reading graphe.json. An
+  extent that ends with the string's closing quotes (the first line back at
+  the variable's indentation after it) would have given 405-419.
+
 - **The graph does not say which string values a field takes in the code.**
   (graphe, 2026-11-27, T-0074) Looking for every verdict a reader gives a
   call site (`"ambiguous"`, `"member"`, `"absent"`...), to map each to a
@@ -261,12 +269,6 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   build environment, which ADR 0002 set aside for the TypeScript compiler,
   and an index goes stale between runs. A local extension (ADR 0001) first,
   if a host has an index; set aside on 2026-11-27 (T-0071).
-- **What a diff reaches takes one `callers` per function.** (graphe,
-  comparison with graphify, 2026-11-27) `callers X --depth N` starts from one
-  node; the reach of a change or a PR means listing its functions by hand,
-  then a query each. graphify has `affected` and `get_pr_impact`. A command
-  that maps a diff (`git diff` against a ref) to its changed nodes, then
-  their callers, would answer it in one query.
 - **`.jsx`, `.tsx` and Vue are not read.** (graphe, the user's request,
   2026-11-27) README's "Not read" row: a React or Vue host gets no graph of
   its components, nor of the calls in their markup. The JS reader already
@@ -278,6 +280,13 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   `<Component/>` as a link is the framework entry's (T-0047).
 
 ## Settled
+
+Settled by tickets (2026-11-27):
+
+- **What a diff reaches takes one `callers` per function.** [T-0075]
+  (graphe, comparison with graphify, 2026-11-27) `graphe affected [REV]`
+  maps `git diff REV` to the nodes it touches, the definitions it removes,
+  then their callers to `--depth`.
 
 Settled by tickets (2026-11-25):
 

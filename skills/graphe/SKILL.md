@@ -13,6 +13,7 @@ allowed-tools: Bash(graphe *) PowerShell(graphe *)
 1. Query from inside the host repository:
    - `graphe explain X` - what X calls, what calls X, the documents that cite it. `--source` prints its body; `--all` lifts the truncation.
    - `graphe callers X --depth N` - the reach of a change. Keep N small (1 to 3).
+   - `graphe affected [REV] [--depth N]` - what a diff reaches: the nodes the working tree changes since it left REV (HEAD by default; `main` for a branch's whole change), the definitions it removes, then each node's callers (N is 1 by default).
    - `graphe path A B` - how A leads to B; `--undirected` when the direction is unknown.
    - `graphe search PATTERN` - by name, then by displayed texts and comments.
 2. Designate X by its name (`step`), `Class.method`, `file::name` (`engine.py::step`), its id, or in GDScript `Script.function` (the constant that preloads the script). A file by its path (`simulation/core/engine.py`). When a name is ambiguous, the answer lists the candidates, each by the text that designates it alone: type that text.

@@ -9,6 +9,9 @@
     graphe callers X [--depth N]
                                      both say how many calls of X's name no
                                      reader could attribute: grep those
+    graphe affected [REV] [--depth N]   what the working tree changes since it
+                                     left REV (HEAD): the nodes touched, the
+                                     definitions removed, the callers
     graphe search PATTERN            by name, then by displayed texts and comments
     graphe install [--remove]        the git hooks that rebuild it
 
@@ -818,6 +821,11 @@ def callers(graph: nx.DiGraph, x: str, depth: int) -> int:
     n = _one(graph, x)
     if n is None:
         return 2
+    _callers(graph, n, depth)
+    return 0
+
+
+def _callers(graph: nx.DiGraph, n: str, depth: int) -> None:
     seen, front = {n}, [n]
     for level in range(1, depth + 1):
         following = []
@@ -828,13 +836,124 @@ def callers(graph: nx.DiGraph, x: str, depth: int) -> int:
                     following.append(s)
         if not following:
             break
-        print(f"level {level} ({len(following)}):")
-        for line in _by_file(graph, following):
+        # T-0075: a caller linked by name alone, marked as explain marks it: once on the level if every one is
+        guessed = {s: "?" for s in following
+                   if all(graph[s][y]["confidence"] != "EXTRACTED" for y in graph.successors(s) if y in front)}
+        every = len(guessed) == len(following)
+        print(f"level {level} ({len(following)})" + (" [by name]" if every else "") + ":")
+        for line in _by_file(graph, following, {} if every else guessed):
             print(f"  {line}")
         front = following
     if len(seen) == 1:
         print("nothing calls it (in what the graph sees)")
     _missed(graph, n)
+
+
+HUNK = re.compile(r"@@ -\d+(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
+# shortcut: a removed definition is seen by its keyword (Python, GDScript, JS functions, Go, Rust, Kotlin, Swift, PHP,
+# Ruby); Java's, C#'s, C's and JS classes' methods have none and are not listed as removed; to parse the old file if an
+# agent misses one. Its indentation: a method's, removed from its class.
+DEFINITION = re.compile(r"^(\s*)(?:(?:export|pub(?:\(\w+\))?|async|static|private|public|protected|internal|open|"
+                        r"override|suspend|data)\s+)*(?:def|func|function|fn|fun|class)\s+(?:\([^)]*\)\s*)?"
+                        r"(?:self\.)?(\w+)")
+
+
+def _git(*arguments: str) -> str:
+    r = subprocess.run(["git", "-c", "core.quotepath=false", *arguments], cwd=ROOT, capture_output=True, text=True,
+                       encoding="utf-8", errors="replace")
+    if r.returncode:
+        raise RuntimeError(f"git {arguments[0]}: {(r.stderr.strip().splitlines() or ['failed'])[0]}")
+    return r.stdout
+
+
+def _changes(rev: str) -> dict[str, list[tuple[int, list[str] | None, list[str]]]]:
+    """The working tree against where it left `rev` (a branch's base: what the branch changes, not what `rev` did
+    since), by file: each hunk's first new-side line, the lines it adds and those it removes; an untracked file, new
+    as a whole, is one hunk whose added lines are None (to read)."""
+    base = _git("merge-base", rev, "HEAD").strip()
+    # shortcut: a path git C-quotes (a `"`, a `\`, a control character) matches no file; to unquote if a host has one.
+    diff = _git("diff", "-U0", "--no-color", "--no-ext-diff", "--no-prefix", "--relative", base, "--")
+    hunks = defaultdict(list)
+    old = new = ""
+    left = 0  # the lines of the current hunk still to read
+    for line in diff.splitlines():
+        if left and line[:1] in "+-":
+            left -= 1
+            hunks[new or old][-1][1 if line[0] == "+" else 2].append(line[1:])
+        elif line.startswith(("--- ", "+++ ")):
+            path = line[4:].rstrip("\t")  # git ends a path that holds a space with a tab
+            path = "" if path == "/dev/null" else path
+            old, new = (path, new) if line[0] == "-" else (old, path)
+        elif m := HUNK.match(line):
+            left = int(m[1] or 1) + int(m[3] or 1)
+            hunks[new or old].append((int(m[2]), [], []))
+    for rel in filter(None, _git("ls-files", "-z", "--others", "--exclude-standard").split("\0")):
+        hunks[rel].append((1, None, []))
+    return hunks
+
+
+def _called(graph: nx.DiGraph, n: str) -> bool:
+    """Something calls n, or calls of its name went unattributed: what `_callers` would print."""
+    d = graph.nodes[n]
+    return any(CALLS & set(graph[s][n]["relations"]) for s in graph.predecessors(n)) or \
+        (d["kind"] in ("function", "method") and d["name"].rsplit(".", 1)[-1] in graph.graph["unattributed"])
+
+
+def _innermost(bodies: list[tuple[int, int, str]], whole: str | None, line: int) -> str | None:
+    """The innermost node whose body holds the line (a method, not its class); else the file's."""
+    holding = [(e - s, n) for s, e, n in bodies if s <= line <= e]
+    return min(holding)[1] if holding else whole
+
+
+def affected(graph: nx.DiGraph, rev: str, depth: int) -> int:
+    """T-0075: the nodes a diff touches, the definitions it removes, then the callers of each touched node."""
+    by_file = defaultdict(list)
+    for n, d in graph.nodes(data=True):
+        by_file[d["source_file"]].append(n)
+    touched, gone = set(), defaultdict(set)
+    for file, hunks in _changes(rev).items():
+        nodes = by_file.get(file, [])
+        bodies = [(_line(graph, n), int(graph.nodes[n]["end"]), n) for n in nodes if graph.nodes[n].get("end")]
+        classes = [b for b in bodies if graph.nodes[b[2]]["kind"] == "class"]
+        whole = next((n for n in nodes if graph.nodes[n]["kind"] == "file"), None)
+        for start, added, removed in hunks:
+            # a document's prose ("function of ...") defines nothing
+            definitions = [] if file.endswith(".md") else [m for t in removed if (m := DEFINITION.match(t))]
+            gone[file] |= {m[2] for m in definitions}
+            if not nodes:  # a file the graph does not read, or no longer (deleted): its removed definitions only
+                continue
+            if added is None:  # untracked
+                added = (ROOT / file).read_bytes().decode("utf-8", "replace").splitlines()
+            kept = [start + i for i, text in enumerate(added) if text.strip()]  # a blank line touches nothing
+            if kept:
+                touched.update(_innermost(bodies, whole, line) for line in kept)
+            elif definitions:  # a whole definition removed, after line `start`: from its class if it was indented
+                touched.add(_innermost(classes, whole, start) if definitions[0][1] else whole)
+            elif any(text.strip() for text in removed):  # lines removed from a body, after one of its own
+                touched.add(_innermost(bodies, whole, max(start, 1)))
+        gone[file] -= {graph.nodes[n]["name"].rsplit(".", 1)[-1] for n in nodes}  # edited, not removed
+    touched.discard(None)
+    moved = {graph.nodes[n]["name"].rsplit(".", 1)[-1] for n in touched}  # to another file
+    gone = {file: sorted(names - moved) for file, names in gone.items() if names - moved}
+    if not touched and not gone:
+        print(f"nothing touched against {rev} (in what the graph reads)")
+        return 0
+    if touched:
+        print(f"touched ({len(touched)}):")
+        for line in _by_file(graph, touched):
+            print(f"  {line}")
+    if gone:
+        print("removed (no longer in the graph):")
+        for file, names in sorted(gone.items()):
+            print(f"  {file}: {', '.join(names)}")
+    uncalled = {n for n in touched if not _called(graph, n)}
+    for n in sorted(touched - uncalled, key=lambda n: (graph.nodes[n]["source_file"], _line(graph, n))):
+        print(f"\n{_label(graph, n)}:")
+        _callers(graph, n, depth)
+    if uncalled:
+        print("\nnothing calls these (in what the graph sees):")
+        for line in _by_file(graph, uncalled):
+            print(f"  {line}")
     return 0
 
 
@@ -1005,6 +1124,8 @@ def _command(arguments: list[str]) -> int:
         return explain(load(), positionals[0], all_="--all" in rest, code="--source" in rest)
     if command == "callers" and len(positionals) == 1:
         return callers(load(), positionals[0], _option(rest, "--depth", 2))
+    if command == "affected" and len(positionals) <= 1:
+        return affected(load(), positionals[0] if positionals else "HEAD", _option(rest, "--depth", 1))
     if command == "search" and len(positionals) == 1:
         return search(load(), positionals[0])
     if command == "view" and len(positionals) <= 1:
