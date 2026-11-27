@@ -78,7 +78,7 @@ A file that does not parse (any error node in its tree) is skipped and named on 
 3. Its `Language`: the name of its `graphe.toml` section, the grammar and query per suffix, a first list of common names; `tolerant` if valid code leaves error nodes, `erased` for what the grammar cannot read and blanks keep in place (C/C++, T-0034; C#'s `#if` lines, T-0035); `apart` if a bare call can never be a method (PHP, T-0044).
 4. A snippet test at the seam `read(language, file, source)` (`tests/test_generic.py`): its definitions and its uses with their owners.
 5. Its entry in `READERS` (`functools.partial(generic.contribute, generic.<LANGUAGE>)`).
-6. Its sample host (docs/sample-hosts.md): build, no dangling link, `graphe check`; tune the common names from the most frequent sends linked by name; three queries compared with grep; its README row and its section here; what it misses in BACKLOG.md, naming the host.
+6. Its small host in `tests/fixtures/` and its links' snapshot (docs/contribution.md, T-0073). Its sample host (docs/sample-hosts.md): build, no dangling link, `graphe check`; tune the common names from the most frequent sends linked by name; three queries compared with grep; its README row and its section here; what it misses in BACKLOG.md, naming the host.
 
 A quirk the query cannot express is a `shortcut:` in its section here. A language that needs code of its own is the proof that it needs a dedicated reader (ADR 0003).
 

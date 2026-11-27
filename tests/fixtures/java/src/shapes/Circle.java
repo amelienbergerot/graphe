@@ -19,4 +19,9 @@ public class Circle extends Shape {
     public double area() {
         return 3.0 * r * r;
     }
+
+    @Override
+    public double perimeter() {
+        return 6.0 * r;
+    }
 }

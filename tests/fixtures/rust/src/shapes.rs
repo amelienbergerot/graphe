@@ -1,5 +1,5 @@
 pub struct Point {
-    x: i32,
+    pub x: i32,
 }
 
 pub struct Line {
@@ -13,10 +13,6 @@ impl Point {
 
     pub fn origin() -> Point {
         Point::new(0)
-    }
-
-    pub fn length(&self) -> i32 {
-        self.x
     }
 
     pub fn len(&self) -> i32 {
