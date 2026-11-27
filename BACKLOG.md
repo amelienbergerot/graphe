@@ -230,7 +230,7 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   keyword since PHP 8.1) does not parse: skipped. A router's `case "x":` in
   double quotes is no action. The `shortcut:`s of docs/readers.md's PHP.
 - **The skill reaches Claude Code alone, and only for the questions it names.**
-  (graphe, the user's request, 2026-11-27) Widen when the skill is used, and
+  [T-0077] (graphe, the user's request, 2026-11-27) Widen when the skill is used, and
   ship it to the other agents (Codex, Cursor, Copilot, Gemini CLI): today a
   Claude Code plugin, the others a README line to copy `skills/graphe/`
   (T-0053). Preset's plugin carries Codex and Cursor manifests beside Claude
@@ -241,7 +241,8 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   and Bash's `cat`/`head`/`sed -n` to nudge toward the graph (a `--strict`
   mode, `GRAPHIFY_HOOK_NUDGE_CAP` nudges, reset by a `SessionStart` hook on
   `compact`). A PreToolUse hook of ours would reach the questions the
-  description does not name.
+  description does not name: done by T-0077 (`graphe hook`, Grep and
+  `grep`/`rg` only, no cap); the other agents remain (T-0078).
 - **A query needs a Bash permission, or it falls back to grep.** (graphe,
   comparison with graphify, 2026-11-27) Without `Bash(graphe *)` and
   `PowerShell(graphe *)` in `permissions.allow`, each query asks for approval

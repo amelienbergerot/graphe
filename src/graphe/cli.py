@@ -14,6 +14,8 @@
                                      definitions removed, the callers
     graphe search PATTERN            by name, then by displayed texts and comments
     graphe install [--remove]        the git hooks that rebuild it
+    graphe hook                      Claude Code's PreToolUse hook (the plugin's): a
+                                     grep for a node's name is pointed to explain
 
 A node is designated by its id, its name (`help`, `Class.method`),
 `file::name` (`tools.py::help`), a file by its path, or, in GDScript, by the
@@ -64,6 +66,7 @@ import json
 import math
 import os
 import re
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -995,6 +998,68 @@ def search(graph: nx.DiGraph, pattern: str) -> int:
     return 0 if found else 1
 
 
+# T-0077: the options of grep and rg whose separate value is not the pattern.
+GREP_VALUED = {"-A", "-B", "-C", "-m", "-f", "-g", "-t", "-T", "-j", "--glob", "--type", "--type-not", "--max-count",
+               "--file", "--include", "--exclude", "--exclude-dir", "--color", "--colors", "--max-depth", "--context",
+               "--after-context", "--before-context", "--replace", "--threads"}
+
+
+def _grep_pattern(command: str) -> str | None:
+    """The pattern of the first grep or rg of a shell command: `-e`'s value, else its first operand."""
+    # shortcut: the first grep/rg only, a value glued to its option (`-eaider`) is missed, PowerShell is split by
+    # POSIX rules; widen if agents' real commands go unhinted.
+    lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
+    lexer.whitespace_split = True
+    words = list(lexer)  # an unbalanced quote raises: the hook stays silent
+    head = next((i for i, w in enumerate(words) if Path(w).name.removesuffix(".exe") in ("grep", "rg")), None)
+    if head is None:
+        return None
+    rest = iter(itertools.takewhile(lambda w: w.strip("();<>|&"), words[head + 1:]))  # up to `|`, `&&`, `;`
+    for w in rest:
+        if w in ("-e", "--regexp"):
+            return next(rest, None)
+        if w in GREP_VALUED:
+            next(rest, None)
+        elif not w.startswith("-"):
+            return w
+    return None
+
+
+def hook() -> int:
+    """`graphe hook` (T-0077): Claude Code's PreToolUse hook. When Grep, or grep/rg through Bash or PowerShell,
+    looks for a name a node bears, one line of added context names `graphe explain` on it. Silent otherwise, and on
+    any error; it never blocks the tool, never rebuilds the graph (a stale one is read as it is)."""
+    try:
+        data = json.loads(sys.stdin.buffer.read())
+        tool, tool_input = data["tool_name"], data["tool_input"]
+        if tool == "Grep":
+            pattern = tool_input["pattern"]
+        elif tool in ("Bash", "PowerShell"):
+            pattern = _grep_pattern(tool_input["command"]) or ""
+        else:
+            return 0
+        name = re.sub(r"\\[b<>]|\\?\($", "", HEAD_WORDS.sub("", pattern.strip()))  # `def aider\b`, `aider\(`
+        if not re.fullmatch(r"[\w.]+", name):  # before any git call: the hook runs on every Bash command
+            return 0
+        if "cwd" in data:
+            os.chdir(data["cwd"])  # the session's directory, not the one the hook was started in
+        graph = graphe_root.root() / OUTPUT.name / JSON.name  # ROOT, fixed at import, is the starting directory's
+        if not graph.is_file():
+            return 0
+        names = set()
+        for n in json.loads(graph.read_bytes())["nodes"]:  # the names find() designates a node by
+            names.update((n["name"], _bare(n["label"])))
+            if n["kind"] != "document":  # `BACKLOG.md`'s last segment `md` would designate every document
+                names.add(n["name"].rpartition(".")[2])
+        if name in names:
+            print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext":
+                f"graphe: `{name}` is in the code graph; `graphe explain {name}` gives its definition, its callers"
+                f" and what it calls, without a grep."}}))
+    except Exception:  # noqa: BLE001 - fail-open: a hook's error must never stop the agent's tool
+        pass
+    return 0
+
+
 def check() -> int:
     """The coverage of each contribution, read in its sites: the classification of the calls, the most frequent
     names of each verdict, then the alerts; a failure if there is an alert or a dangling link."""
@@ -1120,6 +1185,8 @@ def _command(arguments: list[str]) -> int:
             return 1
     if command == "check":
         return check()
+    if command == "hook" and not rest:
+        return hook()
     if command == "install":
         return install(remove="--remove" in rest)
     if command == "path" and len(positionals) == 2:

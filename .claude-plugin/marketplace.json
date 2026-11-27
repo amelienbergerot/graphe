@@ -6,7 +6,7 @@
     {
       "name": "graphe",
       "source": ".",
-      "description": "The skill that has the agent locate code with the graphe command before grep or reading files. The command installs apart (see the README)."
+      "description": "The skill that has the agent locate code with the graphe command before grep or reading files, and its grep hook. The command installs apart (see the README)."
     }
   ]
 }

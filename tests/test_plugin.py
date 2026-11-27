@@ -30,6 +30,15 @@ def test_the_distribution_is_graphe_code_and_its_command_graphe():
     assert project["scripts"] == {"graphe": "graphe.cli:main"}
 
 
+def test_installing_the_plugin_installs_the_hook():
+    """T-0077: hooks/hooks.json, the plugin's default hooks file (code.claude.com/docs/en/plugins-reference)."""
+    hooks = json.loads((REPO / "hooks" / "hooks.json").read_text(encoding="utf-8"))["hooks"]
+    [entry] = hooks["PreToolUse"]
+    assert set(entry["matcher"].split("|")) == {"Grep", "Bash", "PowerShell"}
+    [command] = entry["hooks"]
+    assert command["type"] == "command" and command["command"] == "graphe hook"
+
+
 def test_the_skill_allows_the_graphe_command_for_its_turn():
     skill = (REPO / "skills" / "graphe" / "SKILL.md").read_text(encoding="utf-8")
     frontmatter = skill.split("---")[1]

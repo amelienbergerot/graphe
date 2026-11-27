@@ -22,13 +22,15 @@ CALLER = "from outils import aider\n\n\ndef travailler():\n    return aider()\n"
 CALLEE = "def aider():\n    return 1\n"
 
 
-def _run(host: Path, *arguments: str, env: dict | None = None) -> subprocess.CompletedProcess:
+def _run(host: Path, *arguments: str, env: dict | None = None, input: str | None = None) \
+        -> subprocess.CompletedProcess:
     # The root is fixed at import: a separate process, on the sample host (not on Grid Zero, cf. conftest).
     env = {**(env or os.environ), "GRAPHE_ROOT": str(host)}
     # T-0046: `view` prints the address it would open, the tests open no browser.
     return subprocess.run([sys.executable, "-c", "import sys, webbrowser, graphe.cli; webbrowser.open = print; "
                                                  "sys.exit(graphe.cli.main(sys.argv[1:]))",
-                           *arguments], cwd=host, env=env, capture_output=True, text=True, encoding="utf-8")
+                           *arguments], cwd=host, env=env, capture_output=True, text=True, encoding="utf-8",
+                          input=input)
 
 
 def _host(tmp_path: Path, files: dict[str, str], tracked: str = "outils.py") -> Path:
@@ -926,3 +928,71 @@ def test_affected_reads_a_diff_with_a_form_feed_and_a_removed_top_level_line(tmp
     assert r.returncode == 0, r.stderr
     assert "touched (2):\n  o.py\n  p.py\n" in r.stdout and "removed (no longer in the graph):\n  o.py: b\n" in r.stdout, \
         r.stdout
+
+
+def _hook(host: Path, tool: str, tool_input: dict) -> subprocess.CompletedProcess:
+    """T-0077: Claude Code's PreToolUse input on stdin (code.claude.com/docs/en/hooks)."""
+    return _run(host, "hook", input=json.dumps({"hook_event_name": "PreToolUse", "cwd": str(host),
+                                                "tool_name": tool, "tool_input": tool_input}))
+
+
+def _hint(r: subprocess.CompletedProcess) -> str:
+    assert r.returncode == 0, r.stderr
+    output = json.loads(r.stdout)["hookSpecificOutput"]
+    assert output["hookEventName"] == "PreToolUse" and set(output) == {"hookEventName", "additionalContext"}
+    return output["additionalContext"]
+
+
+def test_the_hook_points_a_grep_for_a_node_s_name_to_explain(tmp_path: Path):
+    """T-0077: the Grep tool, then grep and rg through Bash and PowerShell; one line naming `graphe explain`."""
+    host = _host(tmp_path, {"outils.py": CALLEE, "travail.py": CALLER})
+    assert _run(host, "build").returncode == 0
+    hint = _hint(_hook(host, "Grep", {"pattern": "aider", "output_mode": "content"}))
+    assert "graphe explain aider" in hint and "\n" not in hint, hint
+    assert _hint(_hook(host, "Grep", {"pattern": r"def aider\b"})) == hint
+    for tool, command in (("Bash", "grep -rn aider ."), ("PowerShell", "rg aider"),
+                          ("Bash", "cd src && rg -t py -n 'def aider' | head -5"), ("Bash", "grep -e aider -r ."),
+                          ("Bash", "grep -rn --include '*.py' aider .")):
+        assert _hint(_hook(host, tool, {"command": command})) == hint, command
+
+
+def test_the_hook_is_silent_unless_a_grep_names_a_node(tmp_path: Path):
+    """T-0077: no output and exit 0 for any other pattern, tool, input, or a host without a graph."""
+    host = _host(tmp_path, {"outils.py": CALLEE, "travail.py": CALLER, "README.md": "# Outils\n"})
+    r = _hook(host, "Grep", {"pattern": "aider"})
+    assert (r.returncode, r.stdout) == (0, "") and not (host / "graphe").exists(), r.stderr  # no graph: none built
+    assert _run(host, "build").returncode == 0
+    for tool, tool_input in (("Grep", {"pattern": "nothing"}), ("Grep", {"pattern": "md"}),  # README.md's suffix
+                             ("Read", {"file_path": "aider"}),
+                             ("Bash", {"command": "echo aider"}), ("Bash", {"command": "rg -t aider x"}),
+                             ("Bash", {"command": "grep 'aider"}), ("Bash", {})):
+        r = _hook(host, tool, tool_input)
+        assert (r.returncode, r.stdout) == (0, ""), (tool_input, r.stdout, r.stderr)
+    for text in ("not json", "[]", ""):
+        r = _run(host, "hook", input=text)
+        assert (r.returncode, r.stdout) == (0, ""), (text, r.stderr)
+
+
+def test_the_hook_reads_the_graph_of_the_session_s_directory(tmp_path: Path):
+    """T-0077: started elsewhere, without GRAPHE_ROOT, the hook reads the repository of the input's `cwd`."""
+    host = _host(tmp_path / "host", {"outils.py": CALLEE, "travail.py": CALLER})
+    assert _run(host, "build").returncode == 0
+    (tmp_path / "ailleurs").mkdir()
+    env = {k: v for k, v in os.environ.items() if k != "GRAPHE_ROOT"}
+    r = subprocess.run([sys.executable, "-c", "import sys, graphe.cli; sys.exit(graphe.cli.main(['hook']))"],
+                       cwd=tmp_path / "ailleurs", env=env, capture_output=True, text=True, encoding="utf-8",
+                       input=json.dumps({"cwd": str(host), "tool_name": "Grep", "tool_input": {"pattern": "aider"}}))
+    assert "graphe explain aider" in _hint(r)
+
+
+def test_the_hook_reads_a_stale_graph_as_it_is(tmp_path: Path):
+    """T-0077: the hook never rebuilds; a name the graph does not know yet gets no hint."""
+    host = _host(tmp_path, {"outils.py": CALLEE, "travail.py": CALLER})
+    assert _run(host, "build").returncode == 0
+    graph = host / "graphe" / "graphe.json"
+    os.utime(graph, (0, 0))  # older than the code and the tool
+    _write(host, "neuf.py", "def neuf():\n    return 0\n")
+    r = _hook(host, "Grep", {"pattern": "neuf"})
+    assert (r.returncode, r.stdout) == (0, "") and REBUILDING not in r.stderr, r.stderr
+    assert "graphe explain aider" in _hint(_hook(host, "Grep", {"pattern": "aider"}))
+    assert graph.stat().st_mtime == 0

@@ -1,0 +1,11 @@
+{
+  "description": "A grep for a name the code graph knows is pointed to graphe explain (T-0077).",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Grep|Bash|PowerShell",
+        "hooks": [{ "type": "command", "command": "graphe hook", "timeout": 10 }]
+      }
+    ]
+  }
+}

@@ -6,6 +6,8 @@ A release that changes `contribute(project)`, `Project`, the shape of the nodes 
 
 ## Unreleased
 
+`graphe hook`, Claude Code's PreToolUse hook, which the plugin installs: a Grep, or a `grep`/`rg` through Bash or PowerShell, whose pattern is a name the graph knows gets one line of context naming `graphe explain` on it; silent otherwise, it never blocks the tool nor rebuilds the graph (T-0077).
+
 The JS reader takes a Vue component (`.vue`): its `<script>` (and `<script setup>`) in TypeScript when its `lang` says so, its template's expressions (`{{ }}`, `@click`, `:prop`, `v-if`, `v-for`) read for their calls, which belong to the component; an expression it cannot parse costs only itself (T-0082).
 
 The JS reader takes `.jsx` (the JavaScript grammar) and `.tsx` (the TSX grammar): their imports, calls and definitions are read as a `.js` or `.ts` file's, a bare handler (`onClick={save}`) is a `references` as in Svelte's markup, and a relative specifier may leave either suffix out (T-0076).
