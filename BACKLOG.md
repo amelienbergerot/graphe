@@ -302,11 +302,10 @@ Settled by tickets (2026-11-27):
   would link most of them, and Java's `C.f()` too: outside "by the name
   alone" (ADR 0003), to decide.
   T-0080: a send qualified by a class of the host has that class's methods
-  for candidates, a common name too, linked for sure when one is left
+  for candidates, a common name too, linked by name when one is left
   (ADR 0003's amendment): `DeviceId::new` 184 sites, `ProtocolAddress::new`
   132, `TestStoreBuilder::new` 64; Java's and Kotlin's `C.f()` too. On
-  libsignal, 2629 `calls` links more, 991 turned sure; on protobuf, 3112
-  and 1574; none lost, 0 dangling. What is left is open below (a Rust
+  libsignal, 2629 `calls` links more; on protobuf, 3112; none lost, 0 dangling. What is left is open below (a Rust
   path's modules).
 
 - **Vue is not read.** [T-0082] (graphe, the user's request, 2026-11-27) README's

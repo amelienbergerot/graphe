@@ -6,7 +6,7 @@ A release that changes `contribute(project)`, `Project`, the shape of the nodes 
 
 ## Unreleased
 
-The generic reader links a send qualified by a class of the host, Rust's `T::f()`, Java's and Kotlin's `C.f()`, to that class's method `f`, for sure, a common name too (`DeviceId::new`), when the classes so named define one; several leave it unattributed, none leave it to the name alone, as before. A type the host only implements a trait for (Rust's `impl From<X> for HashMap`) is not its class. Its site is `ours`. On libsignal, 2629 links more, on protobuf 3112 (T-0080).
+The generic reader links a send qualified by a class of the host, Rust's `T::f()`, Java's and Kotlin's `C.f()`, to that class's method `f`, by name, a common name too (`DeviceId::new`), when the classes so named define one; several leave it unattributed, none leave it to the name alone, as before. A type the host only implements a trait for (Rust's `impl From<X> for HashMap`) is not its class. On libsignal, 2629 links more, on protobuf 3112 (T-0080).
 
 `graphe check` and REPORT.md list the generated files read, as git's `linguist-generated` says, or, for the generic reader's languages, a known header (protobuf's compiler, Go's `// Code generated ... DO NOT EDIT.`, before the first code), each with the count of ambiguous calls on the names it defines, and the `exclude` line to paste that drops those whose names are ambiguous, the host's own entries kept. The links are unchanged (T-0079).
 

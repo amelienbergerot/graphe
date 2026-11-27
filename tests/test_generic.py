@@ -738,8 +738,9 @@ def test_two_nested_builders_of_one_file_are_two_nodes_and_a_call_both_define_is
 
 
 def test_a_qualifier_naming_a_host_class_narrows_the_candidates_to_its_methods(tmp_path: Path):
-    """libsignal (T-0080): `DeviceId::new` names its class; linked for sure though `new` is common and defined twice.
-    A class named twice (`Line`), or none of the host's (`Vec`), leaves the call as before."""
+    """libsignal (T-0080): `DeviceId::new` names its class; linked by name though `new` is common and defined twice,
+    Java's and Kotlin's `C.f()` likewise. A class named twice (`Line`), or none of the host's (`Vec`), leaves the call
+    as before."""
     project = Project(tmp_path, {
         "src/a.rs": """\
             struct Point {}
@@ -760,10 +761,10 @@ def test_a_qualifier_naming_a_host_class_narrows_the_candidates_to_its_methods(t
     })
     rust = generic.contribute(RUST, project)
     calls = {(e["source"], e["target"], e["confidence"]) for e in rust["links"] if e["relation"] == "calls"}
-    assert calls == {("src_a_rs_main", "src_b_rs_point_new", "EXTRACTED"),
-                     ("src_a_rs_main", "src_b_rs_point_length", "EXTRACTED")}
+    assert calls == {("src_a_rs_main", "src_b_rs_point_new", "INFERRED"),
+                     ("src_a_rs_main", "src_b_rs_point_length", "INFERRED")}
     assert {s["text"]: s["verdict"] for s in rust["sites"]} == {
-        "Point::new": "ours", "Point::length": "ours", "Line::new": "ambiguous", "Vec::new": "common",
+        "Point::new": "ours?", "Point::length": "ours?", "Line::new": "ambiguous", "Vec::new": "common",
         "HashMap::from": "common"}
 
     project = Project(tmp_path / "jvm", {
@@ -779,11 +780,11 @@ def test_a_qualifier_naming_a_host_class_narrows_the_candidates_to_its_methods(t
     })
     jvm = generic.contribute(JVM, project)
     calls = {(e["source"], e["target"], e["confidence"]) for e in jvm["links"] if e["relation"] == "calls"}
-    assert calls == {("src_circle_java_circle_use", "src_circle_java_circle_create", "EXTRACTED"),
-                     ("src_circle_java_circle_use", "src_circle_java_circle_of", "EXTRACTED"),
-                     ("src_circle_java_circle_use", "src_square_java_square_create", "EXTRACTED"),
-                     ("src_circle_java_circle_use", "src_board_kt_board_make", "EXTRACTED"),
-                     ("src_board_kt_fill", "src_circle_java_circle_create", "EXTRACTED")}
+    assert calls == {("src_circle_java_circle_use", "src_circle_java_circle_create", "INFERRED"),
+                     ("src_circle_java_circle_use", "src_circle_java_circle_of", "INFERRED"),
+                     ("src_circle_java_circle_use", "src_square_java_square_create", "INFERRED"),
+                     ("src_circle_java_circle_use", "src_board_kt_board_make", "INFERRED"),
+                     ("src_board_kt_fill", "src_circle_java_circle_create", "INFERRED")}
 
 
 def test_a_php_bare_call_is_linked_to_a_function_only_and_a_send_to_a_method_only(tmp_path: Path):

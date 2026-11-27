@@ -18,9 +18,9 @@ sent on (Rust's `T::f()`, Java's and Kotlin's `C.f()`): its last name, if it is 
 - every link a call, a send or a reference makes is by the name alone (INFERRED), and only when the name has a single definition in the
   language (or family: C/C++, Java/Kotlin): a call or a send to a function or a method (an `apart` language, PHP: a
   call to a function, a send to a method), a reference to a class. A send never links a common name, unless its
-  qualifier names a class of the host: then its candidates are that class's methods of the name only, linked for
-  sure (EXTRACTED) when one is left (T-0080).
-  Each call or send is a site: `ours`, `ours?`, `ambiguous`, `common` or `external` (no definition of that name);
+  qualifier names a class of the host: then its candidates are that class's methods of the name only, linked by
+  name when one is left (T-0080).
+  Each call or send is a site: `ours?`, `ambiguous`, `common` or `external` (no definition of that name);
 - a file that does not parse is skipped and named on stderr, unless the language is `tolerant` (C's macros, C#'s
   `#if`, Swift's and Go's newer syntax, Rust's `dyn 'a + Trait`).
 """
@@ -699,7 +699,8 @@ def contribute(language: Language, project) -> dict:
                 continue
             ours = (classes if u.kind == "reference" else callables).get(u.name, [])
             # T-0080: `T::f()`, `C.f()` sent on a class of the host: only its methods `f` are candidates, a common
-            # name too; none, the name alone decides as before (a static method `C` inherits).
+            # name too, still by name (the class is found by its name, no import read); none, the name alone decides
+            # as before (a static method `C` inherits).
             # shortcut: no imports, so a library's type named like a declared one is taken for it (std's `Duration`,
             # libsignal's own `struct Duration`: about 42 of 50 `Duration::from_millis`), a variable so named too; to
             # read Rust's `use` and Java's `import` if a host's `callers` suffer.
@@ -707,15 +708,13 @@ def contribute(language: Language, project) -> dict:
             if u.kind != "reference":
                 if language.apart:
                     ours = [t for t in ours if (t in functions) == (u.kind == "call")]
-                if named:
-                    ours, verdict = named, "ours" if len(named) == 1 else "ambiguous"
-                else:
-                    verdict = "external" if not ours else "common" if u.kind == "send" and u.name in language.common \
-                        else "ours?" if len(ours) == 1 else "ambiguous"
+                ours = named or ours
+                verdict = "external" if not ours else \
+                    "common" if not named and u.kind == "send" and u.name in language.common \
+                    else "ours?" if len(ours) == 1 else "ambiguous"
                 sites.append({"verdict": verdict, "file": rel, "line": u.line, "name": u.name, "text": u.text})
-                if verdict not in ("ours", "ours?"):
+                if verdict != "ours?":
                     continue
             if len(ours) == 1 and ours[0] != owner:
-                link(owner, ours[0], "calls" if u.kind != "reference" else "references", rel, u.line,
-                     sure=bool(named))
+                link(owner, ours[0], "calls" if u.kind != "reference" else "references", rel, u.line, sure=False)
     return {"nodes": nodes, "links": links, "sites": sites, "generated": marked}
