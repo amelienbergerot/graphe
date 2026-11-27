@@ -19,11 +19,11 @@ Each time the graph does not answer and you search by hand (grep, reading), here
 
 ### Issue tracker
 
-Local Markdown tickets, one file per ticket under `tickets/` (`T-0001-short-title.md`). See `docs/agents/issue-tracker.md`.
+GitHub Issues of `amelienbergerot/graphe`, in the Project graphe, titled `T-NNNN: ...`; `tickets/` is the archive of T-0001 to T-0093. Work lands through a pull request that closes its issue. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
-The five default roles, noted on a `Status:` line at the top of a ticket. See `docs/agents/triage-labels.md`.
+The five default roles, as GitHub labels. See `docs/agents/triage-labels.md`.
 
 ### Domain docs
 
