@@ -1,0 +1,16 @@
+document_readme_md cites ticket_t_0001 sure
+document_readme_md names front_client_ts_listzones by name
+front_client_ts contains front_client_ts_api sure
+front_client_ts contains front_client_ts_listzones sure
+front_client_ts_listzones calls front_client_ts_api sure
+front_client_ts_listzones sends server_api_route_zones by name
+godot_status contains godot_status_status_text sure
+godot_status_status_text value value_closed sure
+server_api contains server_api_route_zones sure
+server_api contains server_api_say sure
+server_api_route_zones calls server_api_say sure
+server_api_route_zones cites ticket_t_0001 sure
+server_api_route_zones value value_closed sure
+ticket_t_0001 cites ticket_t_0002 sure
+ticket_t_0001 names front_client_ts_listzones by name
+ticket_t_0001 names server_api_route_zones by name

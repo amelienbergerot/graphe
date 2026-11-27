@@ -1,0 +1,5 @@
+displayed_text = '\bsay\("([^"]*)"'
+
+[keys]
+names = '\bapi\(\s*"([^"]+)"'
+answers = '"/api/([^"]+)"'

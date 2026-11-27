@@ -148,3 +148,9 @@ A site is a place in the code that the contributor has classified. It is for exa
 | `alert` | Optional: why the site is a defect ("not linked to the name of one of our functions"). |
 
 If a contribution has the `sites` key, even empty, `graphe.json` carries its coverage: `coverage[<who>]` counts its verdicts. `<who>` is the name of the reader or the path of the extension. `graphe check` shows, for each contribution, the count of each verdict, its most frequent texts and each alert. It fails if there is an alert or a dangling link.
+
+## Changing a reader or the core: the snapshots
+
+Each folder of `tests/fixtures/` is a small sample host (one per reader, one for the core), and `tests/fixtures/<host>.links` the snapshot of all its links: one line per link and relation, `source relation target sure|by name`, sorted (T-0072). `tests/test_snapshots.py` builds each host and compares; a link lost, added or turned from sure to by name fails it, naming the host and the line.
+
+A change meant to alter links: run `python tests/snapshots.py`, which rewrites every snapshot, read the diff, and give its reason in the commit. A new reader brings its sample host and its snapshot. The sample hosts are left out of graphe's own graph (`exclude` of its `graphe.toml`).

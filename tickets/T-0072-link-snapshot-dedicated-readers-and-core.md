@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: closed
 Part of: T-0071
 Created: 2026-11-27
 
@@ -12,12 +12,16 @@ For Python, JS/TS/Svelte, GDScript and PHP, one small sample host each, built as
 
 ## Acceptance criteria
 
-- [ ] Each of the five sample hosts has a committed snapshot of all its links, and the test passes on them.
-- [ ] A link removed or turned from sure to by-name makes the test fail, naming the host and the line.
-- [ ] The script rewrites the snapshots, and running it twice changes nothing.
-- [ ] The sample hosts hold each reader's main kinds of link (calls, imports or references, reads, cites, names, sends), not one each only.
-- [ ] The way to accept a change (run the script, give the reason in the commit) is written where a contributor reads it (`docs/contribution.md`).
+- [x] Each of the five sample hosts has a committed snapshot of all its links, and the test passes on them.
+- [x] A link removed or turned from sure to by-name makes the test fail, naming the host and the line.
+- [x] The script rewrites the snapshots, and running it twice changes nothing.
+- [x] The sample hosts hold each reader's main kinds of link (calls, imports or references, reads, cites, names, sends), not one each only.
+- [x] The way to accept a change (run the script, give the reason in the commit) is written where a contributor reads it (`docs/contribution.md`).
 
 ## Blocked by
 
 None (can start immediately).
+
+## Comments
+
+- 2026-11-27: five sample hosts in `tests/fixtures/` (python, js with TS and Svelte, godot, php, core), each with its `.links` snapshot; `tests/snapshots.py` rewrites them, `tests/test_snapshots.py` compares them and fails on a snapshot left without its host. The snapshots hold 16 relations (calls sure and by name, imports, references, uses, reads, writes, inherits, emits, connects, dispatches, cites, names, sends, value). Left out, a `shortcut:` in the script: a link's locations and contexts; and `displayed_text`, which makes no link. A ticket naming `` `say()` `` names nothing (shorter than NAME_MIN), kept as such. graphe's own `graphe.toml` excludes the sample hosts from its graph. 105 tests pass.

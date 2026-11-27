@@ -1,0 +1,1 @@
+exclude = ["tests/fixtures"]  # the sample hosts of the snapshots (T-0072), not graphe's code
