@@ -425,6 +425,36 @@ def test_fields_import_aliases_and_tickets(tmp_path: Path):
     assert "names" in g["ticket_t_0999"][f"{f}lire"]["relations"]
 
 
+def test_a_name_defined_once_is_read_from_another_file_after_a_chain(tmp_path: Path):
+    """`x.NAME`, NAME a module variable defined once in the host, reads it (INFERRED), after `a.b.` too; T-0091 tries
+    `elsewhere` only on the lines where a word after `x.` is such a name."""
+    import networkx as nx
+
+    (tmp_path / "simulation").mkdir()
+    (tmp_path / "simulation" / "reglages.py").write_bytes(b"SEUIL_GLOBAL = 1\n")
+    (tmp_path / "simulation" / "jeu.py").write_bytes(textwrap.dedent('''\
+        def proche(x):
+            return x.SEUIL_GLOBAL
+
+
+        def loin(a):
+            return a.b.SEUIL_GLOBAL
+
+
+        def ailleurs(a):
+            return a.SEUIL_LOCAL
+    ''').encode("utf-8"))
+    read = python.Reader(sorted((tmp_path / "simulation").glob("*.py")), root=tmp_path)
+    g = nx.DiGraph()
+    for n in read.nodes:
+        g.add_node(n["id"], **n)
+    _enrich(g, tmp_path)
+    seuil = "simulation_reglages_seuil_global"
+    assert {s for s in g.predecessors(seuil) if "reads" in g[s][seuil]["relations"]} \
+        == {"simulation_jeu_proche", "simulation_jeu_loin"}
+    assert g["simulation_jeu_loin"][seuil]["confidence"] == "INFERRED"
+
+
 @grid_zero
 def test_godot_resolves_its_preloads():
     """On the real repository: `Charte.ACCENT` read through the preload,

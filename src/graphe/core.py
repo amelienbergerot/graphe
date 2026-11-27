@@ -57,6 +57,8 @@ PY_VARIABLE = re.compile(r"^([A-Za-z_]\w*)\s*(?::[^=]+)?=(?!=)")
 GD_VARIABLE = re.compile(r"^(?:static\s+)?(const|var)\s+(\w+)\b(.*)$")
 PRELOAD = re.compile(r'^const\s+(\w+)\s*=\s*preload\("res://([^"]+\.gd)"\)', re.M)
 QUALIFIED = re.compile(r"\b([A-Z]\w*)\.(\w+)\b")
+# Each word right after `x.`: what `elsewhere` (enrich) can find, and more.
+AFTER_DOT = re.compile(r"(?<=\w\.)\w+")
 # Names too common to be followed from one file to another by the name.
 NAME_MIN = 4
 VALUE = re.compile(r'"([a-z][a-z0-9_]{3,})"')
@@ -65,7 +67,13 @@ VALUE_BODIES_MAX = 10
 
 
 def _indent(line: str) -> int:
-    return len(line.expandtabs(4)) - len(line.expandtabs(4).lstrip())
+    if "\t" in line:
+        line = line.expandtabs(4)
+    return len(line) - len(line.lstrip())
+
+
+# How a comment line starts, stripped (`_comment` is not None): one call where enrich tests every line (T-0091).
+COMMENTS = ("#", "//", "/*", "*")
 
 
 def _comment(line: str) -> str | None:
@@ -82,6 +90,8 @@ STRING = re.compile(r'"""|\'\'\'|"(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\'')
 def _scan(line: str, quote: str) -> tuple[int, str]:
     """T-0083: the line's `(` minus its `)`, outside its strings, and the triple quote still open at its end ("" for
     none), `quote` being the one open at its start."""
+    if not quote and '"' not in line and "'" not in line:  # T-0091: no string, most lines
+        return line.count("(") - line.count(")"), ""
     depth, i = 0, 0
     while i < len(line):
         if quote:
@@ -119,20 +129,21 @@ def extent(lines: list[str], start: int) -> int:
             _, quote = _scan(line, quote)
             end = i + 1
             continue
+        indent = _indent(line) if s else 0
         # a signature over several lines; a line back at its indentation ends it, unless it closes a bracket
-        if open_ > 0 and not (s and _indent(line) <= base and s[0] not in "})]"):
+        if open_ > 0 and not (s and indent <= base and s[0] not in "})]"):
             depth, quote = _scan(line, "")
             open_ += depth
             end = i + 1
             continue
         open_ = 0
-        if not s or _comment(line) is not None and _indent(line) > base:
+        if not s or indent > base and s.startswith(COMMENTS):
             continue
-        if _indent(line) <= base:
-            if s == "{" and _indent(line) == base and not body:  # the brace on its own line (PHP's PSR-12)
+        if indent <= base:
+            if s == "{" and indent == base and not body:  # the brace on its own line (PHP's PSR-12)
                 end = i + 1
                 continue
-            if s[0] in "})]" and _indent(line) == base:
+            if s[0] in "})]" and indent == base:
                 end = i + 1
             break
         _, quote = _scan(line, "")  # a docstring that opens here
@@ -297,7 +308,7 @@ def enrich(graph: nx.DiGraph, root: Path, listed: set[str] | None = None) -> Non
             if local else None
         for i, n in owners.get(rel, {}).items():
             line = lines[i - 1]
-            if _comment(line) is not None:
+            if line.strip().startswith(COMMENTS):
                 continue
             location = f"{rel}:{i}"
             if here is not None:
@@ -316,7 +327,9 @@ def enrich(graph: nx.DiGraph, root: Path, listed: set[str] | None = None) -> Non
                     if vid:
                         _add_link(graph, n, vid, "reads", location, "EXTRACTED")
                         sure.add(name)
-                for name in set(elsewhere.findall(line)) - sure:
+                # T-0091: `elsewhere` tried only where a word after `x.` is one of its names, its alternation slow.
+                found = set(elsewhere.findall(line)) if not unique.keys().isdisjoint(AFTER_DOT.findall(line)) else set()
+                for name in found - sure:
                     vid = unique[name]
                     # `examen.graine` in Python does not read a GDScript variable.
                     other = graph.nodes[vid]["source_file"]
@@ -469,8 +482,15 @@ def _link_documents(graph: nx.DiGraph, root: Path, bodies: dict, texts: dict[str
                        name=name, notes=title, end=len(text.splitlines()))
         documents.append((did, rel, text))
     # The code that cites a ticket, in its body or its comment.
+    # T-0091: a body's text is a piece of its file's cut at line ends, where `\b` holds as at the ends of a text: with
+    # the default identifier, a file that has none has no body that cites. shortcut: another identifier (`^`, a
+    # lookbehind) can match in a piece and not in the whole, so its bodies are each searched; to test it on the
+    # whole file too when a host with one needs the time.
+    # `T-` first: the pattern starts with `\b`, which `re` tries at each character.
+    somewhere = {rel: "T-" in (text := "\n".join(lines)) and pattern.search(text) is not None
+                 for rel, lines in texts.items()} if pattern.pattern == IDENTIFIER else {}
     for n, (rel, start, end) in bodies.items():
-        lines = texts.get(rel, [])
+        lines = texts.get(rel, []) if somewhere.get(rel, True) else []
         cited = _cited(pattern, "\n".join(lines[start - 1:end])) | _cited(pattern, graph.nodes[n].get("notes", ""))
         for ident in sorted(cited):
             if ident in tickets:
