@@ -116,10 +116,10 @@ Public sample hosts, pinned in `docs/sample-hosts.md`. Measures only: the build 
 
 | Host | Languages | Files | Build | One query, compared with grep |
 |---|---|---|---|---|
-| Django | Python, JavaScript | 7104 (2943 `.py`) | 54.8 s | `explain django/shortcuts.py::get_object_or_404`: 5 callers, 839 bytes; grep `get_object_or_404(`: 21 lines, 2130 bytes |
+| Django | Python, JavaScript | 7104 (2943 `.py`) | 35.8 s | `explain django/shortcuts.py::get_object_or_404`: 5 callers, 839 bytes; grep `get_object_or_404(`: 21 lines, 2130 bytes |
 | gitea | Go, TypeScript | 6431 (3199 `.go`) | 31.4 s | `explain GetRepositoryByID`: 76 callers by name, 1778 bytes; grep `GetRepositoryByID(`: 80 lines in 63 files, 7973 bytes |
-| libsignal | Rust, Java/Kotlin, Swift, TypeScript | 1852 (612 `.rs`, 344 `.java`, 218 `.swift`, 125 `.kt`) | 20.6 s | `explain Timestamp.from_epoch_millis`: 57 callers, 4 by name, 1585 bytes; grep `from_epoch_millis(`: 81 lines in 30 files, 8260 bytes |
-| protobuf | C/C++, Java/Kotlin, C#, Ruby, Python, Rust, PHP, Go | 3795 (1363 C/C++, 293 `.java`, 224 `.cs`, 158 `.php`, 54 `.rb`) | 62.7 s | `callers ByteString.copyFromUtf8`: 128 callers, none by name, 13757 bytes; grep `copyFromUtf8(` in `.java` and `.kt`: 176 lines in 44 files, 26514 bytes |
+| libsignal | Rust, Java/Kotlin, Swift, TypeScript | 1852 (612 `.rs`, 344 `.java`, 218 `.swift`, 125 `.kt`) | 9.1 s | `explain Timestamp.from_epoch_millis`: 57 callers, 4 by name, 1585 bytes; grep `from_epoch_millis(`: 81 lines in 30 files, 8260 bytes |
+| protobuf | C/C++, Java/Kotlin, C#, Ruby, Python, Rust, PHP, Go | 3795 (1363 C/C++, 293 `.java`, 224 `.cs`, 158 `.php`, 54 `.rb`) | 30.3 s | `callers ByteString.copyFromUtf8`: 128 callers, none by name, 13757 bytes; grep `copyFromUtf8(` in `.java` and `.kt`: 176 lines in 44 files, 26514 bytes |
 
 ## Developing graphe
 

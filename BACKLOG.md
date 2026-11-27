@@ -25,7 +25,9 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   57.3 s (35.4 s); the cause is not found. T-0026 saw the first reads of a
   fresh cache take 16 to 29 s (the antivirus, probably). Timing the cache's
   reads apart from the ast walk on a slow run would tell; it weighs more
-  than a parallel build would save on Django.
+  than a parallel build would save on Django. T-0087 saw it again, warm:
+  three builds of the same code 65.2, 73.8 and 41.9 s, then 41.5 to 45.5 s
+  once alternated with the new code's.
 - **The generic reader reads its files one after the other.** (protobuf,
   sample host, 2026-11-27, measured for the parallel build, T-0088)
   `read()` of protobuf's 1363 C/C++ files: 6.26 s serial, 1.92 s over 4
