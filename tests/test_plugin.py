@@ -36,7 +36,9 @@ def test_installing_the_plugin_installs_the_hook():
     [entry] = hooks["PreToolUse"]
     assert set(entry["matcher"].split("|")) == {"Grep", "Bash", "PowerShell"}
     [command] = entry["hooks"]
-    assert command["type"] == "command" and command["command"] == "graphe hook"
+    # Exit 2 would block the tool: graphe 0.1.1 answers an unknown command with it. `; exit 0` holds in Git Bash and
+    # PowerShell, the shells a command hook runs in.
+    assert command["type"] == "command" and command["command"] == "graphe hook; exit 0" and "args" not in command
 
 
 def test_the_skill_allows_the_graphe_command_for_its_turn():

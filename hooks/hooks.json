@@ -4,7 +4,7 @@
     "PreToolUse": [
       {
         "matcher": "Grep|Bash|PowerShell",
-        "hooks": [{ "type": "command", "command": "graphe hook", "timeout": 10 }]
+        "hooks": [{ "type": "command", "command": "graphe hook; exit 0", "timeout": 10 }]
       }
     ]
   }
