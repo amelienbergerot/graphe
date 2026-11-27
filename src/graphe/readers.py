@@ -7,10 +7,14 @@ import copy
 import functools
 from functools import cached_property
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from graphe import generic, godot, js, python
 from graphe import root as graphe_root
 from graphe.root import ROOT
+
+if TYPE_CHECKING:
+    import networkx as nx
 
 # Each reader under the name of its graphe.toml section: the key of its configuration and of its coverage.
 READERS = {"python": python.contribute, "godot": godot.contribute, "js": js.contribute,
@@ -32,7 +36,7 @@ class Project:
     contributes and the graph already assembled (a networkx graph, None for a reader's: still empty), copied on
     reading (docs/contribution.md)."""
 
-    def __init__(self, configuration: dict, graph, checking: bool, listed: set[str]) -> None:
+    def __init__(self, configuration: dict, graph: nx.DiGraph | None, checking: bool, listed: set[str]) -> None:
         self.root = ROOT
         self.configuration = configuration
         self.checking = checking

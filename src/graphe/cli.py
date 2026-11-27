@@ -96,9 +96,10 @@ CALLABLE = ("function", "method", "abstract")
 # nothing else links, and would merge unrelated communities. The host adds some (`[communities] separate`).
 SEPARATE = {"ticket": "tickets", "value": "values", "document": "documents"}
 OFF_CODE_WEIGHT = 4
-# shortcut: a pool costs about 0.6 s (its processes import the readers); libsignal's Rust and Java, 200 files each,
-# lost 0.26 s, 300 each gained 0.4 s (T-0088). Counted in files, not in time: to weigh by reader if one runs slow on
-# few files (Godot's engine).
+# The readers run in processes of their own when those beside the largest have this many files: a pool costs about
+# 0.6 s, and libsignal's Rust and Java, 200 files each, lost 0.26 s, 300 each gained 0.4 s (T-0088).
+# shortcut: counted in files, not in time, so a reader slow on few files (Godot's engine) is not weighed; to weigh
+# each reader's time per file if a host shows it.
 PARALLEL_FILES = 250
 
 
@@ -223,20 +224,18 @@ def assemble(checking: bool = False, listed: set[str] | None = None) \
     graph = nx.DiGraph()
     dangling: list[dict] = []
     listed = graphe_root.listing() if listed is None else listed
-    # T-0088: the readers that have files at once, one process each (py-tree-sitter keeps the GIL: ADR 0005), when
-    # those beside the largest have enough files; the others here. Taken in the order of READERS, the first error in
-    # that order stops the build.
+    # T-0088: processes, as py-tree-sitter keeps the GIL (ADR 0005); taken in the order of READERS, so the graph is
+    # the same and the first error in that order stops the build.
     patterns = graphe_root.excluded()
-    files = Counter(name for rel in listed for name in READERS
+    count = Counter(name for rel in listed for name in READERS
                     if rel.endswith(SUFFIXES[name]) and not graphe_root.designates(rel, patterns))
-    parallel = files.total() - max(files.values(), default=0) >= PARALLEL_FILES
-    pool = ProcessPoolExecutor(len(files)) if parallel else None
-    with pool or nullcontext():
-        futures = {name: pool.submit(run_reader, name, configuration.get(name, {}), checking, listed)
-                   for name in files if pool}
+    pooled = len(count) > 1 and count.total() - max(count.values()) >= PARALLEL_FILES
+    arguments = {name: (name, configuration.get(name, {}), checking, listed) for name in READERS}
+    with ProcessPoolExecutor(len(count)) if pooled else nullcontext() as pool:
+        futures = {name: pool.submit(run_reader, *arguments[name]) for name in count} if pooled else {}
         # The readers together: their nodes come in sorted all at once, as before the contract (T-0007).
-        readers = [(name, futures[name].result() if name in futures
-                    else run_reader(name, configuration.get(name, {}), checking, listed)) for name in READERS]
+        readers = [(name, futures[name].result() if name in futures else run_reader(*arguments[name]))
+                   for name in READERS]
     # T-0008: a `with_readers` extension comes in with them, before the core, and may take over their links.
     with_, after = [], []
     for declaration in _declared_extensions():

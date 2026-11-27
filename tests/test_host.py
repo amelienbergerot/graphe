@@ -214,6 +214,25 @@ def test_the_readers_run_in_processes_of_their_own_and_an_error_keeps_its_messag
         assert not (host / "graphe" / "graphe.json").exists()
 
 
+def test_the_readers_in_processes_give_the_same_graph(tmp_path: Path):
+    """T-0088: the contributions of readers run at once are taken in the order of READERS: the same graph."""
+    host = _host(tmp_path, {"outils.py": CALLEE, "travail.py": CALLER, "a.go": "package a\n\nfunc F() {}\n",
+                            "b.go": "package a\n\nfunc G() { F() }\n"})
+    script = tmp_path.parent / "pooled.py"
+    graphs = []
+    for threshold in ("graphe.cli.PARALLEL_FILES", "0"):
+        script.write_text(f"import sys, graphe.cli\ngraphe.cli.PARALLEL_FILES = {threshold}\n"
+                          "if __name__ == '__main__':\n    sys.exit(graphe.cli.main(['build', '--quiet']))\n",
+                          encoding="utf-8")
+        r = subprocess.run([sys.executable, str(script)], cwd=host, env={**os.environ, "GRAPHE_ROOT": str(host)},
+                           capture_output=True, text=True, encoding="utf-8")
+        assert r.returncode == 0, r.stderr
+        data = json.loads((host / "graphe" / "graphe.json").read_bytes())
+        graphs.append({k: v for k, v in data.items() if k not in ("built", "built_s")})
+    assert graphs[0] == graphs[1]
+    assert {"python", "go"} <= set(graphs[0]["coverage"])
+
+
 def _hooks(host: Path) -> dict[str, bytes]:
     folder = host / ".git" / "hooks"
     return {p.name: p.read_bytes() for p in folder.glob("post-*") if p.suffix != ".sample"}
