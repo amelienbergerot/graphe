@@ -217,7 +217,7 @@ def test_the_readers_run_in_processes_of_their_own_and_an_error_keeps_its_messag
 def test_the_readers_in_processes_give_the_same_graph(tmp_path: Path):
     """T-0088: the contributions of readers run at once are taken in the order of READERS: the same graph."""
     host = _host(tmp_path, {"outils.py": CALLEE, "travail.py": CALLER, "a.go": "package a\n\nfunc F() {}\n",
-                            "b.go": "package a\n\nfunc G() { F() }\n"})
+                            "b.go": "package a\n\nfunc G() { F() }\n", "godot/jeu.gd": "extends Node\n\nfunc f():\n\tpass\n"})
     script = tmp_path.parent / "pooled.py"
     graphs = []
     for threshold in ("graphe.cli.PARALLEL_FILES", "0"):
@@ -231,6 +231,7 @@ def test_the_readers_in_processes_give_the_same_graph(tmp_path: Path):
         graphs.append({k: v for k, v in data.items() if k not in ("built", "built_s")})
     assert graphs[0] == graphs[1]
     assert {"python", "go"} <= set(graphs[0]["coverage"])
+    assert any(n["source_file"] == "godot/jeu.gd" for n in graphs[0]["nodes"])
 
 
 def _hooks(host: Path) -> dict[str, bytes]:
