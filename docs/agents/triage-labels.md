@@ -14,4 +14,4 @@ When a skill mentions a role (e.g. "apply the AFK-ready triage label"), use the 
 
 Edit the "Label in our tracker" column to match whatever vocabulary you actually use.
 
-In this repo there is no label system: the "label" is the value of the `Status:` line at the top of a ticket in `tickets/` (see `issue-tracker.md`).
+In this repo they are GitHub labels of the same names, one per open ticket (see `issue-tracker.md`). The archived tickets in `tickets/` carry theirs on a `Status:` line instead.
