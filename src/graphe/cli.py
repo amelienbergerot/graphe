@@ -837,8 +837,9 @@ def _callers(graph: nx.DiGraph, n: str, depth: int) -> None:
         if not following:
             break
         # T-0075: a caller linked by name alone, marked as explain marks it: once on the level if every one is
+        fronts = set(front)
         guessed = {s: "?" for s in following
-                   if all(graph[s][y]["confidence"] != "EXTRACTED" for y in graph.successors(s) if y in front)}
+                   if all(graph[s][y]["confidence"] != "EXTRACTED" for y in graph.successors(s) if y in fronts)}
         every = len(guessed) == len(following)
         print(f"level {level} ({len(following)})" + (" [by name]" if every else "") + ":")
         for line in _by_file(graph, following, {} if every else guessed):
@@ -853,17 +854,19 @@ HUNK = re.compile(r"@@ -\d+(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
 # shortcut: a removed definition is seen by its keyword (Python, GDScript, JS functions, Go, Rust, Kotlin, Swift, PHP,
 # Ruby); Java's, C#'s, C's and JS classes' methods have none and are not listed as removed; to parse the old file if an
 # agent misses one. Its indentation: a method's, removed from its class.
-DEFINITION = re.compile(r"^(\s*)(?:(?:export|pub(?:\(\w+\))?|async|static|private|public|protected|internal|open|"
-                        r"override|suspend|data)\s+)*(?:def|func|function|fn|fun|class)\s+(?:\([^)]*\)\s*)?"
+DEFINITION = re.compile(r"^(\s*)(?:(?:export|default|pub(?:\(\w+\))?|async|static|private|public|protected|"
+                        r"internal|open|override|suspend|data|final|abstract|sealed|class)\s+)*"
+                        r"(?:def|func|function|fn|fun|class)\s+(?:\([^)]*\)\s*)?"
                         r"(?:self\.)?(\w+)")
 
 
 def _git(*arguments: str) -> str:
-    r = subprocess.run(["git", "-c", "core.quotepath=false", *arguments], cwd=ROOT, capture_output=True, text=True,
-                       encoding="utf-8", errors="replace")
+    """Its output as git wrote it: in bytes, a lone `\\r` of the host's code stays inside its line."""
+    r = subprocess.run(["git", "-c", "core.quotepath=false", *arguments], cwd=ROOT, capture_output=True)
     if r.returncode:
-        raise RuntimeError(f"git {arguments[0]}: {(r.stderr.strip().splitlines() or ['failed'])[0]}")
-    return r.stdout
+        error = r.stderr.decode("utf-8", "replace").strip().splitlines() or ["failed"]
+        raise RuntimeError(f"git {arguments[0]}: {error[0]}")
+    return r.stdout.decode("utf-8", "replace")
 
 
 def _changes(rev: str) -> dict[str, list[tuple[int, list[str] | None, list[str]]]]:
@@ -876,8 +879,8 @@ def _changes(rev: str) -> dict[str, list[tuple[int, list[str] | None, list[str]]
     hunks = defaultdict(list)
     old = new = ""
     left = 0  # the lines of the current hunk still to read
-    for line in diff.splitlines():
-        if left and line[:1] in "+-":
+    for line in diff.split("\n"):  # git ends each line with \n; splitlines() would split on a form feed too
+        if left and line[:1] in ("+", "-"):
             left -= 1
             hunks[new or old][-1][1 if line[0] == "+" else 2].append(line[1:])
         elif line.startswith(("--- ", "+++ ")):
@@ -929,8 +932,9 @@ def affected(graph: nx.DiGraph, rev: str, depth: int) -> int:
                 touched.update(_innermost(bodies, whole, line) for line in kept)
             elif definitions:  # a whole definition removed, after line `start`: from its class if it was indented
                 touched.add(_innermost(classes, whole, start) if definitions[0][1] else whole)
-            elif any(text.strip() for text in removed):  # lines removed from a body, after one of its own
-                touched.add(_innermost(bodies, whole, max(start, 1)))
+            elif first := next((text for text in removed if text.strip()), ""):  # lines removed, after line `start`
+                # from a body when indented (after one of its own lines), else from the top level
+                touched.add(_innermost(bodies, whole, max(start, 1)) if first[0].isspace() else whole)
         gone[file] -= {graph.nodes[n]["name"].rsplit(".", 1)[-1] for n in nodes}  # edited, not removed
     touched.discard(None)
     moved = {graph.nodes[n]["name"].rsplit(".", 1)[-1] for n in touched}  # to another file

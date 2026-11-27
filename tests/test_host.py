@@ -901,3 +901,18 @@ def test_affected_lists_the_definitions_of_a_deleted_file_and_a_method_removed_f
     assert r.returncode == 0, r.stderr
     assert "\n  a b.py: K:1\n" in r.stdout and "\n  travail.py: bouge:8\n" in r.stdout, r.stdout
     assert "removed (no longer in the graph):\n  a b.py: n\n  r.rb: cree\n  vieux.py: ancien\n" in r.stdout, r.stdout
+
+
+def test_affected_reads_a_diff_with_a_form_feed_and_a_removed_top_level_line(tmp_path: Path):
+    """T-0075, after the review: a page break (`^L`) is a line of its own; a top-level line removed after a function
+    is the file's, not the function's."""
+    host = _host(tmp_path, {}, tracked=".")
+    _write(host, "o.py", "def a():\n    return 1\n\x0c\ndef b():\n    return 2\n")
+    _write(host, "p.py", "def c():\n    return 1\n\n\nc()\n")
+    _commit(host)
+    _write(host, "o.py", "def a():\n    return 1\n")
+    _write(host, "p.py", "def c():\n    return 1\n")
+    r = _run(host, "affected")
+    assert r.returncode == 0, r.stderr
+    assert "touched (2):\n  o.py\n  p.py\n" in r.stdout and "removed (no longer in the graph):\n  o.py: b\n" in r.stdout, \
+        r.stdout
