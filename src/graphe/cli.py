@@ -105,9 +105,9 @@ def _communities_config() -> tuple[dict[str, str], list[str]]:
 
 # ---------- build
 
-def _sources() -> list[Path]:
+def _sources(listed: set[str]) -> list[Path]:
     """T-0009: all the host's files, not only the readers' (an extension reads what it wants)."""
-    return graphe_root.files("") + [p for p in [ROOT / CONFIGURATION]  # files() tests is_file already
+    return graphe_root.files("", ROOT, listed) + [p for p in [ROOT / CONFIGURATION]  # files() tests is_file already
                                     + [ROOT / e.get("path", "") for e in _declared_extensions()] if p.is_file()]
 
 
@@ -230,15 +230,15 @@ def _take_over(contributions: list[tuple[str, dict]]) -> None:
                     e["source"] = r["to"]
 
 
-def assemble(checking: bool = False) -> tuple[nx.DiGraph, dict, list[dict], dict[str, list[dict]],
-                                              list[tuple[str, int]]]:
+def assemble(checking: bool = False, listed: set[str] | None = None) \
+        -> tuple[nx.DiGraph, dict, list[dict], dict[str, list[dict]], list[tuple[str, int]]]:
     """The readers (and the `with_readers` extensions), then the core, then the other local extensions
     in the order of graphe.toml: the directed graph,
     the coverage, the dangling links, the sites of each contribution and the generated files (`_generated`)."""
     configuration = graphe_root.configuration()
     graph = nx.DiGraph()
     dangling: list[dict] = []
-    listed = graphe_root.listing()
+    listed = graphe_root.listing() if listed is None else listed
     # The readers together: their nodes come in sorted all at once, as before the contract (T-0007).
     readers = [(name, contribute(Project(configuration.get(name, {}), graph, checking, listed)))
                for name, contribute in READERS.items()]
@@ -467,10 +467,10 @@ def _missed(graph: nx.DiGraph, n: str) -> None:
             print(f"    {causes[cause]} {text}")
 
 
-def build(quiet: bool = False) -> int:
+def build(quiet: bool = False, listed: set[str] | None = None) -> int:
     start = time.monotonic()
     OUTPUT.mkdir(exist_ok=True)
-    graph, coverage, dangling, sites, generated = assemble()
+    graph, coverage, dangling, sites, generated = assemble(listed=listed)
     community_of, names = communities(graph)
     data = {
         "built": time.strftime("%Y-%m-%d %H:%M:%S"), "built_s": time.time(), "commit": _commit(),
@@ -667,10 +667,11 @@ def load(as_is: bool = False) -> nx.DiGraph:
     """The graph; rebuilt first if it is older than the host's code or than the tool."""
     if not (as_is and JSON.exists()):
         # The sources first: outside a git repository, their one-line error comes before any rebuilding line (T-0069).
-        newest = max((p.stat().st_mtime for p in _sources() + _tool()), default=0)
+        listed = graphe_root.listing()  # the rebuild's too: one walk (T-0087)
+        newest = max((p.stat().st_mtime for p in _sources(listed) + _tool()), default=0)
         if not JSON.exists() or newest > JSON.stat().st_mtime:
             print("(the graph is older than the code or the tool: rebuilding)", file=sys.stderr)
-            build(quiet=True)
+            build(quiet=True, listed=listed)
     data = json.loads(JSON.read_bytes())
     # T-0074: a graph built before the counts per cause; an upgrade may not leave the tool's files newer than it
     if any(isinstance(v, int) for v in data.get("unattributed", {}).values()):
