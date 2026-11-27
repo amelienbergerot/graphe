@@ -86,7 +86,8 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   generic reader's own. T-0079 (2026-11-27) names the 11 copies, the most
   ambiguous of protobuf's 204 generated files (21786 to 26761 calls on
   their names each), and gives the `exclude` line: with it, `ambiguous`
-  57624 -> 20009 of the Java sites. Kept, they stay ambiguous: what is left
+  57624 -> 20009 of the Java sites (the sites 118387 -> 62041). Kept, they
+  stay ambiguous: what is left
   is the host's choice.
 - **A Java call to an abstract method is linked to none of its
   implementations.** (protobuf, sample host, 2026-11-19, T-0033) An abstract
