@@ -18,6 +18,21 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   The string constants a function assigns or returns, kept as its notes or
   searchable like its displayed texts, would have avoided the search.
 
+- **The Python reader sometimes takes three times as long on Django.**
+  (Django, sample host, 2026-11-27, measured for the parallel build) Of six
+  builds at `9e2e5a3`, four took 36 to 42 s (the Python reader 15.9 s
+  warm, 22.5 s cold), one warm build 65.9 s (the reader 45.7 s), one cold
+  57.3 s (35.4 s); the cause is not found. T-0026 saw the first reads of a
+  fresh cache take 16 to 29 s (the antivirus, probably). Timing the cache's
+  reads apart from the ast walk on a slow run would tell; it weighs more
+  than a parallel build would save on Django.
+- **The generic reader reads its files one after the other.** (protobuf,
+  sample host, 2026-11-27, measured for the parallel build, T-0088)
+  `read()` of protobuf's 1363 C/C++ files: 6.26 s serial, 1.92 s over 4
+  processes, 1.60 s over 8 (x3.9, the results equal to the serial run's); the linking
+  stays serial. T-0088 runs one process per reader, Django having nothing
+  to gain from this split; to take it when a host's build is dominated by
+  one generic language.
 - **On a large repository, a stale query still waits for the whole
   resolution.** (Django, sample host, 2026-11-25, T-0026) ~68 s per stale
   query on this machine: each Python file's definitions are cached, but the
