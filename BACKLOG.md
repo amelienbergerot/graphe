@@ -20,6 +20,16 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   import resolves (`callers run_reader`: nothing either). T-0096: a
   module's import name, its leading folders without `__init__.py` left out.
 
+- **A dict's `.get(...)` is linked by its name to a nested function `get` of the tests.**
+  (graphe, 2026-11-28, T-0095) `explain assemble` lists `calls` to
+  `tests/test_issues.py: _github.get:67?`: cli.py's `declaration.get(...)`
+  on a dict of graphe.toml, linked by the name alone to the fake `get` the
+  test defines inside `_github`; seen by reading the line. `get` is a
+  common name for the generic reader (GLOSSARY.md); the Python reader
+  linking a call on an untyped receiver to a function nested in another
+  (never a method) would not happen if a nested function were no candidate
+  for `x.get()`, or if `get` were a common name there too.
+
 - **The graph does not say which string values a field takes in the code.**
   (graphe, 2026-11-27, T-0074) Looking for every verdict a reader gives a
   call site (`"ambiguous"`, `"member"`, `"absent"`...), to map each to a
