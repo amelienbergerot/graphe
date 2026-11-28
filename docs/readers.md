@@ -1,6 +1,6 @@
 # The readers
 
-A reader turns a host's files of one language into nodes, links and coverage sites, through `contribute(project)` (docs/contribution.md). Each is registered in `READERS` (`src/graphe/readers.py`) under the name of its `graphe.toml` section, the key of its configuration and of its coverage in `graphe check`, and its suffixes in `SUFFIXES`, derived from its grammars for a generic language. A build runs the readers that have files in processes of their own, one each, when those beside the largest have 250 files or more (T-0088, ADR 0005): a reader's module imports neither networkx nor `graphe.cli`, and its contribution pickles (dictionaries, lists, strings, numbers).
+A reader turns a host's files of one language into nodes, links and coverage sites, through `contribute(project)` (docs/contribution.md). Each is registered in `READERS` (`src/graphe/readers.py`) under the name of its `graphe.toml` section, the key of its configuration and of its coverage in `graphe check`, and its suffixes in `SUFFIXES`, derived from its grammars for a generic language. A build runs the readers that have files in processes of their own, one each, when those beside the largest have 200 files or more (T-0088, T-0093, ADR 0005): a reader's module imports neither networkx nor `graphe.cli`, and its contribution pickles (dictionaries, lists, strings, numbers).
 
 | Section | Reader | Languages | Suffixes |
 |---|---|---|---|

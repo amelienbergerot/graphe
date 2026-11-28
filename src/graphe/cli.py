@@ -97,10 +97,10 @@ CALLABLE = ("function", "method", "abstract")
 SEPARATE = {"ticket": "tickets", "value": "values", "document": "documents"}
 OFF_CODE_WEIGHT = 4
 # The readers run in processes of their own when those beside the largest have this many files: a pool costs about
-# 0.6 s, and libsignal's Rust and Java, 200 files each, lost 0.26 s, 300 each gained 0.4 s (T-0088).
+# 0.2 s, and libsignal's Rust and Java, 150 files each, lost 0.08 s, 200 each gained 0.03 s (T-0093, an idle machine).
 # shortcut: counted in files, not in time, so a reader slow on few files (Godot's engine) is not weighed; to weigh
 # each reader's time per file if a host shows it.
-PARALLEL_FILES = 250
+PARALLEL_FILES = 200
 
 
 def _communities_config() -> tuple[dict[str, str], list[str]]:
