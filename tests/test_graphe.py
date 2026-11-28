@@ -199,6 +199,25 @@ def test_an_import_through_a_leading_folder_without_init_resolves_by_the_path(tm
     assert not [e for e in read.links if e["source"] in ("c", "c_k") and e["target"].startswith("x_a")]
 
 
+def test_a_call_through_an_attribute_does_not_reach_a_nested_function(tmp_path: Path):
+    """T-0099: `x.get()` on an unknown receiver is not linked by its name to a `get` nested in a function, which
+    is no attribute of anything; a bare `get()` in the function that nests it still is, and a method stays one, that
+    of a class nested in a function too."""
+    sources = {"a.py": "def outer():\n    def get():\n        pass\n    get()\n\n\n"
+                       "def factory():\n    class K:\n        def take(self):\n            pass\n    return K\n",
+               "b.py": "class C:\n    def put(self):\n        pass\n\n\n"
+                       "def outer2():\n    def put():\n        pass\n\n\n"
+                       "def use(x):\n    x.get()\n    x.put()\n    x.take()\n"}
+    for rel, text in sources.items():
+        (tmp_path / rel).write_text(text, encoding="utf-8")
+    read = python.Reader([tmp_path / rel for rel in sources], root=tmp_path)
+    assert ("a_outer", "a_outer_get") in _links(read)
+    assert not [e for e in read.links if e["target"] == "a_outer_get" and e["source"] != "a_outer"]
+    assert {("b_use", "b_c_put"), ("b_use", "a_factory_k_take")} <= {(e["source"], e["target"]) for e in read.links}
+    verdicts = {s["expr"]: s["verdict"] for s in read.sites}
+    assert verdicts["x.get"] == "external?" and verdicts["x.put"] == verdicts["x.take"] == "ours?"
+
+
 def test_import_a_dotted_module_then_call_through_it(tmp_path: Path):
     """T-0096: `import pkg.a` binds `pkg`; `pkg.a.f()` goes through the package to its submodule, at the top of a
     file and in a function, and the file imports `pkg.a` as well as `pkg`. A name the package binds itself, by a

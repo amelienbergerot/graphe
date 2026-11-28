@@ -22,6 +22,10 @@ unless the package binds `b` otherwise, its own import of it winning over a fall
 beside it (`_submodule`). A name two modules bear resolves to neither (`shortcut:`).
 T-0100: an import through a leading folder without `__init__.py` resolves by the
 module's path (`import_keys`), when no import name is that name.
+
+T-0099: a function nested in another is no candidate for `x.f()` by the name
+alone, nor for the alert of a call not linked to one of our names; a bare `f()`
+where it is visible still reaches it.
 """
 
 from __future__ import annotations
@@ -215,9 +219,13 @@ class Reader:
                         p.unlink(missing_ok=True)
                     except OSError:  # open by another build (Windows)
                         pass
+        # the candidates of `x.f()` by name: T-0099, a nested function is no attribute of anything
+        # shortcut: a nested function assigned to an attribute (Django's `self.save_m2m = save_m2m`) is left out too;
+        # follow such assignments if a host's `x.f()` misses them.
         self.by_name: dict[str, list[Function]] = defaultdict(list)
         for f in self.functions:
-            self.by_name[f.name].append(f)
+            if f.parent is None:
+                self.by_name[f.name].append(f)
         self.class_names = {c.name for c in self.classes}
         # T-0026: what holds a nested class, a table rather than a scan of every class per class (Django: 1.7 s)
         self._holders: dict[tuple, str] = {}
