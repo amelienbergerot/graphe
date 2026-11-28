@@ -21,6 +21,10 @@ is `graphe.core`); its node keeps its path's name. `import a.b.c` binds `a` and 
 unless the package binds `b` otherwise, its own import of it winning over a fallback
 beside it (`_submodule`). A name two modules bear resolves to neither, an import
 through a leading folder without `__init__.py` to nothing (`shortcut:` each).
+
+T-0099: a function nested in another is no candidate for `x.f()` by the name
+alone, nor for the alert of a call not linked to one of our names; a bare `f()`
+where it is visible still reaches it.
 """
 
 from __future__ import annotations
@@ -205,7 +209,7 @@ class Reader:
                     except OSError:  # open by another build (Windows)
                         pass
         # the candidates of `x.f()` by name: T-0099, a nested function is no attribute of anything
-        # shortcut: one assigned to an attribute (`self.save_m2m = save_m2m`, Django) is, and is lost by its name too;
+        # shortcut: a nested function assigned to an attribute (Django's `self.save_m2m = save_m2m`) is left out too;
         # follow such assignments if a host's `x.f()` misses them.
         self.by_name: dict[str, list[Function]] = defaultdict(list)
         for f in self.functions:

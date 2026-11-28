@@ -325,8 +325,8 @@ Settled by tickets (2026-11-28):
   common name for the generic reader (GLOSSARY.md); the Python reader
   linking a call on an untyped receiver to a function nested in another
   (never a method) would not happen if a nested function were no candidate
-  for `x.get()`, or if `get` were a common name there too. A nested
-  function is no candidate for `x.f()` any more.
+  for `x.get()`, or if `get` were a common name there too. T-0099: a
+  nested function is no candidate for `x.f()` any more.
 
 - **The generic reader reads its files one after the other.** [T-0092] (protobuf,
   sample host, 2026-11-27, measured for the parallel build, T-0088)
