@@ -16,7 +16,10 @@ this file, the Python version, the path, the import name and the content; the
 resolution across modules is redone at each build.
 
 T-0096: a module is imported by its import name (`import_names`: `src/graphe/core.py`
-is `graphe.core`); its node keeps its path's name.
+is `graphe.core`); its node keeps its path's name. `import a.b` binds `a` and imports
+`a.b`; `a.b`, and `from a import b`, is the submodule unless the package binds `b`
+itself (`_submodule`). A name two modules bear resolves to neither, and an import
+through a leading folder without `__init__.py` to nothing (two `shortcut:`).
 """
 
 from __future__ import annotations
@@ -230,8 +233,12 @@ class Reader:
         if isinstance(node, ast.Import):
             entries = {a.asname or a.name.split(".")[0]: ("module", a.name if a.asname else a.name.split(".")[0])
                        for a in node.names}
-            # T-0096: `import a.b` binds `a`, and imports `a.b` too: kept under `a.b`, which no name reads, for its link
-            entries.update({a.name: ("module", a.name) for a in node.names if not a.asname and "." in a.name})
+            # T-0096: `import a.b.c` binds `a`, and imports `a.b` and `a.b.c` too: kept under their dotted names, which
+            # no name reads, for their links
+            for a in node.names:
+                parts = a.name.split(".")
+                if not a.asname:
+                    entries.update({".".join(parts[:i]): ("module", ".".join(parts[:i])) for i in range(2, len(parts) + 1)})
             return entries
         if isinstance(node, ast.ImportFrom):
             base = node.module or ""
@@ -402,6 +409,15 @@ class Reader:
     def _module(self, name: str) -> Module | None:
         return self._by_import.get(name)
 
+    def _submodule(self, package: Module, name: str) -> Module | None:
+        """`package.name` as the submodule (`pkg.a`, `from pkg import a`), unless the package binds `name` itself: a
+        def, a class, a variable, an import of something else than that submodule (`from .x import g as name`)."""
+        sub = self._module(f"{package.import_name}.{name}")
+        if sub is None or name in package.functions or name in package.classes or name in package.variables:
+            return None
+        imp = package.imports.get(name)
+        return sub if imp is None or imp == ("symbol", package.import_name, name) else None
+
     def _from_module(self, m: Module, name: str):
         if name in m.functions:
             return ("function", m.functions[name])
@@ -423,8 +439,7 @@ class Reader:
         if target is None:
             sub = self._module(f"{imp[1]}.{imp[2]}")
             return ("module", sub) if sub else ("external", f"{imp[1]}.{imp[2]}")
-        sub = self._module(f"{imp[1]}.{imp[2]}")
-        if sub is not None and imp[2] not in target.functions and imp[2] not in target.classes:
+        if sub := self._submodule(target, imp[2]):
             return ("module", sub)
         return self._guard(("import", imp), lambda: self._from_module(target, imp[2]))
 
@@ -656,9 +671,7 @@ class Reader:
             return None
         kind = t[0]
         if kind == "module":
-            # T-0096: `pkg.a` after `import pkg.a`, the submodule, unless the package defines `a` (as `_import`)
-            sub = self._module(f"{t[1].import_name}.{name}")
-            if sub is not None and name not in t[1].functions and name not in t[1].classes:
+            if sub := self._submodule(t[1], name):  # T-0096: `pkg.a.f()` after `import pkg.a`
                 return ("module", sub)
             return self._from_module(t[1], name) or ("absent", t[1], name)
         if kind in ("instance", "class"):
@@ -743,8 +756,9 @@ class Reader:
             self._node(m.id, Path(m.rel).name, "file", m.rel, 1, m.name)
             for local, imp in m.imports.items():
                 target = self._module(imp[1])
-                if imp[0] == "symbol" and self._module(f"{imp[1]}.{imp[2]}") is not None:
-                    target = self._module(f"{imp[1]}.{imp[2]}")
+                if imp[0] == "symbol":
+                    target = (self._submodule(target, imp[2]) if target else self._module(f"{imp[1]}.{imp[2]}")) \
+                        or target
                 if target is not None and target is not m:
                     self._link(m.id, target.id, "imports", m.rel, 1, context=local)
                 if imp[0] == "symbol" and target is not None:

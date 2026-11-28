@@ -183,16 +183,22 @@ def test_a_module_resolves_by_its_import_name_and_a_shared_one_by_neither(tmp_pa
 
 def test_import_a_dotted_module_then_call_through_it(tmp_path: Path):
     """T-0096: `import pkg.a` binds `pkg`; `pkg.a.f()` goes through the package to its submodule, at the top of a
-    file and in a function, and the file imports `pkg.a` as well as `pkg`."""
-    sources = {"pkg/__init__.py": "def b():\n    pass\n", "pkg/a.py": "def f():\n    pass\n",
-               "c.py": "import pkg.a\n\n\ndef k():\n    pkg.a.f()\n    pkg.b()\n\n\n"
+    file and in a function, and the file imports `pkg.a` as well as `pkg`. A name the package binds itself, by a
+    def or an import, is its own, though a submodule bears it."""
+    sources = {"pkg/__init__.py": "from .x import g as h\nfrom .y import y\n\n\ndef b():\n    pass\n",
+               "pkg/a.py": "def f():\n    pass\n", "pkg/b.py": "", "pkg/h.py": "", "pkg/x.py": "def g():\n    pass\n",
+               "pkg/y.py": "def y():\n    pass\n", "pkg/sub/__init__.py": "", "pkg/sub/deep.py": "def z():\n    pass\n",
+               "c.py": "import pkg.a\nimport pkg.sub.deep\n\n\n"
+                       "def k():\n    pkg.a.f()\n    pkg.b()\n    pkg.h()\n    pkg.y()\n    pkg.sub.deep.z()\n\n\n"
                        "def m():\n    import pkg.a\n    pkg.a.f()\n"}
     for rel, text in sources.items():
         (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
         (tmp_path / rel).write_text(text, encoding="utf-8")
     read = python.Reader([tmp_path / rel for rel in sources], root=tmp_path)
-    assert {("c_k", "pkg_a_f"), ("c_k", "pkg___init___b"), ("c_m", "pkg_a_f")} <= _links(read)
-    assert {("c", "pkg___init__"), ("c", "pkg_a"), ("c_m", "pkg_a")} <= _links(read, "imports")
+    assert {("c_k", "pkg_a_f"), ("c_k", "pkg___init___b"), ("c_k", "pkg_x_g"), ("c_k", "pkg_y_y"),
+            ("c_k", "pkg_sub_deep_z"), ("c_m", "pkg_a_f")} <= _links(read)
+    assert {("c", "pkg___init__"), ("c", "pkg_a"), ("c", "pkg_sub___init__"), ("c", "pkg_sub_deep"),
+            ("c_m", "pkg_a")} <= _links(read, "imports")
 
 
 def test_an_object_outside_the_repository_does_not_take_our_names(reader):
