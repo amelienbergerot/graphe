@@ -242,13 +242,15 @@ def test_one_languages_files_read_in_several_processes_give_the_same_graph(tmp_p
                             "ok.php": "<?php\nfunction f() { g(); }\n", "broken.php": "<?php\nfunction (\n"})
     script = tmp_path.parent / "split.py"
     graphs = []
-    for split, parallel in (("graphe.generic.SPLIT_BYTES", "graphe.cli.PARALLEL_FILES"), ("0", "graphe.cli.PARALLEL_FILES"),
-                            ("0", "0")):
+    # where a.go is read: the build's process; a worker of the build's; a worker of the Go reader's worker
+    for split, parallel, where in (("graphe.generic.SPLIT_BYTES", "graphe.cli.PARALLEL_FILES", "build"),
+                                   ("0", "graphe.cli.PARALLEL_FILES", "split"), ("0", "0", "nested")):
         # A file, not `-c`: a spawned process runs its top level again, so the wrapped `read` is there too.
         script.write_text(
             "import os, sys, graphe.cli, graphe.generic\n"
             "def read(language, file, source, read=graphe.generic.read):\n"
-            "    print(f'read {file} in {os.getpid()}', file=sys.stderr)\n    return read(language, file, source)\n"
+            "    print(f'read {file} in {os.getpid()} of {os.getppid()}', file=sys.stderr)\n"
+            "    return read(language, file, source)\n"
             f"graphe.generic.read = read\ngraphe.generic.SPLIT_BYTES = {split}\ngraphe.cli.PARALLEL_FILES = {parallel}\n"
             "if __name__ == '__main__':\n    print(os.getpid())\n    sys.exit(graphe.cli.main(['build', '--quiet']))\n",
             encoding="utf-8")
@@ -256,8 +258,10 @@ def test_one_languages_files_read_in_several_processes_give_the_same_graph(tmp_p
                            capture_output=True, text=True, encoding="utf-8")
         assert r.returncode == 0, r.stderr
         assert r.stderr.count("broken.php does not parse") == 1, r.stderr
-        readers = {line.rsplit(" ", 1)[1] for line in r.stderr.splitlines() if line.startswith("read a.go")}
-        assert (readers == {r.stdout.strip()}) == (split != "0"), (split, readers, r.stdout)
+        [line] = [line for line in r.stderr.splitlines() if line.startswith("read a.go")]
+        pid, parent, build = line.split()[3], line.split()[5], r.stdout.strip()
+        assert (pid == build, parent == build) == {"build": (True, False), "split": (False, True),
+                                                   "nested": (False, False)}[where], (where, line, build)
         data = json.loads((host / "graphe" / "graphe.json").read_bytes())
         graphs.append({k: v for k, v in data.items() if k not in ("built", "built_s")})
     assert graphs[0] == graphs[1] == graphs[2]

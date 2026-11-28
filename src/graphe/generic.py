@@ -83,15 +83,18 @@ class Use(NamedTuple):
 
 
 DEFINITIONS = ("function", "method", "class", "action", "abstract")
-# T-0092: a language's files are read over processes from this many bytes, as their parse weighs more than their
-# count: started from the build's process, 8 workers cost about 0.55 s; Go broke even between 2.9 and 4.6 MB (800 and
-# 1200 of gitea's files), C/C++ between 4.0 and 9.1 MB (200 and 400 of protobuf's); 8 workers beat 4, 12 and 16 on
-# gitea, tied 4 on protobuf (ADR 0005).
+USES = ("call", "send", "reference")
+# T-0092: a language's files are read over 8 processes from 4 MB, as their parse weighs more than their count. On an
+# idle machine, a host of a language's first k files, the split off then on (medians of five to seven): 8 workers
+# started from the build's process cost about 0.55 s; Go broke even between 2.94 and 4.58 MB (800 and 1200 of gitea's
+# files), C/C++ between 3.98 and 9.14 MB (200 and 400 of protobuf's). 8 workers were the fastest on gitea, 4, 12 and
+# 16 slower, 4 and 8 within the noise on protobuf (ADR 0005).
+# shortcut: one threshold in bytes for every language, though their parse per byte differs (the two windows meet
+# between 3.98 and 4.58 MB only); to weigh each language's time per byte if a host's split loses.
 # shortcut: each language decides alone, so one beside a larger one splits too (protobuf's Java and C#: 0.15 s lost,
 # libsignal's Rust: no gain); to split the largest only if a host loses more.
 SPLIT_BYTES = 4_000_000
 SPLIT_WORKERS = 8
-USES = ("call", "send", "reference")
 
 GO_QUERY = """
 (function_declaration name: (identifier) @name) @function
@@ -673,12 +676,20 @@ def _id(text: str) -> str:
     return re.sub(r"\W", "_", text).lower()
 
 
-def _read_file(language: Language | str, root: Path, rel: str) -> tuple[list[Definition], list[Use], bool] | None:
-    """`read` of a file of the host, None if it does not parse; in a batch's worker, the language by its reader's
-    name (ADR 0005)."""
-    if isinstance(language, str):
-        from graphe.readers import READERS
-        language = READERS[language].args[0]
+def _reader_language(name: str) -> Language | None:
+    """The language of the reader `name` in `READERS`, as a worker finds it: its grammars do not pickle (ADR 0005)."""
+    from graphe.readers import READERS  # here: graphe.readers imports this module
+    reader = READERS.get(name)
+    return reader.args[0] if isinstance(reader, functools.partial) else None
+
+
+def _read_named(name: str, root: Path, rel: str) -> tuple[list[Definition], list[Use], bool] | None:
+    """`_read_file` in a worker, the language sent by its reader's name."""
+    return _read_file(_reader_language(name), root, rel)
+
+
+def _read_file(language: Language, root: Path, rel: str) -> tuple[list[Definition], list[Use], bool] | None:
+    """`read` of a file of the host, None if it does not parse."""
     try:
         return read(language, rel, (root / rel).read_bytes())
     except SyntaxError:
@@ -714,14 +725,12 @@ def contribute(language: Language, project) -> dict:
     methods: dict[tuple[str, str], list[str]] = defaultdict(list)  # (bare class name, bare name) -> method ids
     declared = set()  # the bare names of the classes the host declares, not only extends (std's `HashMap`)
     rels = [path.relative_to(project.root).as_posix() for path in paths]
-    from graphe.readers import READERS  # here: graphe.readers imports this module
-    reader = READERS.get(language.name)
     # T-0092 (ADR 0005): the files read over processes, the linking below on their results in their order, so the graph
-    # is the same. A worker finds the language by its reader's name, as its grammars do not pickle: a language that is
-    # not its reader's (a test's) is read here.
-    if sum(p.stat().st_size for p in paths) >= SPLIT_BYTES and getattr(reader, "args", (None,))[0] is language:
+    # is the same. A worker finds the language by its reader's name (a generic language is named as its reader): a
+    # language that is not its reader's (a test's) is read here.
+    if sum(p.stat().st_size for p in paths) >= SPLIT_BYTES and _reader_language(language.name) is language:
         with ProcessPoolExecutor(min(SPLIT_WORKERS, os.cpu_count() or 1)) as pool:
-            results = list(pool.map(functools.partial(_read_file, language.name, project.root), rels))
+            results = list(pool.map(functools.partial(_read_named, language.name, project.root), rels))
     else:
         results = [_read_file(language, project.root, rel) for rel in rels]
     for rel, result in zip(rels, results, strict=True):
