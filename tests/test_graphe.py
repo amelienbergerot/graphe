@@ -101,7 +101,7 @@ def handle_command(moteur: Moteur, message: dict) -> dict:
 def reader(tmp_path: Path) -> python.Reader:
     (tmp_path / "simulation").mkdir()
     paths = []
-    for name, text in (("moteur", ENGINE_PY), ("flotte", FLEET_PY), ("server", SERVER_PY)):
+    for name, text in (("__init__", ""), ("moteur", ENGINE_PY), ("flotte", FLEET_PY), ("server", SERVER_PY)):
         path = tmp_path / "simulation" / f"{name}.py"
         path.write_bytes(textwrap.dedent(text).encode("utf-8"))
         paths.append(path)
@@ -158,6 +158,68 @@ def test_the_cache_gives_the_same_reading_and_reads_an_edited_file_again(reader,
     edited = read(cache)
     assert edited == read(None)
     assert f"{F}remplir" in {n["id"] for n in edited[0]}
+
+
+def test_a_module_resolves_by_its_import_name_and_a_shared_one_by_neither(tmp_path: Path):
+    """T-0096: in a src/ layout `src/pkg/a.py` is imported as `pkg.a`; two files of one import name, neither."""
+    sources = {"src/pkg/__init__.py": "", "src/pkg/a.py": "def f():\n    pass\n",
+               "src/pkg/b.py": "from pkg import a\nfrom pkg.a import f\nfrom pkg.sub.d import e\n\n\n"
+                               "def g():\n    a.f()\n    f()\n    e()\n",
+               "src/pkg/sub/d.py": "def e():\n    pass\n",  # a folder without __init__.py inside a package
+               "one/apps.py": "def h():\n    pass\n", "two/apps.py": "def h():\n    pass\n",
+               "c.py": "import apps\nfrom apps import h\n\n\ndef k():\n    apps.h()\n    h()\n"}
+    for rel, text in sources.items():
+        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / rel).write_text(text, encoding="utf-8")
+    read = python.Reader([tmp_path / rel for rel in sources], root=tmp_path)
+    calls = [(e["source"], e["target"], e["confidence"]) for e in read.links if e["relation"] == "calls"]
+    assert calls.count(("src_pkg_b_g", "src_pkg_a_f", "EXTRACTED")) == 2
+    assert ("src_pkg_b_g", "src_pkg_sub_d_e", "EXTRACTED") in calls
+    assert not [c for c in calls if c[0] == "c_k"]
+    assert not [e for e in read.links if e["source"] == "c" and e["relation"] == "imports"]
+    assert {n["name"] for n in read.nodes if n["kind"] == "file"} \
+        == {"src.pkg", "src.pkg.a", "src.pkg.b", "src.pkg.sub.d", "one.apps", "two.apps", "c"}  # their path name
+
+
+def test_import_a_dotted_module_then_call_through_it(tmp_path: Path):
+    """T-0096: `import pkg.a` binds `pkg`; `pkg.a.f()` goes through the package to its submodule, at the top of a
+    file and in a function, and the file imports `pkg.a` as well as `pkg`. A name the package binds itself, by a
+    def or an import, is its own, though a submodule bears it."""
+    sources = {"pkg/__init__.py": "from .x import g as h\nfrom .y import y\n\n\ndef b():\n    pass\n",
+               "pkg/a.py": "def f():\n    pass\n", "pkg/b.py": "", "pkg/h.py": "", "pkg/x.py": "def g():\n    pass\n",
+               "pkg/y.py": "def y():\n    pass\n", "pkg/sub/__init__.py": "", "pkg/sub/deep.py": "def z():\n    pass\n",
+               "c.py": "import pkg.a\nimport pkg.sub.deep\n\n\n"
+                       "def k():\n    pkg.a.f()\n    pkg.b()\n    pkg.h()\n    pkg.y()\n    pkg.sub.deep.z()\n\n\n"
+                       "def m():\n    import pkg.a\n    pkg.a.f()\n"}
+    for rel, text in sources.items():
+        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / rel).write_text(text, encoding="utf-8")
+    read = python.Reader([tmp_path / rel for rel in sources], root=tmp_path)
+    assert {("c_k", "pkg_a_f"), ("c_k", "pkg___init___b"), ("c_k", "pkg_x_g"), ("c_k", "pkg_y_y"),
+            ("c_k", "pkg_sub_deep_z"), ("c_m", "pkg_a_f")} <= _links(read)
+    assert {("c", "pkg___init__"), ("c", "pkg_a"), ("c", "pkg_sub___init__"), ("c", "pkg_sub_deep"),
+            ("c_m", "pkg_a")} <= _links(read, "imports")
+
+
+def test_a_package_s_import_of_its_submodule_wins_over_its_fallback_its_variable_does_not(tmp_path: Path):
+    """T-0096: `from . import a` with `a = None` beside it in an except is the submodule; a variable `b` of the
+    package is no submodule `b`; `import pkg.sub.deep as d` imports `pkg.sub` too."""
+    sources = {"pkg/__init__.py": "try:\n    from . import a\nexcept ImportError:\n    a = None\nb = 1\n",
+               "pkg/a.py": "def f():\n    pass\n", "pkg/b.py": "def g():\n    pass\n",
+               "pkg/sub/__init__.py": "", "pkg/sub/deep.py": "",
+               "q/__init__.py": "try:\n    import q.a\nexcept ImportError:\n    a = None\n", "q/a.py": "def f():\n    pass\n",
+               "c.py": "import pkg\nimport pkg.sub.deep as d\nfrom pkg import a\nimport q\n\n\n"
+                       "def k():\n    pkg.a.f()\n    a.f()\n    pkg.b.g()\n    q.a.f()\n"}
+    for rel, text in sources.items():
+        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / rel).write_text(text, encoding="utf-8")
+    read = python.Reader([tmp_path / rel for rel in sources], root=tmp_path)
+    calls = [(e["source"], e["target"], e["confidence"]) for e in read.links if e["relation"] == "calls"]
+    assert calls.count(("c_k", "pkg_a_f", "EXTRACTED")) == 2
+    assert ("c_k", "q_a_f", "EXTRACTED") in calls  # `import q.a` in q, the plain form
+    assert not [c for c in calls if c[1] == "pkg_b_g"]
+    assert {("pkg___init__", "pkg_a"), ("c", "pkg_a"), ("c", "pkg_sub___init__"), ("c", "pkg_sub_deep")} \
+        <= _links(read, "imports")
 
 
 def test_an_object_outside_the_repository_does_not_take_our_names(reader):
@@ -382,6 +444,7 @@ def test_fields_import_aliases_and_tickets(tmp_path: Path):
 
     (tmp_path / "simulation").mkdir()
     (tmp_path / "tickets").mkdir()
+    (tmp_path / "simulation" / "__init__.py").write_bytes(b"")
     (tmp_path / "simulation" / "aides.py").write_bytes(b"PREVISIONNISTE = 'p'\n")
     (tmp_path / "simulation" / "jeu.py").write_bytes(textwrap.dedent('''\
         from dataclasses import dataclass
@@ -423,6 +486,25 @@ def test_fields_import_aliases_and_tickets(tmp_path: Path):
     assert "cites" in g[f"{f}remplir"]["ticket_t_0999"]["relations"]
     assert g.nodes["ticket_t_0999"]["notes"] == "Un essai"
     assert "names" in g["ticket_t_0999"][f"{f}lire"]["relations"]
+
+
+def test_an_import_alias_finds_its_module_by_its_import_name(tmp_path: Path):
+    """T-0096: `from pkg import reglages as r`, then `r.SEUIL`, in a src/ layout: the core reads the constant."""
+    import networkx as nx
+
+    sources = {"src/pkg/__init__.py": "", "src/pkg/reglages.py": "SEUIL = 1\n",
+               "src/pkg/jeu.py": "from pkg import reglages as r  # a comment\n\n\ndef lire():\n    return r.SEUIL\n",
+               "autre/reglages.py": "SEUIL = 2\n"}  # the same constant elsewhere: only the alias tells which
+    for rel, text in sources.items():
+        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / rel).write_text(text, encoding="utf-8")
+    read = python.Reader([tmp_path / rel for rel in sources], root=tmp_path)
+    g = nx.DiGraph()
+    for n in read.nodes:
+        g.add_node(n["id"], **n)
+    _enrich(g, tmp_path)
+    assert g["src_pkg_jeu_lire"]["src_pkg_reglages_seuil"]["confidence"] == "EXTRACTED"
+    assert "autre_reglages_seuil" not in g["src_pkg_jeu_lire"]
 
 
 def test_a_name_defined_once_is_read_from_another_file_after_a_chain(tmp_path: Path):

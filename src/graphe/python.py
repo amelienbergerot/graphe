@@ -12,8 +12,15 @@ unlinked and counts as `ambiguous`.
 contribution (`contribute`).
 
 T-0026: each file's parse and definitions are kept in graphe/cache, keyed by
-this file, the Python version, the path and the content; the resolution
-across modules is redone at each build.
+this file, the Python version, the path, the import name and the content; the
+resolution across modules is redone at each build.
+
+T-0096: a module is imported by its import name (`import_names`: `src/graphe/core.py`
+is `graphe.core`); its node keeps its path's name. `import a.b.c` binds `a` and links
+`a.b` and `a.b.c` (`as d`: not `a`); `a.b`, and `from a import b`, is the submodule
+unless the package binds `b` otherwise, its own import of it winning over a fallback
+beside it (`_submodule`). A name two modules bear resolves to neither, an import
+through a leading folder without `__init__.py` to nothing (`shortcut:` each).
 """
 
 from __future__ import annotations
@@ -80,8 +87,9 @@ class Class:
 @dataclass(eq=False)
 class Module:
     id: str
-    name: str
+    name: str  # the path's name (`src.graphe.core`), that of the node
     rel: str
+    import_name: str  # T-0096: the name it is imported by (`graphe.core`), import_names
     tree: ast.Module
     functions: dict[str, Function] = field(default_factory=dict)
     classes: dict[str, Class] = field(default_factory=dict)
@@ -122,21 +130,42 @@ def _module_name(rel: str) -> str:
     return name.removesuffix(".__init__")
 
 
+def import_names(rels: list[str]) -> dict[str, str]:
+    """T-0096: each file's import name, the name it is imported by: its path without its leading folders that are no
+    package (a package: a folder that holds an `__init__.py` among `rels`). `src/graphe/core.py` is `graphe.core`,
+    `tools/outil.py` is `outil`, `pkg/sub/x.py` `pkg.sub.x` (`sub/` a namespace package inside `pkg`)."""
+    # shortcut: a leading namespace package (PEP 420, `google/protobuf/` without `google/__init__.py`) is left out,
+    # so an import through it (`google.protobuf.x`, Django's `tests.sphinx_tests...`) resolves to nothing; keep such
+    # a folder when a sample host's `callers` suffer.
+    packages = {rel.rpartition("/")[0] for rel in rels if rel.rpartition("/")[2] == "__init__.py"}
+    names = {}
+    for rel in rels:
+        parts = rel.removesuffix(".py").split("/")
+        start = 0
+        while start < len(parts) - 1 and "/".join(parts[:start + 1]) not in packages:
+            start += 1
+        names[rel] = ".".join(parts[start:]).removesuffix(".__init__")
+    return names
+
+
 class Reader:
     """All our modules read, and each call classified."""
 
     def __init__(self, paths: list[Path] | None = None, root: Path = ROOT, cache: Path | None = None) -> None:
         self.root = root
-        self.modules: dict[str, Module] = {}
-        # T-0026: a module's definitions, read from its file alone: module name -> (module, its classes and
+        self.modules: dict[str, Module] = {}  # by path
+        # T-0026: a module's definitions, read from its file alone: path -> (module, its classes and
         # functions in reading order, or None if to read, the cache file)
         read: dict[str, tuple] = {}
         tool = hashlib.sha256(Path(__file__).read_bytes() + sys.version.encode()).digest()
-        for path in paths if paths is not None else files():
+        paths = paths if paths is not None else files()
+        names = import_names([path.relative_to(root).as_posix() for path in paths])
+        for path in paths:
             rel = path.relative_to(root).as_posix()
             content = path.read_bytes()
-            entry = cache / f"{hashlib.sha256(tool + rel.encode() + b'\0' + content).hexdigest()[:32]}.pickle" \
-                if cache else None
+            # the import name in the key: the relative imports are resolved by it, and an `__init__.py` changes it
+            key = tool + rel.encode() + b"\0" + names[rel].encode() + b"\0" + content
+            entry = cache / f"{hashlib.sha256(key).hexdigest()[:32]}.pickle" if cache else None
             if cached := _load(entry):
                 m, classes, functions = cached
             else:
@@ -145,13 +174,19 @@ class Reader:
                 except (SyntaxError, ValueError) as e:  # ValueError: a null byte
                     print(f"graphe: {rel} does not parse, skipped ({e})", file=sys.stderr)
                     continue
-                m, classes, functions = Module(_id(rel.removesuffix(".py")), _module_name(rel), rel, tree), None, None
-            self.modules[m.name] = m
-            read[m.name] = (m, classes, functions, entry)
+                m, classes, functions = Module(_id(rel.removesuffix(".py")), _module_name(rel), rel, names[rel],
+                                               tree), None, None
+            self.modules[rel] = m
+            read[rel] = (m, classes, functions, entry)
+        # shortcut: an import name borne by two modules resolves to neither (none in Django, Grid Zero or graphe);
+        # resolve by the importer's nearest when a host imports such a name.
+        self._by_import: dict[str, Module | None] = {}
+        for rel, name in names.items():  # a file that does not parse bears its name too, as in the core
+            self._by_import[name] = None if name in self._by_import else self.modules.get(rel)
         self.functions: list[Function] = []
         self.classes: list[Class] = []
         for m in self.modules.values():
-            _, classes, functions, entry = read[m.name]
+            _, classes, functions, entry = read[m.rel]
             if classes is None:
                 first_class, first_function = len(self.classes), len(self.functions)
                 self._read_module(m)
@@ -197,12 +232,20 @@ class Reader:
     @staticmethod
     def _import_entries(m: Module, node: ast.stmt) -> dict[str, tuple]:
         if isinstance(node, ast.Import):
-            return {a.asname or a.name.split(".")[0]: ("module", a.name if a.asname else a.name.split(".")[0])
-                    for a in node.names}
+            entries = {a.asname or a.name.split(".")[0]: ("module", a.name if a.asname else a.name.split(".")[0])
+                       for a in node.names}
+            # T-0096: `import a.b.c` (`as d` or not) imports `a.b` and `a.b.c` too: kept under their dotted names,
+            # which no name reads, for their links.
+            # shortcut: `import a.b as c` links `a.b`, not `a`: a key `a` would bind the name `a`, which `as` does not;
+            # to give the links their own list if a host's `imports` suffer.
+            for a in node.names:
+                parts = a.name.split(".")
+                entries.update({".".join(parts[:i]): ("module", ".".join(parts[:i])) for i in range(2, len(parts) + 1)})
+            return entries
         if isinstance(node, ast.ImportFrom):
             base = node.module or ""
             if node.level:
-                package = m.name.split(".") if m.rel.endswith("__init__.py") else m.name.split(".")[:-1]
+                package = m.import_name.split(".") if m.rel.endswith("__init__.py") else m.import_name.split(".")[:-1]
                 package = package[:len(package) - node.level + 1]
                 base = ".".join(package + ([base] if base else []))
             return {a.asname or a.name: ("symbol", base, a.name) for a in node.names}
@@ -366,11 +409,24 @@ class Reader:
     # ---------- the types
 
     def _module(self, name: str) -> Module | None:
-        if name in self.modules:
-            return self.modules[name]
-        # shortcut: the scripts of tools/ import each other without a package, as in the first host; a graphe.toml
-        # key (import roots) if another host arranges its modules otherwise.
-        return self.modules.get(f"tools.{name}")
+        return self._by_import.get(name)
+
+    def _submodule(self, package: Module, name: str) -> Module | None:
+        """T-0096: `package.name` as the submodule (`pkg.a`, `from pkg import a`), unless the package binds `name`
+        itself: a def, a class, a variable, an import of something else than that submodule (`from .x import g as
+        name`). The package's own import of it (`from . import name`, `import pkg.name`) wins over its other bindings,
+        a fallback beside it (`except ImportError: name = None`) for one."""
+        sub = self._module(f"{package.import_name}.{name}")
+        if sub is None:
+            return None
+        own = (("symbol", package.import_name, name), ("module", sub.import_name))
+        # shortcut: the order is not read, so `from . import a` then `a = a.f` still takes `a` for the submodule; to
+        # follow the package's statements in order if a host rebinds a submodule's name so.
+        if package.imports.get(name) in own or package.imports.get(sub.import_name) in own:
+            return sub
+        bound = name in package.imports or name in package.functions or name in package.classes \
+            or name in package.variables
+        return None if bound else sub
 
     def _from_module(self, m: Module, name: str):
         if name in m.functions:
@@ -393,8 +449,7 @@ class Reader:
         if target is None:
             sub = self._module(f"{imp[1]}.{imp[2]}")
             return ("module", sub) if sub else ("external", f"{imp[1]}.{imp[2]}")
-        sub = self._module(f"{imp[1]}.{imp[2]}")
-        if sub is not None and imp[2] not in target.functions and imp[2] not in target.classes:
+        if sub := self._submodule(target, imp[2]):
             return ("module", sub)
         return self._guard(("import", imp), lambda: self._from_module(target, imp[2]))
 
@@ -626,6 +681,8 @@ class Reader:
             return None
         kind = t[0]
         if kind == "module":
+            if sub := self._submodule(t[1], name):  # T-0096: `pkg.a.f()` after `import pkg.a`
+                return ("module", sub)
             return self._from_module(t[1], name) or ("absent", t[1], name)
         if kind in ("instance", "class"):
             return self._from_class(t[1], name, instance=kind == "instance")
@@ -709,8 +766,9 @@ class Reader:
             self._node(m.id, Path(m.rel).name, "file", m.rel, 1, m.name)
             for local, imp in m.imports.items():
                 target = self._module(imp[1])
-                if imp[0] == "symbol" and self._module(f"{imp[1]}.{imp[2]}") is not None:
-                    target = self._module(f"{imp[1]}.{imp[2]}")
+                if imp[0] == "symbol":  # `from pkg import a`: the submodule `pkg.a`, or the package
+                    sub = self._submodule(target, imp[2]) if target else self._module(f"{imp[1]}.{imp[2]}")
+                    target = sub or target
                 if target is not None and target is not m:
                     self._link(m.id, target.id, "imports", m.rel, 1, context=local)
                 if imp[0] == "symbol" and target is not None:

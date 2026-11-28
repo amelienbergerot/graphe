@@ -422,7 +422,8 @@ GRID_ZERO_EXTENSION = '[[extensions]]\npath = "tools/graphe_grid_zero.py"\nwith_
 def test_the_grid_zero_extension_links_the_commands_and_reports_an_unknown_order(tmp_path: Path):
     from test_graphe import ENGINE_PY, FLEET_PY, SERVER_PY
     host = _host(tmp_path, {
-        "simulation/moteur.py": ENGINE_PY, "simulation/flotte.py": FLEET_PY, "simulation/server.py": SERVER_PY,
+        "simulation/__init__.py": "", "simulation/moteur.py": ENGINE_PY, "simulation/flotte.py": FLEET_PY,
+        "simulation/server.py": SERVER_PY,
         "godot/client.gd": CLIENT, "graphe.toml": GRID_ZERO_EXTENSION,
         "tools/graphe_grid_zero.py": (GRID_ZERO / "tools" / "graphe_grid_zero.py").read_text(encoding="utf-8"),
     }, tracked="simulation")
