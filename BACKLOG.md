@@ -15,9 +15,10 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   caller: `callers tickets` said nothing calls it, and so did `callers
   enrich` (cli.py's `core.enrich(...)`) and `callers listing` but for one
   call from root.py itself (cli.py's `graphe_root.listing()`); found by
-  reading core.py and cli.py. Resolving `from graphe import core` (and `as
-  graphe_root`) to the module's file, as `import a.b as c` already is for
-  constants (`_python_aliases`), would link those calls.
+  reading core.py and cli.py. The cause is wider: the reader names a module
+  by its path (`src.graphe.core`), so in a `src/` layout no `graphe.*`
+  import resolves (`callers run_reader`: nothing either). T-0096: a
+  module's import name, its leading folders without `__init__.py` left out.
 
 - **The graph does not say which string values a field takes in the code.**
   (graphe, 2026-11-27, T-0074) Looking for every verdict a reader gives a
