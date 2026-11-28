@@ -1,6 +1,6 @@
 # The readers in processes of their own, not threads
 
-A build runs the readers that have files at once, one process each (`concurrent.futures.ProcessPoolExecutor`, the standard library), when the readers beside the largest have 200 files or more (250 until T-0093); otherwise, and for the readers without files, in the build's process, as before (T-0088). Their contributions are taken in the order of `READERS`, so the graph is the same, and the first error in that order stops the build with its own message. The local extensions, the core and the communities stay in the build's process, one after the other.
+A build runs the readers that have files at once, one process each (`concurrent.futures.ProcessPoolExecutor`, the standard library), when the readers beside the largest have 200 files or more (250 until T-0093); otherwise, and for the readers without files, in the build's process, as before (T-0088). Their contributions are taken in the order of `READERS`, so the graph is the same, and the first error in that order stops the build with its own message. The local extensions, the core and the communities stay in the build's process, one after the other. A generic language's files may in turn be read over processes of its own (T-0092, below).
 
 Processes, because threads gain nothing: py-tree-sitter 0.26.1 holds the GIL while it parses and while a `QueryCursor` matches (4 to 8 threads: x0.85 to x1.02, measured 2026-11-27), and the Python reader's walk of the `ast` is Python.
 
@@ -11,10 +11,20 @@ Two rules follow, for any reader of this repository:
 
 The threshold is a `shortcut:` in `cli.py`, counted in files, measured on an idle machine on hosts of libsignal's first k Rust and k Java files (T-0093, medians of alternated runs, seven from 150 to 250, three otherwise): 100 each lost 0.13 s, 150 each 0.08 s, 200 each gained 0.03 s, 250 each 0.01 s, 300 each 0.05 s, 344 each (all its Java) 0.09 s. From 200 to 250 the gain is within the noise, so the threshold anywhere there costs or gains a few hundredths of a second; 200 is the smallest that won. The gain stays small on such hosts: it is the time of the reader beside the largest, less the pool's cost. On whole hosts it is larger: libsignal 7.43 -> 4.80 s, protobuf 22.40 -> 15.10 s, the pool forced off then on. A reader that is slow on few files (Godot's engine) is not weighed.
 
+## One generic language's files over processes (T-0092)
+
+The largest reader is the readers' critical path (gitea's Go, protobuf's C/C++), so a generic language whose files weigh `SPLIT_BYTES` (4 MB) or more reads them over a pool of its own, 8 workers (`generic.contribute`): each file's `read`, its `(definitions, uses, generated)` returned by value (named tuples of strings and numbers), in the files' order (`pool.map`), and the linking, which needs every file's definitions, stays in the reader's process on those results, so the graph is the same. A worker finds the language by its reader's name in `READERS`, as a `tree_sitter.Language` does not pickle; a language that is not its reader's (a test's) is read in the reader's process. A file that does not parse comes back as `None` and is named once, by the reader's process.
+
+A pool of its own, started from the reader's worker when T-0088's pool runs, rather than T-0088's pool taking the batches: a worker starts a pool (measured 2026-11-28: 4 workers 0.19 s, 8 workers 0.23 s, 16 workers 0.33 s, inside a pool's worker), and the other way would split `contribute` in two for `assemble` and start a pool where T-0088 does not (a host of one language), for at most that cost. Measured on an idle machine (0 to 19% load), medians of three alternated builds, the code before against this one: gitea 9.62 -> 7.16 s, protobuf 15.47 -> 12.93 s, libsignal 5.24 -> 5.26 s; `graphe.json` identical. The workers: 8 beat 4, 12 and 16 on gitea (7.33, 7.05, 7.16, 7.46 s), 4 and 8 tie on protobuf (12.61, 12.72 s), 16 and 24 lose there (13.15, 13.63 s); how the files are cut in batches (`chunksize` 1, 16, 64) changed nothing.
+
+The threshold is counted in bytes, as a file's parse weighs more than its count: on a host of the first k files of one language, the pool off then on (medians of seven runs up to 400 Go files, five otherwise), 8 workers started from the build's process cost about 0.55 s; Go lost on 800 files, 2.9 MB (2.02 -> 2.11 s), and gained on 1200, 4.6 MB (2.95 -> 2.73 s), C/C++ lost on 200 files, 4.0 MB (1.98 -> 2.07 s), and gained on 400, 9.1 MB (3.34 -> 2.54 s). Each language decides alone, so a language beside a larger one splits too: protobuf's Java (14.5 MB) and C# (8.1 MB) cost 0.15 s against C/C++ alone (12.78 s), libsignal's Rust (7.8 MB) gains nothing, its reader not the critical path. Both are `shortcut:` in `generic.py`.
+
+## Errors
+
 A reader that raises in a worker stops the build once the readers still running have finished: the build waits for them, where a serial build stopped at the first error. The order of their lines on stderr is no longer guaranteed.
 
 ## Options set aside
 
 - Threads: the GIL, measured above.
-- A process per file, or per batch of a reader's files: a reader links its files together (a registry of names, the imports), so its files would have to be read apart and linked after, a change of every reader for a gain the largest reader bounds anyway.
+- A process per file, or per batch of a reader's files, for every reader: a reader links its files together (a registry of names, the imports), so its files would have to be read apart and linked after. The generic reader alone does it (T-0092): its reading and its linking were already apart, and it holds the largest readers of the sample hosts but Django.
 - A setting to turn it off: the graph is the same either way, and a small host stays serial by the threshold.
