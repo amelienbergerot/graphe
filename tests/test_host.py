@@ -245,23 +245,29 @@ def test_one_languages_files_read_in_several_processes_give_the_same_graph(tmp_p
     # where a.go is read: the build's process; a worker of the build's; a worker of the Go reader's worker
     for split, parallel, where in (("graphe.generic.SPLIT_BYTES", "graphe.cli.PARALLEL_FILES", "build"),
                                    ("0", "graphe.cli.PARALLEL_FILES", "split"), ("0", "0", "nested")):
-        # A file, not `-c`: a spawned process runs its top level again, so the wrapped `read` is there too.
+        # A file, not `-c`: a spawned process runs its top level again, so the wrapped `read` and pool are there too.
+        # The pool's maker, not a worker's parent: under forkserver (Linux, Python 3.14) that is the server.
         script.write_text(
             "import os, sys, graphe.cli, graphe.generic\n"
             "def read(language, file, source, read=graphe.generic.read):\n"
-            "    print(f'read {file} in {os.getpid()} of {os.getppid()}', file=sys.stderr)\n"
-            "    return read(language, file, source)\n"
-            f"graphe.generic.read = read\ngraphe.generic.SPLIT_BYTES = {split}\ngraphe.cli.PARALLEL_FILES = {parallel}\n"
+            "    print(f'read {file} in {os.getpid()}', file=sys.stderr)\n    return read(language, file, source)\n"
+            "class Pool(graphe.generic.ProcessPoolExecutor):\n"
+            "    def __init__(self, *arguments):\n"
+            "        print(f'pool in {os.getpid()}', file=sys.stderr)\n        super().__init__(*arguments)\n"
+            "graphe.generic.read, graphe.generic.ProcessPoolExecutor = read, Pool\n"
+            f"graphe.generic.SPLIT_BYTES = {split}\ngraphe.cli.PARALLEL_FILES = {parallel}\n"
             "if __name__ == '__main__':\n    print(os.getpid())\n    sys.exit(graphe.cli.main(['build', '--quiet']))\n",
             encoding="utf-8")
         r = subprocess.run([sys.executable, str(script)], cwd=host, env={**os.environ, "GRAPHE_ROOT": str(host)},
                            capture_output=True, text=True, encoding="utf-8")
         assert r.returncode == 0, r.stderr
         assert r.stderr.count("broken.php does not parse") == 1, r.stderr
-        [line] = [line for line in r.stderr.splitlines() if line.startswith("read a.go")]
-        pid, parent, build = line.split()[3], line.split()[5], r.stdout.strip()
-        assert (pid == build, parent == build) == {"build": (True, False), "split": (False, True),
-                                                   "nested": (False, False)}[where], (where, line, build)
+        build = r.stdout.strip()
+        [reader] = [line.split()[-1] for line in r.stderr.splitlines() if line.startswith("read a.go")]
+        pools = {line.split()[-1] for line in r.stderr.splitlines() if line.startswith("pool in")}
+        assert {"build": not pools and reader == build,
+                "split": pools == {build} and reader != build,
+                "nested": pools and build not in pools and reader not in pools | {build}}[where], (where, r.stderr, build)
         data = json.loads((host / "graphe" / "graphe.json").read_bytes())
         graphs.append({k: v for k, v in data.items() if k not in ("built", "built_s")})
     assert graphs[0] == graphs[1] == graphs[2]
