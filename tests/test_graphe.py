@@ -181,6 +181,20 @@ def test_a_module_resolves_by_its_import_name_and_a_shared_one_by_neither(tmp_pa
         == {"src.pkg", "src.pkg.a", "src.pkg.b", "src.pkg.sub.d", "one.apps", "two.apps", "c"}  # their path name
 
 
+def test_import_a_dotted_module_then_call_through_it(tmp_path: Path):
+    """T-0096: `import pkg.a` binds `pkg`; `pkg.a.f()` goes through the package to its submodule, at the top of a
+    file and in a function, and the file imports `pkg.a` as well as `pkg`."""
+    sources = {"pkg/__init__.py": "def b():\n    pass\n", "pkg/a.py": "def f():\n    pass\n",
+               "c.py": "import pkg.a\n\n\ndef k():\n    pkg.a.f()\n    pkg.b()\n\n\n"
+                       "def m():\n    import pkg.a\n    pkg.a.f()\n"}
+    for rel, text in sources.items():
+        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / rel).write_text(text, encoding="utf-8")
+    read = python.Reader([tmp_path / rel for rel in sources], root=tmp_path)
+    assert {("c_k", "pkg_a_f"), ("c_k", "pkg___init___b"), ("c_m", "pkg_a_f")} <= _links(read)
+    assert {("c", "pkg___init__"), ("c", "pkg_a"), ("c_m", "pkg_a")} <= _links(read, "imports")
+
+
 def test_an_object_outside_the_repository_does_not_take_our_names(reader):
     """m.start() on a re.Match: a name that Flotte.start bears, on a
     receiver that comes from elsewhere - no link, not even by the name."""

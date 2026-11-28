@@ -228,8 +228,11 @@ class Reader:
     @staticmethod
     def _import_entries(m: Module, node: ast.stmt) -> dict[str, tuple]:
         if isinstance(node, ast.Import):
-            return {a.asname or a.name.split(".")[0]: ("module", a.name if a.asname else a.name.split(".")[0])
-                    for a in node.names}
+            entries = {a.asname or a.name.split(".")[0]: ("module", a.name if a.asname else a.name.split(".")[0])
+                       for a in node.names}
+            # T-0096: `import a.b` binds `a`, and imports `a.b` too: kept under `a.b`, which no name reads, for its link
+            entries.update({a.name: ("module", a.name) for a in node.names if not a.asname and "." in a.name})
+            return entries
         if isinstance(node, ast.ImportFrom):
             base = node.module or ""
             if node.level:
@@ -653,6 +656,10 @@ class Reader:
             return None
         kind = t[0]
         if kind == "module":
+            # T-0096: `pkg.a` after `import pkg.a`, the submodule, unless the package defines `a` (as `_import`)
+            sub = self._module(f"{t[1].import_name}.{name}")
+            if sub is not None and name not in t[1].functions and name not in t[1].classes:
+                return ("module", sub)
             return self._from_module(t[1], name) or ("absent", t[1], name)
         if kind in ("instance", "class"):
             return self._from_class(t[1], name, instance=kind == "instance")
