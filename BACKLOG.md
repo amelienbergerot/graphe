@@ -10,6 +10,16 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
 
 ## Open
 
+- **A Python import through a leading folder without `__init__.py` resolves to nothing.**
+  (Django, sample host, 2026-11-28, T-0096) Comparing Django's links before
+  and after the import names: `tests/sphinx_tests/testdata/package/module.py`
+  lost its import of `wildcard_module`, found by diffing the two
+  `graphe.json` and reading the file. It imports
+  `tests.sphinx_tests.testdata.package.wildcard_module`, through `tests/`,
+  which has no `__init__.py` (a namespace package, PEP 420), so the import
+  name `sphinx_tests...` does not match. Keeping a leading folder as a
+  second key when an import names it would link it; one link in Django.
+
 - **A dict's `.get(...)` is linked by its name to a nested function `get` of the tests.**
   (graphe, 2026-11-28, T-0095) `explain assemble` lists `calls` to
   `tests/test_issues.py: _github.get:67?`: cli.py's `declaration.get(...)`
@@ -334,8 +344,8 @@ Settled by tickets (2026-11-28):
   reading core.py and cli.py. The cause is wider: the reader names a module
   by its path (`src.graphe.core`), so in a `src/` layout no `graphe.*`
   import resolves (`callers run_reader`: nothing either).
-  T-0096: a module resolves by its import name, the folders above its chain
-  of packages left out (`graphe.core`); `callers run_reader`, `enrich` and
+  T-0096: a module resolves by its import name, its leading folders that are
+  no package left out (`graphe.core`); `callers run_reader`, `enrich` and
   `tickets` name `assemble`, `assemble` and `_link_documents`.
 
 Settled by tickets (2026-11-27):

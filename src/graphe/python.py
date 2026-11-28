@@ -127,18 +127,19 @@ def _module_name(rel: str) -> str:
 
 
 def import_names(rels: list[str]) -> dict[str, str]:
-    """T-0096: each file's import name, the name it is imported by: its path without the folders above its chain of
-    packages (a package: a folder that holds an `__init__.py` among `rels`). `src/graphe/core.py` is `graphe.core`,
-    `tools/outil.py` is `outil`."""
-    # shortcut: a namespace package (PEP 420, `google/protobuf/` without `google/__init__.py`) ends the chain, so
-    # its modules lose their head (`protobuf.x`); follow such folders when a sample host imports through one.
+    """T-0096: each file's import name, the name it is imported by: its path without its leading folders that are no
+    package (a package: a folder that holds an `__init__.py` among `rels`). `src/graphe/core.py` is `graphe.core`,
+    `tools/outil.py` is `outil`, `pkg/sub/x.py` `pkg.sub.x` (`sub/` a namespace package inside `pkg`)."""
+    # shortcut: a leading namespace package (PEP 420, `google/protobuf/` without `google/__init__.py`) is left out,
+    # so an import through it (`google.protobuf.x`, Django's `tests.sphinx_tests...`) resolves to nothing; keep such
+    # a folder when a sample host's `callers` suffer.
     packages = {rel.rpartition("/")[0] for rel in rels if rel.rpartition("/")[2] == "__init__.py"}
     names = {}
     for rel in rels:
         parts = rel.removesuffix(".py").split("/")
-        start = len(parts) - 1
-        while start > 0 and "/".join(parts[:start]) in packages:
-            start -= 1
+        start = 0
+        while start < len(parts) - 1 and "/".join(parts[:start + 1]) not in packages:
+            start += 1
         names[rel] = ".".join(parts[start:]).removesuffix(".__init__")
     return names
 
@@ -173,8 +174,8 @@ class Reader:
                                                tree), None, None
             self.modules[rel] = m
             read[rel] = (m, classes, functions, entry)
-        # shortcut: an import name borne by two modules resolves to neither (Django's `apps`, two fixtures); resolve
-        # by the importer's nearest when a host imports such a name.
+        # shortcut: an import name borne by two modules resolves to neither (none in Django, Grid Zero or graphe);
+        # resolve by the importer's nearest when a host imports such a name.
         self._by_import: dict[str, Module | None] = {}
         for rel, name in names.items():  # a file that does not parse bears its name too, as in the core
             self._by_import[name] = None if name in self._by_import else self.modules.get(rel)

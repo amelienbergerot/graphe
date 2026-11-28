@@ -163,7 +163,9 @@ def test_the_cache_gives_the_same_reading_and_reads_an_edited_file_again(reader,
 def test_a_module_resolves_by_its_import_name_and_a_shared_one_by_neither(tmp_path: Path):
     """T-0096: in a src/ layout `src/pkg/a.py` is imported as `pkg.a`; two files of one import name, neither."""
     sources = {"src/pkg/__init__.py": "", "src/pkg/a.py": "def f():\n    pass\n",
-               "src/pkg/b.py": "from pkg import a\nfrom pkg.a import f\n\n\ndef g():\n    a.f()\n    f()\n",
+               "src/pkg/b.py": "from pkg import a\nfrom pkg.a import f\nfrom pkg.sub.d import e\n\n\n"
+                               "def g():\n    a.f()\n    f()\n    e()\n",
+               "src/pkg/sub/d.py": "def e():\n    pass\n",  # a folder without __init__.py inside a package
                "one/apps.py": "def h():\n    pass\n", "two/apps.py": "def h():\n    pass\n",
                "c.py": "import apps\nfrom apps import h\n\n\ndef k():\n    apps.h()\n    h()\n"}
     for rel, text in sources.items():
@@ -172,10 +174,11 @@ def test_a_module_resolves_by_its_import_name_and_a_shared_one_by_neither(tmp_pa
     read = python.Reader([tmp_path / rel for rel in sources], root=tmp_path)
     calls = [(e["source"], e["target"], e["confidence"]) for e in read.links if e["relation"] == "calls"]
     assert calls.count(("src_pkg_b_g", "src_pkg_a_f", "EXTRACTED")) == 2
+    assert ("src_pkg_b_g", "src_pkg_sub_d_e", "EXTRACTED") in calls
     assert not [c for c in calls if c[0] == "c_k"]
     assert not [e for e in read.links if e["source"] == "c" and e["relation"] == "imports"]
     assert {n["name"] for n in read.nodes if n["kind"] == "file"} \
-        == {"src.pkg", "src.pkg.a", "src.pkg.b", "one.apps", "two.apps", "c"}  # the nodes keep their path name
+        == {"src.pkg", "src.pkg.a", "src.pkg.b", "src.pkg.sub.d", "one.apps", "two.apps", "c"}  # their path name
 
 
 def test_an_object_outside_the_repository_does_not_take_our_names(reader):
