@@ -16,10 +16,11 @@ this file, the Python version, the path, the import name and the content; the
 resolution across modules is redone at each build.
 
 T-0096: a module is imported by its import name (`import_names`: `src/graphe/core.py`
-is `graphe.core`); its node keeps its path's name. `import a.b` binds `a` and imports
-`a.b`; `a.b`, and `from a import b`, is the submodule unless the package binds `b`
-itself (`_submodule`). A name two modules bear resolves to neither, and an import
-through a leading folder without `__init__.py` to nothing (two `shortcut:`).
+is `graphe.core`); its node keeps its path's name. `import a.b.c` binds `a` and links
+`a.b` and `a.b.c` (`as d`: not `a`); `a.b`, and `from a import b`, is the submodule
+unless the package binds `b` otherwise, its own import of it winning over a fallback
+beside it (`_submodule`). A name two modules bear resolves to neither, an import
+through a leading folder without `__init__.py` to nothing (`shortcut:` each).
 """
 
 from __future__ import annotations
@@ -235,8 +236,8 @@ class Reader:
                        for a in node.names}
             # T-0096: `import a.b.c` (`as d` or not) imports `a.b` and `a.b.c` too: kept under their dotted names,
             # which no name reads, for their links.
-            # shortcut: `import a.b as c` does not link `a`, which only a key that names could hold; to give the
-            # links their own list if a host's `imports` suffer.
+            # shortcut: `import a.b as c` links `a.b`, not `a`: a key `a` would bind the name `a`, which `as` does not;
+            # to give the links their own list if a host's `imports` suffer.
             for a in node.names:
                 parts = a.name.split(".")
                 entries.update({".".join(parts[:i]): ("module", ".".join(parts[:i])) for i in range(2, len(parts) + 1)})
@@ -413,12 +414,18 @@ class Reader:
     def _submodule(self, package: Module, name: str) -> Module | None:
         """T-0096: `package.name` as the submodule (`pkg.a`, `from pkg import a`), unless the package binds `name`
         itself: a def, a class, a variable, an import of something else than that submodule (`from .x import g as
-        name`). The package's own import of it wins, a fallback beside it (`except ImportError: name = None`) or not."""
+        name`). The package's own import of it (`from . import name`, `import pkg.name`) wins over its other bindings,
+        a fallback beside it (`except ImportError: name = None`) for one."""
         sub = self._module(f"{package.import_name}.{name}")
-        imp = package.imports.get(name)
-        if sub is None or imp in (("symbol", package.import_name, name), ("module", sub.import_name)):
+        if sub is None:
+            return None
+        own = (("symbol", package.import_name, name), ("module", sub.import_name))
+        # shortcut: the order is not read, so `from . import a` then `a = a.f` still takes `a` for the submodule; to
+        # follow the package's statements in order if a host rebinds a submodule's name so.
+        if package.imports.get(name) in own or package.imports.get(sub.import_name) in own:
             return sub
-        bound = imp is not None or name in package.functions or name in package.classes or name in package.variables
+        bound = name in package.imports or name in package.functions or name in package.classes \
+            or name in package.variables
         return None if bound else sub
 
     def _from_module(self, m: Module, name: str):
