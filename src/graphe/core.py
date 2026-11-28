@@ -300,7 +300,7 @@ def enrich(graph: nx.DiGraph, root: Path, listed: set[str] | None = None) -> Non
         if unique else None
     write = r"\s*(?:[-+*/]?=(?!=)|\.(?:append|extend|clear|pop|update|insert|remove|add|discard|erase)\()"
     uses: dict[str, list[tuple[str, str, str]]] = defaultdict(list)
-    # T-0096: by import name, None when two files bear it; named from the files the reader reads, those that do not
+    # T-0096: by import name, T-0100: then by path, None when two files bear it; named from the files the reader reads, those that do not
     # parse included, so that both name a module alike
     py_files = [p.relative_to(root).as_posix() for p in graphe_root.files(".py", root, listed)]
     py_modules = python.import_keys(python.import_names(py_files))

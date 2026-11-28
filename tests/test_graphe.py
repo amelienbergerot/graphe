@@ -167,7 +167,8 @@ def test_a_module_resolves_by_its_import_name_and_a_shared_one_by_neither(tmp_pa
                                "def g():\n    a.f()\n    f()\n    e()\n",
                "src/pkg/sub/d.py": "def e():\n    pass\n",  # a folder without __init__.py inside a package
                "one/apps.py": "def h():\n    pass\n", "two/apps.py": "def h():\n    pass\n",
-               "c.py": "import apps\nfrom apps import h\n\n\ndef k():\n    apps.h()\n    h()\n"}
+               "c.py": "import apps\nfrom apps import h\n\n\ndef k():\n    apps.h()\n    h()\n",
+               "d.py": "import one.apps\n"}  # T-0100: the shared name stays none, its path is one file's
     for rel, text in sources.items():
         (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
         (tmp_path / rel).write_text(text, encoding="utf-8")
@@ -177,8 +178,9 @@ def test_a_module_resolves_by_its_import_name_and_a_shared_one_by_neither(tmp_pa
     assert ("src_pkg_b_g", "src_pkg_sub_d_e", "EXTRACTED") in calls
     assert not [c for c in calls if c[0] == "c_k"]
     assert not [e for e in read.links if e["source"] == "c" and e["relation"] == "imports"]
+    assert ("d", "one_apps") in _links(read, "imports")
     assert {n["name"] for n in read.nodes if n["kind"] == "file"} \
-        == {"src.pkg", "src.pkg.a", "src.pkg.b", "src.pkg.sub.d", "one.apps", "two.apps", "c"}  # their path name
+        == {"src.pkg", "src.pkg.a", "src.pkg.b", "src.pkg.sub.d", "one.apps", "two.apps", "c", "d"}  # their path name
 
 
 def test_an_import_through_a_leading_folder_without_init_resolves_by_the_path(tmp_path: Path):
