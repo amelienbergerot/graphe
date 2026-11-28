@@ -201,6 +201,25 @@ def test_import_a_dotted_module_then_call_through_it(tmp_path: Path):
             ("c_m", "pkg_a")} <= _links(read, "imports")
 
 
+def test_a_package_s_import_of_its_submodule_wins_over_its_fallback_its_variable_does_not(tmp_path: Path):
+    """T-0096: `from . import a` with `a = None` beside it in an except is the submodule; a variable `b` of the
+    package is no submodule `b`; `import pkg.sub.deep as d` imports `pkg.sub` too."""
+    sources = {"pkg/__init__.py": "try:\n    from . import a\nexcept ImportError:\n    a = None\nb = 1\n",
+               "pkg/a.py": "def f():\n    pass\n", "pkg/b.py": "def g():\n    pass\n",
+               "pkg/sub/__init__.py": "", "pkg/sub/deep.py": "",
+               "c.py": "import pkg\nimport pkg.sub.deep as d\nfrom pkg import a\n\n\n"
+                       "def k():\n    pkg.a.f()\n    a.f()\n    pkg.b.g()\n"}
+    for rel, text in sources.items():
+        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / rel).write_text(text, encoding="utf-8")
+    read = python.Reader([tmp_path / rel for rel in sources], root=tmp_path)
+    calls = [(e["source"], e["target"], e["confidence"]) for e in read.links if e["relation"] == "calls"]
+    assert calls.count(("c_k", "pkg_a_f", "EXTRACTED")) == 2
+    assert not [c for c in calls if c[1] == "pkg_b_g"]
+    assert {("pkg___init__", "pkg_a"), ("c", "pkg_a"), ("c", "pkg_sub___init__"), ("c", "pkg_sub_deep")} \
+        <= _links(read, "imports")
+
+
 def test_an_object_outside_the_repository_does_not_take_our_names(reader):
     """m.start() on a re.Match: a name that Flotte.start bears, on a
     receiver that comes from elsewhere - no link, not even by the name."""

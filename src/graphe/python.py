@@ -233,12 +233,13 @@ class Reader:
         if isinstance(node, ast.Import):
             entries = {a.asname or a.name.split(".")[0]: ("module", a.name if a.asname else a.name.split(".")[0])
                        for a in node.names}
-            # T-0096: `import a.b.c` binds `a`, and imports `a.b` and `a.b.c` too: kept under their dotted names, which
-            # no name reads, for their links
+            # T-0096: `import a.b.c` (`as d` or not) imports `a.b` and `a.b.c` too: kept under their dotted names,
+            # which no name reads, for their links.
+            # shortcut: `import a.b as c` does not link `a`, which only a key that names could hold; to give the
+            # links their own list if a host's `imports` suffer.
             for a in node.names:
                 parts = a.name.split(".")
-                if not a.asname:
-                    entries.update({".".join(parts[:i]): ("module", ".".join(parts[:i])) for i in range(2, len(parts) + 1)})
+                entries.update({".".join(parts[:i]): ("module", ".".join(parts[:i])) for i in range(2, len(parts) + 1)})
             return entries
         if isinstance(node, ast.ImportFrom):
             base = node.module or ""
@@ -410,13 +411,15 @@ class Reader:
         return self._by_import.get(name)
 
     def _submodule(self, package: Module, name: str) -> Module | None:
-        """`package.name` as the submodule (`pkg.a`, `from pkg import a`), unless the package binds `name` itself: a
-        def, a class, a variable, an import of something else than that submodule (`from .x import g as name`)."""
+        """T-0096: `package.name` as the submodule (`pkg.a`, `from pkg import a`), unless the package binds `name`
+        itself: a def, a class, a variable, an import of something else than that submodule (`from .x import g as
+        name`). The package's own import of it wins, a fallback beside it (`except ImportError: name = None`) or not."""
         sub = self._module(f"{package.import_name}.{name}")
-        if sub is None or name in package.functions or name in package.classes or name in package.variables:
-            return None
         imp = package.imports.get(name)
-        return sub if imp is None or imp == ("symbol", package.import_name, name) else None
+        if sub is None or imp in (("symbol", package.import_name, name), ("module", sub.import_name)):
+            return sub
+        bound = imp is not None or name in package.functions or name in package.classes or name in package.variables
+        return None if bound else sub
 
     def _from_module(self, m: Module, name: str):
         if name in m.functions:
@@ -756,9 +759,9 @@ class Reader:
             self._node(m.id, Path(m.rel).name, "file", m.rel, 1, m.name)
             for local, imp in m.imports.items():
                 target = self._module(imp[1])
-                if imp[0] == "symbol":
-                    target = (self._submodule(target, imp[2]) if target else self._module(f"{imp[1]}.{imp[2]}")) \
-                        or target
+                if imp[0] == "symbol":  # `from pkg import a`: the submodule `pkg.a`, or the package
+                    sub = self._submodule(target, imp[2]) if target else self._module(f"{imp[1]}.{imp[2]}")
+                    target = sub or target
                 if target is not None and target is not m:
                     self._link(m.id, target.id, "imports", m.rel, 1, context=local)
                 if imp[0] == "symbol" and target is not None:
