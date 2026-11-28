@@ -6,6 +6,8 @@ A release that changes `contribute(project)`, `Project`, the shape of the nodes 
 
 ## Unreleased
 
+The Python reader no longer links a call on a receiver of unknown type, `x.f()`, to a function nested in another, which is no attribute of anything; a bare `f()` where it is visible still reaches it. On graphe, `explain assemble` no longer lists the `get` a test nests in `_github` (cli.py's `declaration.get(...)` on a dict). On Django, 9 `calls` by name lost, each to a nested function, and 48 gained, a name left with a single method once its nested namesake is out (`qs.raw()` 37 times to `QuerySet.raw`); Grid Zero unchanged (T-0099).
+
 ## 0.4.0
 
 The generic reader reads a language's files over 8 processes of its own when they weigh 4 MB or more, then links them in its own process on the results in the files' order: the graph is unchanged, and a file that does not parse is still named once. On an idle machine, the code before against this one: gitea 9.62 -> 7.16 s, protobuf 15.47 -> 12.93 s, libsignal 5.24 -> 5.26 s (T-0092, ADR 0005).

@@ -204,9 +204,13 @@ class Reader:
                         p.unlink(missing_ok=True)
                     except OSError:  # open by another build (Windows)
                         pass
+        # the candidates of `x.f()` by name: T-0099, a nested function is no attribute of anything
+        # shortcut: one assigned to an attribute (`self.save_m2m = save_m2m`, Django) is, and is lost by its name too;
+        # follow such assignments if a host's `x.f()` misses them.
         self.by_name: dict[str, list[Function]] = defaultdict(list)
         for f in self.functions:
-            self.by_name[f.name].append(f)
+            if f.parent is None:
+                self.by_name[f.name].append(f)
         self.class_names = {c.name for c in self.classes}
         # T-0026: what holds a nested class, a table rather than a scan of every class per class (Django: 1.7 s)
         self._holders: dict[tuple, str] = {}
