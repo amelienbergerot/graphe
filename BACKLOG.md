@@ -20,6 +20,18 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   name `sphinx_tests...` does not match. Keeping a leading folder as a
   second key when an import names it would link it; one link in Django.
 
+- **A call to an attribute holding an instance of our class is guessed by its name, not sent to its `__call__`.**
+  (Django, sample host, 2026-11-28, T-0099) Checking the 48 `calls` T-0099
+  gained: `tests/auth_tests/test_middleware.py`'s `self.middleware(self.request)`,
+  `self.middleware = AuthenticationMiddleware(...)` in `setUp`, goes by the name
+  alone to `SecurityMiddlewareTest.middleware`, a method of another test
+  (9 links); ambiguous before, a nested `middleware` beside it. Seen by reading
+  the lines. The Python reader types the attribute (`type_of` gives
+  `("instance", AuthenticationMiddleware)`), but `_call` has no branch for an
+  instance and falls to `by_name`: linking it to the class's `__call__`
+  through its bases (`MiddlewareMixin.__call__`), or leaving it unlinked when
+  the class has none, would avoid the guess.
+
 - **The graph does not say which string values a field takes in the code.**
   (graphe, 2026-11-27, T-0074) Looking for every verdict a reader gives a
   call site (`"ambiguous"`, `"member"`, `"absent"`...), to map each to a

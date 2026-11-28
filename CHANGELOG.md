@@ -6,7 +6,7 @@ A release that changes `contribute(project)`, `Project`, the shape of the nodes 
 
 ## Unreleased
 
-The Python reader no longer links a call on a receiver of unknown type, `x.f()`, to a function nested in another, which is no attribute of anything; a bare `f()` where it is visible still reaches it. `graphe check` no longer alerts that a call is "not linked to the name of one of our functions" when only a nested function bears that name. On graphe, `explain assemble` no longer lists the `get` a test nests in `_github` (cli.py's `declaration.get(...)` on a dict). On Django, the nodes and the other relations unchanged, 9 `calls` by name lost, each to a nested function, and 48 gained, a name left with a single method once its nested namesake is out (`qs.raw()` 37 times to `QuerySet.raw`); Grid Zero unchanged (T-0099).
+The Python reader no longer links a call on a receiver of unknown type, `x.f()`, to a function nested in another, which is no attribute of anything; a bare `f()` where it is visible still reaches it. `graphe check` no longer alerts that a call is "not linked to the name of one of our functions" when only a nested function bears that name. On graphe, `explain assemble` no longer lists the `get` a test nests in `_github` (cli.py's `declaration.get(...)` on a dict). On Django, the nodes and the other relations unchanged, 9 `calls` by name lost, each to a nested function, and 48 gained, a name left with a single method once its nested namesake is out: 39 right (`Model.objects.raw()` 37 times to `QuerySet.raw`, which the manager copies), 9 wrong, `self.middleware(...)` in `auth_tests` on an `AuthenticationMiddleware` held by the attribute, guessed by its name to another test's method (BACKLOG.md); Grid Zero unchanged (T-0099).
 
 ## 0.4.0
 
