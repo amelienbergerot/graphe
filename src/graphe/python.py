@@ -12,8 +12,11 @@ unlinked and counts as `ambiguous`.
 contribution (`contribute`).
 
 T-0026: each file's parse and definitions are kept in graphe/cache, keyed by
-this file, the Python version, the path and the content; the resolution
-across modules is redone at each build.
+this file, the Python version, the path, the import name and the content; the
+resolution across modules is redone at each build.
+
+T-0096: a module is imported by its import name (`import_names`: `src/graphe/core.py`
+is `graphe.core`); its node keeps its path's name.
 """
 
 from __future__ import annotations
@@ -173,8 +176,8 @@ class Reader:
         # shortcut: an import name borne by two modules resolves to neither (Django's `apps`, two fixtures); resolve
         # by the importer's nearest when a host imports such a name.
         self._by_import: dict[str, Module | None] = {}
-        for m in self.modules.values():
-            self._by_import[m.import_name] = None if m.import_name in self._by_import else m
+        for rel, name in names.items():  # a file that does not parse bears its name too, as in the core
+            self._by_import[name] = None if name in self._by_import else self.modules.get(rel)
         self.functions: list[Function] = []
         self.classes: list[Class] = []
         for m in self.modules.values():

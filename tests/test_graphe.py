@@ -165,7 +165,7 @@ def test_a_module_resolves_by_its_import_name_and_a_shared_one_by_neither(tmp_pa
     sources = {"src/pkg/__init__.py": "", "src/pkg/a.py": "def f():\n    pass\n",
                "src/pkg/b.py": "from pkg import a\nfrom pkg.a import f\n\n\ndef g():\n    a.f()\n    f()\n",
                "one/apps.py": "def h():\n    pass\n", "two/apps.py": "def h():\n    pass\n",
-               "c.py": "import apps\n\n\ndef k():\n    apps.h()\n"}
+               "c.py": "import apps\nfrom apps import h\n\n\ndef k():\n    apps.h()\n    h()\n"}
     for rel, text in sources.items():
         (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
         (tmp_path / rel).write_text(text, encoding="utf-8")
