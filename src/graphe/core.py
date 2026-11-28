@@ -45,14 +45,14 @@ from pathlib import Path
 
 import networkx as nx
 
-from graphe import godot, issues
+from graphe import godot, issues, python
 from graphe import root as graphe_root  # `root` is the host's path in this module's signatures
 
 # A declaration (`abstract`, T-0081) has no body, but a line, a comment and tickets it cites, as a body.
 BODIES = {"function", "method", "command", "action", "class", "abstract"}
 # An extent and a comment, without being a body that owns its lines.
 EXTENDED = BODIES | {"field"}
-PY_ALIAS = re.compile(r"^\s*(?:from\s+([\w.]+)\s+import\s+(\w+)(?:\s+as\s+(\w+))?|import\s+([\w.]+)\s+as\s+(\w+))\s*$")
+PY_ALIAS = re.compile(r"^\s*(?:from\s+([\w.]+)\s+import\s+(\w+)(?:\s+as\s+(\w+))?|import\s+([\w.]+)\s+as\s+(\w+))\s*(?:#.*)?$")
 PY_QUALIFIED = re.compile(r"\b([a-z_]\w*)\.(\w+)\b")
 # T-0010: a document's default identifier (`[documents] identifier`), that of tickets.
 IDENTIFIER = r"\bT-\d{4}\b"
@@ -300,14 +300,16 @@ def enrich(graph: nx.DiGraph, root: Path, listed: set[str] | None = None) -> Non
         if unique else None
     write = r"\s*(?:[-+*/]?=(?!=)|\.(?:append|extend|clear|pop|update|insert|remove|add|discard|erase)\()"
     uses: dict[str, list[tuple[str, str, str]]] = defaultdict(list)
-    py_files = {rel for rel in file_lines if rel.endswith(".py")}
+    py_modules: dict[str, str | None] = {}  # T-0096: by import name, None when two files bear it
+    for rel, name in python.import_names([rel for rel in file_lines if rel.endswith(".py")]).items():
+        py_modules[name] = None if name in py_modules else rel
     for rel, lines in file_lines.items():
         local = variables.get(rel, {})
         # GDScript: `Script.CONSTANT`, where Script preloads a script (res://: godot/, godot.GODOT).
         alias = {name: godot.res(target) for name, target in PRELOAD.findall("\n".join(lines))} \
             if rel.endswith(".gd") else {}
         # Python: `alias.CONSTANT`, alias a module imported under that name.
-        py_alias = _python_aliases(lines, py_files) if rel.endswith(".py") else {}
+        py_alias = _python_aliases(lines, py_modules) if rel.endswith(".py") else {}
         here = re.compile(r"(?<![\w.])(" + "|".join(sorted(map(re.escape, local), key=len, reverse=True)) + r")\b") \
             if local else None
         for i, n in owners.get(rel, {}).items():
@@ -324,7 +326,7 @@ def enrich(graph: nx.DiGraph, root: Path, listed: set[str] | None = None) -> Non
                     vid = variables.get(alias.get(head, ""), {}).get(name)
                     if vid:
                         _add_link(graph, n, vid, "reads", location, "EXTRACTED")
-            elif elsewhere is not None and "." in line:
+            elif (py_alias or elsewhere is not None) and "." in line:
                 sure = set()
                 for head, name in set(PY_QUALIFIED.findall(line)) if py_alias else ():
                     vid = variables.get(py_alias.get(head, ""), {}).get(name)
@@ -417,8 +419,8 @@ def _link_values(graph: nx.DiGraph, uses: dict[str, list[tuple[str, str, str]]])
             _add_link(graph, n, vid, "value", location, "EXTRACTED")
 
 
-def _python_aliases(lines: list[str], files: set[str]) -> dict[str, str]:
-    """The modules imported under a name: name -> file."""
+def _python_aliases(lines: list[str], modules: dict[str, str | None]) -> dict[str, str]:
+    """The modules imported under a name: name -> file, a module found by its import name (`modules`)."""
     alias = {}
     for line in lines:
         m = PY_ALIAS.match(line)
@@ -428,10 +430,8 @@ def _python_aliases(lines: list[str], files: set[str]) -> dict[str, str]:
             module, name = f"{m.group(1)}.{m.group(2)}", m.group(3) or m.group(2)
         else:
             module, name = m.group(4), m.group(5)
-        path = module.replace(".", "/")
-        for rel in (path + ".py", path + "/__init__.py"):
-            if rel in files:
-                alias[name] = rel
+        if modules.get(module):
+            alias[name] = modules[module]
     return alias
 
 

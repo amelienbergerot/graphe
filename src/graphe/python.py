@@ -80,8 +80,9 @@ class Class:
 @dataclass(eq=False)
 class Module:
     id: str
-    name: str
+    name: str  # the path's name (`src.graphe.core`), that of the node
     rel: str
+    import_name: str  # T-0096: the name it is imported by (`graphe.core`), import_names
     tree: ast.Module
     functions: dict[str, Function] = field(default_factory=dict)
     classes: dict[str, Class] = field(default_factory=dict)
@@ -122,21 +123,41 @@ def _module_name(rel: str) -> str:
     return name.removesuffix(".__init__")
 
 
+def import_names(rels: list[str]) -> dict[str, str]:
+    """T-0096: each file's import name, the name it is imported by: its path without the folders above its chain of
+    packages (a package: a folder that holds an `__init__.py` among `rels`). `src/graphe/core.py` is `graphe.core`,
+    `tools/outil.py` is `outil`."""
+    # shortcut: a namespace package (PEP 420, `google/protobuf/` without `google/__init__.py`) ends the chain, so
+    # its modules lose their head (`protobuf.x`); follow such folders when a sample host imports through one.
+    packages = {rel.rpartition("/")[0] for rel in rels if rel.rpartition("/")[2] == "__init__.py"}
+    names = {}
+    for rel in rels:
+        parts = rel.removesuffix(".py").split("/")
+        start = len(parts) - 1
+        while start > 0 and "/".join(parts[:start]) in packages:
+            start -= 1
+        names[rel] = ".".join(parts[start:]).removesuffix(".__init__")
+    return names
+
+
 class Reader:
     """All our modules read, and each call classified."""
 
     def __init__(self, paths: list[Path] | None = None, root: Path = ROOT, cache: Path | None = None) -> None:
         self.root = root
-        self.modules: dict[str, Module] = {}
-        # T-0026: a module's definitions, read from its file alone: module name -> (module, its classes and
+        self.modules: dict[str, Module] = {}  # by path
+        # T-0026: a module's definitions, read from its file alone: path -> (module, its classes and
         # functions in reading order, or None if to read, the cache file)
         read: dict[str, tuple] = {}
         tool = hashlib.sha256(Path(__file__).read_bytes() + sys.version.encode()).digest()
-        for path in paths if paths is not None else files():
+        paths = paths if paths is not None else files()
+        names = import_names([path.relative_to(root).as_posix() for path in paths])
+        for path in paths:
             rel = path.relative_to(root).as_posix()
             content = path.read_bytes()
-            entry = cache / f"{hashlib.sha256(tool + rel.encode() + b'\0' + content).hexdigest()[:32]}.pickle" \
-                if cache else None
+            # the import name in the key: the relative imports are resolved by it, and an `__init__.py` changes it
+            key = tool + rel.encode() + b"\0" + names[rel].encode() + b"\0" + content
+            entry = cache / f"{hashlib.sha256(key).hexdigest()[:32]}.pickle" if cache else None
             if cached := _load(entry):
                 m, classes, functions = cached
             else:
@@ -145,13 +166,19 @@ class Reader:
                 except (SyntaxError, ValueError) as e:  # ValueError: a null byte
                     print(f"graphe: {rel} does not parse, skipped ({e})", file=sys.stderr)
                     continue
-                m, classes, functions = Module(_id(rel.removesuffix(".py")), _module_name(rel), rel, tree), None, None
-            self.modules[m.name] = m
-            read[m.name] = (m, classes, functions, entry)
+                m, classes, functions = Module(_id(rel.removesuffix(".py")), _module_name(rel), rel, names[rel],
+                                               tree), None, None
+            self.modules[rel] = m
+            read[rel] = (m, classes, functions, entry)
+        # shortcut: an import name borne by two modules resolves to neither (Django's `apps`, two fixtures); resolve
+        # by the importer's nearest when a host imports such a name.
+        self._by_import: dict[str, Module | None] = {}
+        for m in self.modules.values():
+            self._by_import[m.import_name] = None if m.import_name in self._by_import else m
         self.functions: list[Function] = []
         self.classes: list[Class] = []
         for m in self.modules.values():
-            _, classes, functions, entry = read[m.name]
+            _, classes, functions, entry = read[m.rel]
             if classes is None:
                 first_class, first_function = len(self.classes), len(self.functions)
                 self._read_module(m)
@@ -202,7 +229,7 @@ class Reader:
         if isinstance(node, ast.ImportFrom):
             base = node.module or ""
             if node.level:
-                package = m.name.split(".") if m.rel.endswith("__init__.py") else m.name.split(".")[:-1]
+                package = m.import_name.split(".") if m.rel.endswith("__init__.py") else m.import_name.split(".")[:-1]
                 package = package[:len(package) - node.level + 1]
                 base = ".".join(package + ([base] if base else []))
             return {a.asname or a.name: ("symbol", base, a.name) for a in node.names}
@@ -366,11 +393,7 @@ class Reader:
     # ---------- the types
 
     def _module(self, name: str) -> Module | None:
-        if name in self.modules:
-            return self.modules[name]
-        # shortcut: the scripts of tools/ import each other without a package, as in the first host; a graphe.toml
-        # key (import roots) if another host arranges its modules otherwise.
-        return self.modules.get(f"tools.{name}")
+        return self._by_import.get(name)
 
     def _from_module(self, m: Module, name: str):
         if name in m.functions:
