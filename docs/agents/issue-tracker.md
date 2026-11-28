@@ -2,7 +2,7 @@
 
 This repository's tickets are the issues of `amelienbergerot/graphe`, each in the Project [graphe](https://github.com/users/amelienbergerot/projects/1). Use `gh` (`-R amelienbergerot/graphe` outside a clone).
 
-`tickets/` holds T-0001 to T-0093 as they were migrated (2026-11-27), issue #N for T-000N. It is an archive: never edit it, never add to it. The graph still reads it as documents until it reads the issues themselves; until then a new ticket is not in the graph.
+T-0001 to T-0093 were migrated from `tickets/` (2026-11-27), issue #N for T-000N; the folder is gone since the graph reads the issues themselves (`[tickets] github = true` in `graphe.toml`, T-0095): a ticket is in the graph within 10 minutes of its creation, at the next build.
 
 ## Conventions
 
@@ -30,7 +30,7 @@ then the parent and the blockers if any, and the Project's Status to Todo.
 
 ## When a skill says "fetch the relevant ticket"
 
-`gh issue view N --comments`, N found from the identifier as above. The user normally gives the identifier, the number or the URL. T-0001 to T-0093: `tickets/T-NNNN-*.md` holds the same text.
+`gh issue view N --comments`, N found from the identifier as above. The user normally gives the identifier, the number or the URL.
 
 ## Wayfinding operations
 

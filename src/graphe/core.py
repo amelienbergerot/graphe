@@ -25,6 +25,10 @@ And:
   is a ticket: the code that contains its identifier (in its body or its
   comment) and the other documents lead to it by `cites`. A document leads
   to the functions it names between backticks (`names`, by the name);
+- T-0095: with `[tickets] github` (graphe.toml, issues.py), an issue whose
+  title starts with an identifier is that ticket, before a file of the same
+  identifier (then a document); its body and its comments cite and name as
+  a document's text does, located at the issue's or the comment's URL;
 - a `value` node per string (an identifier, `"coupee"`) written both in
   Python and in GDScript, linked to each body that writes it (`value`): what
   one side emits and what the other compares;
@@ -41,7 +45,7 @@ from pathlib import Path
 
 import networkx as nx
 
-from graphe import godot
+from graphe import godot, issues
 from graphe import root as graphe_root  # `root` is the host's path in this module's signatures
 
 # A declaration (`abstract`, T-0081) has no body, but a line, a comment and tickets it cites, as a body.
@@ -458,11 +462,23 @@ def _cited(pattern: re.Pattern, text: str) -> set[str]:
 def _link_documents(graph: nx.DiGraph, root: Path, bodies: dict, texts: dict[str, list[str]],
                     listed: set[str] | None) -> None:
     """T-0010: each Markdown file of the host (`[documents] patterns` restricts them) is a document. One whose
-    name starts with an identifier is a ticket; it is cited by the code and by the documents that contain it.
+    name starts with an identifier is a ticket, unless an issue is (T-0095); it is cited by the code and by the
+    documents and issues that contain it.
     A document names the functions it writes between backticks."""
     pattern, restricted = _documents(root)
     tickets: dict[str, str] = {}  # identifier -> id
-    documents = []
+    documents = []  # (id, its file or an URL, its text)
+    # T-0095: an issue whose title starts with an identifier is its ticket, before a file of that identifier; located
+    # at its URL, without a line, its body at it, each comment at its own.
+    for issue in issues.tickets(root):
+        m = pattern.match(issue["title"])
+        if not (m and m.group(0)) or m.group(0) in tickets:
+            continue
+        name = m.group(0)
+        tickets[name] = did = _document_id("ticket_", name)
+        graph.add_node(did, id=did, label=name, kind="ticket", source_file=issue["url"], source_location="",
+                       name=name, notes=issue["title"][m.end():].lstrip(" :-") or name)
+        documents += [(did, issue["url"], issue["body"])] + [(did, c["url"], c["body"]) for c in issue["comments"]]
     for path in graphe_root.files(".md", root, listed):
         rel = path.relative_to(root).as_posix()
         if restricted is not None and not graphe_root.designates(rel, restricted):
@@ -502,10 +518,11 @@ def _link_documents(graph: nx.DiGraph, root: Path, bodies: dict, texts: dict[str
         if d["kind"] in ("function", "method", "class"):
             bearers[d["name"].rsplit(".", 1)[-1]].append(n)
     for did, rel, text in documents:
+        url = "://" in rel  # an issue's text: no line
         for i, line in enumerate(text.splitlines(), start=1):
             for ident in sorted(_cited(pattern, line)):
                 if ident in tickets and tickets[ident] != did:  # not from itself to itself
-                    _add_link(graph, did, tickets[ident], "cites", f"{rel}:{i}", "EXTRACTED")
+                    _add_link(graph, did, tickets[ident], "cites", rel if url else f"{rel}:{i}", "EXTRACTED")
         for name in set(NAMED.findall(text)):
             last = name.rsplit(".", 1)[-1]
             if len(last) >= NAME_MIN and len(bearers.get(last, [])) == 1:

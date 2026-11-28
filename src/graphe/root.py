@@ -14,7 +14,8 @@ nothing, with a warning that names the key.
 
 The other keys of graphe.toml (T-0009): `displayed_text`, the pattern of the
 call that displays a text, and `[documents]`, `patterns` and `identifier`
-(T-0010, core.py); `[communities]`, `separate` and `strip_prefixes`
+(T-0010, core.py); `[tickets] github`, the host's GitHub issues as its
+tickets (T-0095, issues.py); `[communities]`, `separate` and `strip_prefixes`
 (cli.py); `[[extensions]]` (docs/contribution.md).
 """
 

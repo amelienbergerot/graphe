@@ -54,14 +54,22 @@ _Avoid_: move, reassignment
 
 **Document**:
 A Markdown file of the host project, which cites nodes and other documents.
-_Avoid_: ticket for any document (a ticket is a document that has an identifier)
+_Avoid_: ticket for any document (a ticket is a document that has an identifier), document for an issue
+
+**Ticket**:
+What an identifier designates: a document whose file name starts with it, or an issue whose title starts with it.
+_Avoid_: issue for a ticket from a file
+
+**Issue**:
+A ticket held by the host's GitHub repository rather than in a file, its text being its body and its comments. A host takes its tickets from its issues only when `graphe.toml` says so.
+_Avoid_: pull request (not read), document
 
 **Identifier**:
-What designates a document in a text (`T-0012`), and what its file name starts with. Its pattern is set in `graphe.toml`. A document that has an identifier is a **ticket** (its node kind).
-_Avoid_: number, key
+What designates a ticket in a text (`T-0012`): what a document's file name, or an issue's title, starts with. Its pattern is set in `graphe.toml`.
+_Avoid_: number (an issue's number is GitHub's, not its identifier), key
 
 **Citation**:
-The link from a document to a node it names, or to another document it designates by its identifier.
+The link from a document or an issue to a node it names, or to a ticket it designates by its identifier.
 
 **Keyed link**:
 A link from the place that names a **key** (a string shared by both ends: a route, a command, an action) to the code that answers that key, where no name in the code joins them.

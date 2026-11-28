@@ -18,8 +18,11 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: uv sync --locked
       - run: uv run --locked pytest -q -rs
-      # The sample host is graphe itself.
+      # The sample host is graphe itself, its tickets its issues (T-0095): the job's token, not the shared runner's
+      # unauthenticated limit.
       - run: uv run --locked graphe build
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
   # The lint is the same on every OS: one job.
   lint:
     runs-on: ubuntu-latest
@@ -49,3 +52,5 @@ jobs:
       - run: uv tool install dist/*.whl
       - run: graphe --help
       - run: graphe build
+        env:
+          GITHUB_TOKEN: ${{ github.token }}

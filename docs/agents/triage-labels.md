@@ -14,4 +14,4 @@ When a skill mentions a role (e.g. "apply the AFK-ready triage label"), use the 
 
 Edit the "Label in our tracker" column to match whatever vocabulary you actually use.
 
-In this repo they are GitHub labels of the same names, one per open ticket (see `issue-tracker.md`). The archived tickets in `tickets/` carry theirs on a `Status:` line instead.
+In this repo they are GitHub labels of the same names, one per open ticket (see `issue-tracker.md`).

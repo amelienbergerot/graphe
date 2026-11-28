@@ -31,7 +31,7 @@ language (or family) defines it once (docs/readers.md lists every reader). The c
 reads the text: the end of each function and class, the texts it displays
 (the `displayed_text` pattern of graphe.toml), its comment, module variables
 and who reads them, and the documents (the host's Markdown, `[documents]` of
-graphe.toml) - who cites them, what they name. The fields of a class are
+graphe.toml; its GitHub issues, `[tickets]`) - who cites them, what they name. The fields of a class are
 nodes (the Python reader). A keyed link (`[keys]` of graphe.toml: `names`,
 `answers`, `parameters`) is a `sends` from the code that names a key (a
 front's `api("zones")`) to the code that answers it (`'/api/zones'`).
@@ -77,7 +77,7 @@ from pathlib import Path
 
 import networkx as nx
 
-from graphe import core, godot
+from graphe import core, godot, issues
 from graphe import root as graphe_root  # `root` is the host's path in this module's signatures
 from graphe.hook import HEAD_WORDS, hook
 from graphe.readers import READERS, SUFFIXES, Project, run_reader
@@ -509,7 +509,8 @@ def build(quiet: bool = False, listed: set[str] | None = None) -> int:
 
 def _location(graph: nx.DiGraph, n: str) -> str:
     d = graph.nodes[n]
-    return f"{d['source_file']}:{d['source_location'].lstrip('L')}"
+    line = d["source_location"].lstrip("L")
+    return f"{d['source_file']}:{line}" if line else d["source_file"]  # an issue: its URL, no line (T-0095)
 
 
 def report(graph: nx.DiGraph, data: dict, community_of: dict, names: dict,
@@ -649,14 +650,14 @@ if(view.z>fit*2.5){cx.font='12px system-ui';const shown=N.filter(n=>{const[x,y]=
 shown.sort((a,b)=>(b===picked)-(a===picked)||b.deg-a.deg);for(const n of shown.slice(0,600)){const[x,y]=screen(n),w=cx.measureText(n.label).width;if(free(x+4,y-3,w))cx.fillText(n.label,x+4,y-3)}}
 else{const centers={};for(const n of N){const c=centers[n.c]||(centers[n.c]={x:0,y:0,k:0});c.x+=n.x;c.y+=n.y;c.k++}
 cx.font='600 12px system-ui';for(const c of Object.keys(centers).sort((a,b)=>centers[b].k-centers[a].k)){const v=centers[c];const w=cx.measureText(D.c[c]).width,x=(v.x/v.k)*view.z+view.x-w/2,y=(v.y/v.k)*view.z+view.y;if(free(x,y,w))cx.fillText(D.c[c],x,y)}}}
-function link(n){return `<a data-i="${n.i}">${esc(n.label)} <span class="rel">${esc(n.file)}:${n.line}</span></a>`}
+function link(n){return `<a data-i="${n.i}">${esc(n.label)} <span class="rel">${esc(n.file)}${n.line?':'+n.line:''}</span></a>`}
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 function group(list,end){const g={};for(const l of list){for(const r of l.rel.split(','))(g[r]=g[r]||[]).push(N[l[end]])}
 return Object.keys(g).sort().map(r=>`<h3>${esc(r)} (${g[r].length})</h3>`+g[r].sort((a,b)=>a.label.localeCompare(b.label)).map(link).join('')).join('')}
 function pick(n,center){picked=n;neighbours=new Set();if(n){for(const l of n.outs)neighbours.add(l.t);for(const l of n.ins)neighbours.add(l.s)}
 const f=document.getElementById('card');
 if(!n){f.innerHTML=`<p class="where">${N.length} nodes, ${L.length} links. Built on ${esc(D.t)} (commit ${esc(D.k)}).</p><p class="where">Wheel: zoom. Drag: move. Click: a node and its links.</p>`}
-else{f.innerHTML=`<h2>${esc(n.label)}</h2><div class="where">${esc(n.kind)} · ${esc(n.file)}:${n.line} · ${esc(D.c[n.c])}<br>${esc(n.id)}</div><h3 style="color:var(--text)">What it calls</h3>${group(n.outs.filter(l=>l.rel!=='contains'&&l.rel!=='method'),'t')||'<p class=where>nothing</p>'}<h3 style="color:var(--text)">What calls it</h3>${group(n.ins.filter(l=>l.rel!=='contains'&&l.rel!=='method'),'s')||'<p class=where>nothing</p>'}`}
+else{f.innerHTML=`<h2>${esc(n.label)}</h2><div class="where">${esc(n.kind)} · ${esc(n.file)}${n.line?':'+n.line:''} · ${esc(D.c[n.c])}<br>${esc(n.id)}</div><h3 style="color:var(--text)">What it calls</h3>${group(n.outs.filter(l=>l.rel!=='contains'&&l.rel!=='method'),'t')||'<p class=where>nothing</p>'}<h3 style="color:var(--text)">What calls it</h3>${group(n.ins.filter(l=>l.rel!=='contains'&&l.rel!=='method'),'s')||'<p class=where>nothing</p>'}`}
 if(n&&center){const r=cv.getBoundingClientRect();view.z=Math.max(view.z,fit*6);view.x=r.width/2-n.x*view.z;view.y=r.height/2-n.y*view.z}draw()}
 document.getElementById('card').addEventListener('click',e=>{const a=e.target.closest('a[data-i]');if(a)pick(N[+a.dataset.i],true)});
 const dl=document.getElementById('names');dl.innerHTML=N.map(n=>`<option value="${esc(n.label)} — ${esc(n.file)}">`).join('');
@@ -774,7 +775,9 @@ def _by_file(graph: nx.DiGraph, nodes, suffix: dict[str, str] | None = None) -> 
     for n in sorted(nodes, key=lambda n: (graph.nodes[n]["source_file"], _line(graph, n), n)):
         d = graph.nodes[n]
         if d["kind"] in separate:
-            off.append(d["name"] + suffix.get(n, ""))
+            # T-0095: an issue's ticket with its URL; a file's is designated by its identifier alone.
+            url = f" ({d['source_file']})" if "://" in d["source_file"] else ""
+            off.append(d["name"] + url + suffix.get(n, ""))
         else:
             files[d["source_file"]].append(("(file)" if d["kind"] == "file" else f"{d['name']}:{_line(graph, n)}")
                                            + suffix.get(n, ""))
@@ -1142,6 +1145,7 @@ def install(remove: bool = False) -> int:
         print(f"  {name}: {'block removed' if remove else 'set'} ({hook})")
     if not remove:
         _ignore_output()
+        issues.choose(ROOT)  # T-0095: the repository of the tickets, when the remotes name several
     return 0
 
 
