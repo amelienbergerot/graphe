@@ -19,8 +19,9 @@ T-0096: a module is imported by its import name (`import_names`: `src/graphe/cor
 is `graphe.core`); its node keeps its path's name. `import a.b.c` binds `a` and links
 `a.b` and `a.b.c` (`as d`: not `a`); `a.b`, and `from a import b`, is the submodule
 unless the package binds `b` otherwise, its own import of it winning over a fallback
-beside it (`_submodule`). A name two modules bear resolves to neither, an import
-through a leading folder without `__init__.py` to nothing (`shortcut:` each).
+beside it (`_submodule`). A name two modules bear resolves to neither (`shortcut:`).
+T-0100: an import through a leading folder without `__init__.py` resolves by the
+module's path (`import_keys`), when no import name is that name.
 
 T-0099: a function nested in another is no candidate for `x.f()` by the name
 alone, nor for the alert of a call not linked to one of our names; a bare `f()`
@@ -138,9 +139,6 @@ def import_names(rels: list[str]) -> dict[str, str]:
     """T-0096: each file's import name, the name it is imported by: its path without its leading folders that are no
     package (a package: a folder that holds an `__init__.py` among `rels`). `src/graphe/core.py` is `graphe.core`,
     `tools/outil.py` is `outil`, `pkg/sub/x.py` `pkg.sub.x` (`sub/` a namespace package inside `pkg`)."""
-    # shortcut: a leading namespace package (PEP 420, `google/protobuf/` without `google/__init__.py`) is left out,
-    # so an import through it (`google.protobuf.x`, Django's `tests.sphinx_tests...`) resolves to nothing; keep such
-    # a folder when a sample host's `callers` suffer.
     packages = {rel.rpartition("/")[0] for rel in rels if rel.rpartition("/")[2] == "__init__.py"}
     names = {}
     for rel in rels:
@@ -150,6 +148,22 @@ def import_names(rels: list[str]) -> dict[str, str]:
             start += 1
         names[rel] = ".".join(parts[start:]).removesuffix(".__init__")
     return names
+
+
+def import_keys(names: dict[str, str]) -> dict[str, str | None]:
+    """The file each name imports, None when two files bear it: the import names (`import_names`), then, T-0100, the
+    path's name of a file whose leading folders were left out, unless an import name already is that name: an import
+    through a leading namespace package (PEP 420, Django's `tests.sphinx_tests...`) resolves."""
+    # shortcut: a name two modules bear resolves to neither, by import name or by path (none in Django, Grid Zero or
+    # graphe); resolve by the importer's nearest when a host imports such a name.
+    keys: dict[str, str | None] = {}
+    for rel, name in names.items():
+        keys[name] = None if name in keys else rel
+    paths: dict[str, str | None] = {}
+    for rel, name in names.items():
+        if (path := _module_name(rel)) != name and path not in keys:
+            paths[path] = None if path in paths else rel
+    return keys | paths
 
 
 class Reader:
@@ -182,11 +196,8 @@ class Reader:
                                                tree), None, None
             self.modules[rel] = m
             read[rel] = (m, classes, functions, entry)
-        # shortcut: an import name borne by two modules resolves to neither (none in Django, Grid Zero or graphe);
-        # resolve by the importer's nearest when a host imports such a name.
-        self._by_import: dict[str, Module | None] = {}
-        for rel, name in names.items():  # a file that does not parse bears its name too, as in the core
-            self._by_import[name] = None if name in self._by_import else self.modules.get(rel)
+        # a file that does not parse bears its name too, as in the core
+        self._by_import = {name: self.modules.get(rel) if rel else None for name, rel in import_keys(names).items()}
         self.functions: list[Function] = []
         self.classes: list[Class] = []
         for m in self.modules.values():
@@ -689,6 +700,8 @@ class Reader:
             return None
         kind = t[0]
         if kind == "module":
+            # shortcut: a namespace package is no module, so `top.pkg.mod.f()` after `import top.pkg.mod` (`top/`
+            # without `__init__.py`) reaches nothing (none in Django); give it its submodules if a host calls so.
             if sub := self._submodule(t[1], name):  # T-0096: `pkg.a.f()` after `import pkg.a`
                 return ("module", sub)
             return self._from_module(t[1], name) or ("absent", t[1], name)
