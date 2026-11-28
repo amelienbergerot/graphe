@@ -48,15 +48,6 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
   than a parallel build would save on Django. T-0087 saw it again, warm:
   three builds of the same code 65.2, 73.8 and 41.9 s, then 41.5 to 45.5 s
   once alternated with the new code's.
-- **The generic reader reads its files one after the other.** (protobuf,
-  sample host, 2026-11-27, measured for the parallel build, T-0088)
-  `read()` of protobuf's 1363 C/C++ files: 6.26 s serial, 1.92 s over 4
-  processes, 1.60 s over 8 (x3.9, the results equal to the serial run's); the linking
-  stays serial. T-0088 runs one process per reader, Django having nothing
-  to gain from this split; to take it when a host's build is dominated by
-  one generic language. Since T-0088 the readers run at once, so the
-  largest one is the readers' critical path (protobuf's C/C++, gitea's Go):
-  T-0092 splits its files.
 - **On a large repository, a stale query still waits for the whole
   resolution.** (Django, sample host, 2026-11-25, T-0026) ~68 s per stale
   query on this machine: each Python file's definitions are cached, but the
@@ -335,6 +326,20 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
 ## Settled
 
 Settled by tickets (2026-11-28):
+
+- **The generic reader reads its files one after the other.** [T-0092] (protobuf,
+  sample host, 2026-11-27, measured for the parallel build, T-0088)
+  `read()` of protobuf's 1363 C/C++ files: 6.26 s serial, 1.92 s over 4
+  processes, 1.60 s over 8 (x3.9, the results equal to the serial run's); the linking
+  stays serial. T-0088 runs one process per reader, Django having nothing
+  to gain from this split; to take it when a host's build is dominated by
+  one generic language. Since T-0088 the readers run at once, so the
+  largest one is the readers' critical path (protobuf's C/C++, gitea's Go):
+  T-0092 splits its files.
+  T-0092: a language's files of 4 MB or more are read over 8 processes of
+  their own, the linking on the results in their order (ADR 0005): gitea
+  9.62 -> 7.16 s, protobuf 15.47 -> 12.93 s, libsignal unchanged;
+  `graphe.json` identical.
 
 - **The Python reader does not link `module.f()` when the module comes by `from package import module`.**
   [T-0096] (graphe, 2026-11-28, T-0095) Checking that `issues.tickets` had its

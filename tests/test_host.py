@@ -234,6 +234,46 @@ def test_the_readers_in_processes_give_the_same_graph(tmp_path: Path):
     assert any(n["source_file"] == "godot/jeu.gd" for n in graphs[0]["nodes"])
 
 
+def test_one_languages_files_read_in_several_processes_give_the_same_graph(tmp_path: Path):
+    """T-0092: a generic language's files read in batches over processes, from the build's process or from a reader's
+    own: the same graph, and a file that does not parse named once."""
+    host = _host(tmp_path, {"outils.py": CALLEE, "a.go": "package a\n\nfunc F() {}\n",
+                            "b.go": "package a\n\nfunc G() { F() }\n", "c.go": "package a\n\nfunc H() { G() }\n",
+                            "ok.php": "<?php\nfunction f() { g(); }\n", "broken.php": "<?php\nfunction (\n"})
+    script = tmp_path.parent / "split.py"
+    graphs = []
+    # where a.go is read: the build's process; a worker of the build's; a worker of the Go reader's worker
+    for split, parallel, where in (("graphe.generic.SPLIT_BYTES", "graphe.cli.PARALLEL_FILES", "build"),
+                                   ("0", "graphe.cli.PARALLEL_FILES", "split"), ("0", "0", "nested")):
+        # A file, not `-c`: a spawned process runs its top level again, so the wrapped `read` and pool are there too.
+        # The pool's maker, not a worker's parent: under forkserver (Linux, Python 3.14) that is the server.
+        script.write_text(
+            "import os, sys, graphe.cli, graphe.generic\n"
+            "def read(language, file, source, read=graphe.generic.read):\n"
+            "    print(f'read {file} in {os.getpid()}', file=sys.stderr)\n    return read(language, file, source)\n"
+            "class Pool(graphe.generic.ProcessPoolExecutor):\n"
+            "    def __init__(self, *arguments):\n"
+            "        print(f'pool in {os.getpid()}', file=sys.stderr)\n        super().__init__(*arguments)\n"
+            "graphe.generic.read, graphe.generic.ProcessPoolExecutor = read, Pool\n"
+            f"graphe.generic.SPLIT_BYTES = {split}\ngraphe.cli.PARALLEL_FILES = {parallel}\n"
+            "if __name__ == '__main__':\n    print(os.getpid())\n    sys.exit(graphe.cli.main(['build', '--quiet']))\n",
+            encoding="utf-8")
+        r = subprocess.run([sys.executable, str(script)], cwd=host, env={**os.environ, "GRAPHE_ROOT": str(host)},
+                           capture_output=True, text=True, encoding="utf-8")
+        assert r.returncode == 0, r.stderr
+        assert r.stderr.count("broken.php does not parse") == 1, r.stderr
+        build = r.stdout.strip()
+        [reader] = [line.split()[-1] for line in r.stderr.splitlines() if line.startswith("read a.go")]
+        pools = {line.split()[-1] for line in r.stderr.splitlines() if line.startswith("pool in")}
+        assert {"build": not pools and reader == build,
+                "split": pools == {build} and reader != build,
+                "nested": pools and build not in pools and reader not in pools | {build}}[where], (where, r.stderr, build)
+        data = json.loads((host / "graphe" / "graphe.json").read_bytes())
+        graphs.append({k: v for k, v in data.items() if k not in ("built", "built_s")})
+    assert graphs[0] == graphs[1] == graphs[2]
+    assert {n["source_file"] for n in graphs[0]["nodes"]} >= {"a.go", "b.go", "c.go", "ok.php"}
+
+
 def _hooks(host: Path) -> dict[str, bytes]:
     folder = host / ".git" / "hooks"
     return {p.name: p.read_bytes() for p in folder.glob("post-*") if p.suffix != ".sample"}
