@@ -6,6 +6,8 @@ A release that changes `contribute(project)`, `Project`, the shape of the nodes 
 
 ## Unreleased
 
+The Python reader resolves an import through a leading folder without `__init__.py` (a namespace package, PEP 420): a module whose leading folders are left out of its import name is also found by its path, when no import name is that name, and the core's `alias.CONSTANT` alike; a name two modules bear still resolves to neither. On Django, `tests/sphinx_tests/testdata/package/module.py` imports `wildcard_module` again, the 1 link T-0096 lost, and nothing else changes but the communities around it; graphe and Grid Zero unchanged (T-0100).
+
 ## 0.4.0
 
 The generic reader reads a language's files over 8 processes of its own when they weigh 4 MB or more, then links them in its own process on the results in the files' order: the graph is unchanged, and a file that does not parse is still named once. On an idle machine, the code before against this one: gitea 9.62 -> 7.16 s, protobuf 15.47 -> 12.93 s, libsignal 5.24 -> 5.26 s (T-0092, ADR 0005).

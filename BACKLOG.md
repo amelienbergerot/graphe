@@ -10,16 +10,6 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
 
 ## Open
 
-- **A Python import through a leading folder without `__init__.py` resolves to nothing.**
-  (Django, sample host, 2026-11-28, T-0096) Comparing Django's links before
-  and after the import names: `tests/sphinx_tests/testdata/package/module.py`
-  lost its import of `wildcard_module`, found by diffing the two
-  `graphe.json` and reading the file. It imports
-  `tests.sphinx_tests.testdata.package.wildcard_module`, through `tests/`,
-  which has no `__init__.py` (a namespace package, PEP 420), so the import
-  name `sphinx_tests...` does not match. Keeping a leading folder as a
-  second key when an import names it would link it; one link in Django.
-
 - **A dict's `.get(...)` is linked by its name to a nested function `get` of the tests.**
   (graphe, 2026-11-28, T-0095) `explain assemble` lists `calls` to
   `tests/test_issues.py: _github.get:67?`: cli.py's `declaration.get(...)`
@@ -326,6 +316,19 @@ before T-0003 come from Grid Zero, and their commits are Grid Zero's.
 ## Settled
 
 Settled by tickets (2026-11-28):
+
+- **A Python import through a leading folder without `__init__.py` resolves to nothing.** [T-0100]
+  (Django, sample host, 2026-11-28, T-0096) Comparing Django's links before
+  and after the import names: `tests/sphinx_tests/testdata/package/module.py`
+  lost its import of `wildcard_module`, found by diffing the two
+  `graphe.json` and reading the file. It imports
+  `tests.sphinx_tests.testdata.package.wildcard_module`, through `tests/`,
+  which has no `__init__.py` (a namespace package, PEP 420), so the import
+  name `sphinx_tests...` does not match. Keeping a leading folder as a
+  second key when an import names it would link it; one link in Django.
+  T-0100: a module is also found by its path when no import name is that
+  name; the link is back, Django's other links, graphe's and Grid Zero's
+  unchanged.
 
 - **The generic reader reads its files one after the other.** [T-0092] (protobuf,
   sample host, 2026-11-27, measured for the parallel build, T-0088)
